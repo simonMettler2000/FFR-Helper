@@ -3,6 +3,7 @@
 Run from this repository beside the existing guide folder. No saves are inputs.
 """
 import json
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -13,6 +14,16 @@ def main():
     tables = json.loads((GUIDE / 'sources/tables.json').read_text(encoding='utf8'))
     battle = json.loads((GUIDE / 'sources/battle-calculator-data.json').read_text(encoding='utf8'))
     catalog = json.loads((GUIDE / 'catalog.json').read_text(encoding='utf8'))
+    english = json.loads((GUIDE / 'sources/english.json').read_text(encoding='utf8'))
+    sys.path.insert(0, str(GUIDE / 'tools'))
+    from normalize_data import value
+    vision_document = json.loads((GUIDE / 'sources/vision-items-decoded.json').read_text(encoding='utf8'))
+    vision_names = {}
+    for export in vision_document['exports']:
+        for raw in export.get('Table', {}).get('Data', []):
+            row = value(raw)
+            name = row['name']
+            vision_names[str(row['id'])] = english.get(name['text_table'], {}).get(name['key'], name['text'])
     chapters = {}
     for place in catalog['locations']:
         for item in place['chests'] + place['pickups']:
@@ -39,7 +50,7 @@ def main():
                       ('Item/Vision/DT_VisionAwakeningMasteryData', 'awakening')]:
         for row in tables[key]['rows']:
             item_id = str(row['id'])
-            vision = visions.setdefault(item_id, dict(name=catalog['items'].get(item_id, {}).get('name', 'Vision ' + item_id)))
+            vision = visions.setdefault(item_id, dict(name=vision_names.get(item_id, 'Vision ' + item_id)))
             vision.setdefault(kind, []).append(dict(level=row['level'], cost=row['masteryPoint']))
     for vision in visions.values():
         for kind in ['mrp', 'awakening']:

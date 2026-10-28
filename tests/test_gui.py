@@ -45,6 +45,9 @@ class GuiTests(unittest.TestCase):
         self.window.apply_exp()
         self.assertEqual(self.window.editor.experience(1001), 140)
         self.assertEqual(self.source.read_bytes(), self.raw)
+        self.assertEqual(self.window.stat_preview.rowCount(), 2)
+        self.assertEqual(self.window.stat_preview.columnCount(), 7)
+        self.assertNotEqual(self.window.stat_preview.item(0, 0).text(), self.window.stat_preview.item(1, 0).text())
 
     def test_mrp_edits_the_selected_pair_without_changing_awakening(self):
         self.window.mrp_target.setValue(44)

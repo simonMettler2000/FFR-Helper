@@ -21,6 +21,10 @@ from .bridge import FieldSaveBridge, prepare_adapter
 
 
 STYLE = """QMainWindow,QWidget{background:#f4f5f3;color:#22353e;font-family:'Segoe UI';font-size:13px}
+QLabel,QCheckBox{background:transparent}
+QCheckBox::indicator{width:13px;height:13px;border:1px solid #9fb3b7;border-radius:2px;background:#fff}
+QCheckBox::indicator:checked{background:#214f5b;border-color:#214f5b}
+QCheckBox::indicator:disabled{background:#e9eeec;border-color:#c9d3d2}
 QLabel#title{font-size:28px;font-weight:600;color:#173e4b}
 QLabel#subtitle{color:#60727a;margin-bottom:8px}
 QTabWidget::pane{border:1px solid #ccd5d5;background:#fff;border-radius:5px}
@@ -104,9 +108,9 @@ class MainWindow(QMainWindow):
         self.file_label = text('Open a save slot to start. All edits stay in a working copy until you export or write.', 'notice')
         layout.addWidget(self.file_label)
         self.tabs = QTabWidget()
-        self.tabs.addTab(self.save_page(), 'Saves & checkpoints')
-        self.tabs.addTab(self.progress_page(), 'EXP & vision MRP')
-        self.tabs.addTab(self.inventory_page(), 'Items & equipment')
+        self.tabs.addTab(self.save_page(), 'Saves && checkpoints')
+        self.tabs.addTab(self.progress_page(), 'EXP && vision MRP')
+        self.tabs.addTab(self.inventory_page(), 'Items && equipment')
         self.tabs.addTab(self.route_page(), 'Route planner')
         self.tabs.addTab(self.practice_page(), 'Live practice')
         layout.addWidget(self.tabs, 1)
@@ -219,12 +223,16 @@ class MainWindow(QMainWindow):
         grid.addWidget(group)
         layout.addLayout(grid)
         layout.addWidget(text('The reward inputs are a forecast; they are not added to the saved total by these buttons. Enter rewards after EXP/MRP bonuses and participation rules. Set the pre-battle total, then let the game award the next battle normally. Vision awakening is separate from MRP and is preserved.', 'notice'))
-        self.stat_preview = QTableWidget(0, 3)
-        self.stat_preview.setHorizontalHeaderLabels(['Level base stat', 'At set total EXP', 'After next battle'])
+        self.stat_preview = QTableWidget(2, 7)
+        self.stat_preview.setHorizontalHeaderLabels(['HP', 'MP', 'Strength', 'Stamina', 'Magic', 'Spirit', 'Speed'])
+        self.stat_preview.setVerticalHeaderLabels(['Set total', 'After battle'])
         self.stat_preview.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.stat_preview.verticalHeader().setDefaultSectionSize(26)
+        self.stat_preview.setMinimumHeight(105)
+        self.stat_preview.setMaximumHeight(125)
         self.stat_preview.setEditTriggers(QAbstractItemView.NoEditTriggers)
         layout.addWidget(self.stat_preview, 1)
-        layout.addWidget(text('Base stats use the game’s fixed level-growth tables. Equipment, seeds and mastery bonuses are additional. The editor changes total EXP and preserves those saved bonuses; levels are derived by the game when it loads the save.'))
+        layout.addWidget(text('Base stats use fixed level growth; equipment, seeds and mastery bonuses are additional. Levels update when the edited save loads.'))
         return page
 
     def inventory_page(self):
@@ -504,10 +512,9 @@ class MainWindow(QMainWindow):
         remaining = f'{current["remaining"]:,} EXP to the next level' if current['nextTotal'] else 'Maximum level'
         self.exp_preview.setText(f'Level {current["level"]} → {after["level"]} after the next battle.\n{remaining}.')
         keys = [('hp', 'HP'), ('mp', 'MP'), ('str', 'Strength'), ('sta', 'Stamina'), ('int', 'Magic'), ('spr', 'Spirit'), ('agi', 'Speed')]
-        self.stat_preview.setRowCount(len(keys))
-        for r, (key, label) in enumerate(keys):
-            for c, value in enumerate([label, current['stats'][key], after['stats'][key]]):
-                self.stat_preview.setItem(r, c, QTableWidgetItem(str(value)))
+        for c, (key, label) in enumerate(keys):
+            self.stat_preview.setItem(0, c, QTableWidgetItem(str(current['stats'][key])))
+            self.stat_preview.setItem(1, c, QTableWidgetItem(str(after['stats'][key])))
         vid = self.vision.currentData()
         if vid is not None:
             curve = self.reference['visions'][str(vid)]['mrp']

@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import hashlib
 import io
 import json
+import math
 from pathlib import Path
 import re
 import zipfile
@@ -30,6 +31,18 @@ def _metadata(value):
             or not isinstance(value.get('sha256'), str) or re.fullmatch('[0-9a-f]{64}', value['sha256']) is None
             or not isinstance(value.get('entry'), dict)):
         raise ValueError('Invalid encounter-opening metadata.')
+    anchor = value.get('fieldAnchor')
+    if anchor is not None:
+        if (not isinstance(anchor, dict)
+                or set(anchor) != {'kind', 'restorable', 'source', 'coverage', 'sameWorldChecked', 'mapId', 'position', 'direction'}
+                or anchor.get('kind') != 'partial-field-anchor' or anchor.get('restorable') is not False
+                or anchor.get('source') != 'live-player-root-transform' or anchor.get('coverage') != 'position-and-direction-only'
+                or anchor.get('sameWorldChecked') is not True or type(anchor.get('mapId')) is not int
+                or not 0 <= anchor['mapId'] < 2**31 or type(anchor.get('direction')) is not int
+                or not 0 <= anchor['direction'] <= 8 or not isinstance(anchor.get('position'), list)
+                or len(anchor['position']) != 3
+                or any(type(v) not in (int, float) or abs(v) > 1e12 or not math.isfinite(v) for v in anchor['position'])):
+            raise ValueError('Invalid partial field anchor; it cannot represent a complete world state.')
     raw = json.dumps(value, ensure_ascii=False, allow_nan=False).encode('utf8')
     if len(raw) > MAX_METADATA:
         raise ValueError('Encounter-opening metadata exceeds its limit.')

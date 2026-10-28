@@ -62,6 +62,12 @@ def main():
                 assert metadata['sha256']==hashlib.sha256(progression).hexdigest()
                 assert metadata['byteLength']==len(progression) and metadata['sequence']==1
                 assert metadata['entry']==entry and metadata['capturePoint']=='before-native-entry'
+                anchor=metadata['fieldAnchor']
+                assert anchor['kind']=='partial-field-anchor' and anchor['restorable'] is False
+                assert anchor['sameWorldChecked'] is True and anchor['mapId']==1000 and anchor['direction']==2
+                assert anchor['position']==[123.125,-456.25,7.5]
+                assert report['objects']['nativeEntry']['fieldAnchorReady'] is True
+                assert report['objects']['nativeEntry']['fieldAnchorFailures']==0
                 replacement=json.loads((root/'connection/replacement-report.json').read_text(encoding='utf8'))
                 second=replacement['objects']['nativeEntry']['opening']
                 second_raw=(root/'connection/replacement-progression.gvas').read_bytes()

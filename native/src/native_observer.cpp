@@ -13,6 +13,12 @@
 #endif
 #include "encounter_capture.hpp"
 #include "progression_capture.hpp"
+#include "field_anchor.hpp"
+#ifdef FFR_FIELD_PROFILE_HEADER
+#include FFR_FIELD_PROFILE_HEADER
+#else
+#include "field_profile.hpp"
+#endif
 #ifdef FFR_PRACTICE_BUILD
 #include "abort_trial.hpp"
 #include "progression_clone.hpp"
@@ -48,6 +54,13 @@ using MemoryFree = void(__fastcall*)(void*);
 RootGetter root_getter{};
 SaveMemory save_memory{};
 MemoryFree memory_free{};
+using FieldObjectGetter=void*(__fastcall*)(void*);
+using FieldPlayerGetter=void*(__fastcall*)();
+using FieldMapIdGetter=std::int32_t(__fastcall*)();
+FieldObjectGetter field_world{},field_map{};
+FieldPlayerGetter field_player{};
+FieldMapIdGetter field_map_id{};
+std::atomic<bool> field_profile_ready{false};
 HMODULE own_module{};
 std::atomic<EntryFunction> original_entry{nullptr};
 void* hook_address{};
@@ -180,6 +193,7 @@ struct Observer {
         std::uint64_t sequence{};
         std::int64_t time{};
         std::string session, entry;
+        std::string field_anchor="null";
         std::vector<unsigned char> progression;
 #ifdef FFR_PRACTICE_BUILD
         ffr::Encounter encounter;
@@ -197,6 +211,7 @@ struct Observer {
     std::atomic<bool> quit{false}, ready{false};
     std::atomic<unsigned> failures{0};
     std::atomic<unsigned> progression_failures{0};
+    std::atomic<unsigned> field_failures{0};
     std::shared_ptr<const Opening> opening;
 #ifdef FFR_PRACTICE_BUILD
     ffr::AbortTrial trial;
@@ -255,7 +270,8 @@ struct Observer {
                                 +",\"time\":"+std::to_string(current_opening->time)
                                 +",\"capturePoint\":\"before-native-entry\",\"gameSha256\":"+ffr::quote(ffr::profile::game_sha256)
                                 +",\"file\":\"opening-progression.gvas\",\"byteLength\":"+std::to_string(payload.size())
-                                +",\"sha256\":"+ffr::quote(digest)+",\"entry\":"+current_opening->entry+'}';
+                                +",\"sha256\":"+ffr::quote(digest)+",\"entry\":"+current_opening->entry
+                                +",\"fieldAnchor\":"+current_opening->field_anchor+'}';
                             published=current_opening;
 #ifdef FFR_PRACTICE_BUILD
                             {std::lock_guard lock(mutex); if(opening==current_opening) opening_hash=digest;}
@@ -273,6 +289,8 @@ struct Observer {
                         + ",\"objects\":{\"nativeEntry\":{\"ready\":" + (ready.load() ? "true" : "false")
                         + ",\"captureFailures\":" + std::to_string(failures.load())
                         + ",\"progressionCaptureFailures\":"+std::to_string(progression_failures.load())
+                        + ",\"fieldAnchorReady\":"+(field_profile_ready.load()?"true":"false")
+                        + ",\"fieldAnchorFailures\":"+std::to_string(field_failures.load())
                         + ",\"opening\":"+opening_metadata+"}},\"events\":[";
                     for (std::size_t i=0; i<copied.size(); ++i) { if (i) report += ','; report += copied[i]; }
                     report += "],\"missingState\":[\"Live verification of serialized progression/resource coverage\",\"Full combat and RNG state\",\"Verified restore path\"]}";
@@ -297,6 +315,34 @@ std::atomic<Observer*> published_observer{nullptr};
 #include "abort_runtime.inl"
 #endif
 
+std::optional<ffr::FieldAnchor> capture_live_field(void* context) {
+    if(!field_profile_ready || !context)return {};
+    std::array<std::uint64_t,4> header{};
+    const auto address=reinterpret_cast<std::uint64_t>(context);
+    if(!read_memory(address,header.data(),sizeof(header)) || !header[0] || !header[2] || (header[1]&0x40000000u))return {};
+    auto* world=field_world(context);
+    if(!world || !read_memory(reinterpret_cast<std::uint64_t>(world),header.data(),sizeof(header))
+        || !header[0] || !header[2] || (header[1]&0x40000000u) || field_map(world)!=context)return {};
+    return ffr::capture_field_anchor(read_memory,field_map_id(),reinterpret_cast<std::uint64_t>(field_player()));
+}
+
+void initialize_field_profile() {
+    const auto base=reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr));
+    for(const auto& function:{std::pair{ffr::field_profile::get_world_rva,ffr::field_profile::get_world_sha256},
+            std::pair{ffr::field_profile::get_map_rva,ffr::field_profile::get_map_sha256},
+            std::pair{ffr::field_profile::get_player_rva,ffr::field_profile::get_player_sha256},
+            std::pair{ffr::field_profile::get_map_id_rva,ffr::field_profile::get_map_id_sha256}}) {
+        std::array<unsigned char,64> code{};
+        if(!read_memory(base+function.first,code.data(),code.size()))return;
+        Sha256 hash;hash.add(code.data(),code.size());if(hash.finish()!=function.second)return;
+    }
+    field_world=reinterpret_cast<FieldObjectGetter>(base+ffr::field_profile::get_world_rva);
+    field_map=reinterpret_cast<FieldObjectGetter>(base+ffr::field_profile::get_map_rva);
+    field_player=reinterpret_cast<FieldPlayerGetter>(base+ffr::field_profile::get_player_rva);
+    field_map_id=reinterpret_cast<FieldMapIdGetter>(base+ffr::field_profile::get_map_id_rva);
+    field_profile_ready=true;
+}
+
 void __fastcall encounter_hook(void* context, const void* entry, bool skip_intro) {
     struct Guard {
         Guard() { in_flight.fetch_add(1); }
@@ -319,6 +365,11 @@ void __fastcall encounter_hook(void* context, const void* entry, bool skip_intro
         if (json.size() > 128*1024) { current->failures.fetch_add(1); return; }
         auto opening=std::make_shared<Observer::Opening>();
         opening->entry=json; opening->time=seconds(); opening->session=capture_session;
+        try {
+            auto anchor=capture_live_field(context);
+            if(anchor)opening->field_anchor=ffr::to_json(*anchor);
+            else current->field_failures.fetch_add(1);
+        }catch(...) {current->field_failures.fetch_add(1);}
 #ifdef FFR_PRACTICE_BUILD
         opening->encounter=std::move(*copied); opening->context_identity=reinterpret_cast<std::uint64_t>(context);
         opening->thread=GetCurrentThreadId();
@@ -358,6 +409,7 @@ bool install_entry_hook() {
         set_message("Unsupported game build; native hook was not installed"); return false;
     }
     auto base = reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr));
+    initialize_field_profile();
     for (const auto& profile : {std::pair{ffr::profile::root_getter_rva,ffr::profile::root_getter_sha256},
                                std::pair{ffr::profile::save_memory_rva,ffr::profile::save_memory_sha256},
                                std::pair{ffr::profile::memory_free_rva,ffr::profile::memory_free_sha256}}) {

@@ -26,6 +26,33 @@ def sample_opening():
 
 
 class OpeningTests(unittest.TestCase):
+    def test_optional_partial_live_field_anchor_round_trips_without_restore_claims(self):
+        capture = sample_opening()
+        capture.metadata['fieldAnchor'] = dict(kind='partial-field-anchor', restorable=False,
+                                              source='live-player-root-transform', coverage='position-and-direction-only',
+                                              sameWorldChecked=True, mapId=1000, position=[123.125, -456.25, 7.5], direction=2)
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder)/'anchor.ffropening'
+            export_opening(path, capture)
+            loaded = load_opening(path)
+            self.assertEqual(loaded.metadata['fieldAnchor'], capture.metadata['fieldAnchor'])
+        capture.metadata['fieldAnchor'] = None
+        capture.validate()  # Missing live anchors remain explicit incomplete captures.
+
+    def test_partial_field_anchor_rejects_invalid_coordinates_or_completeness_claims(self):
+        valid = dict(kind='partial-field-anchor', restorable=False, source='live-player-root-transform',
+                     coverage='position-and-direction-only', sameWorldChecked=True,
+                     mapId=1000, position=[1, 2, 3], direction=2)
+        for key, value in [('restorable', True), ('coverage', 'complete-world'), ('sameWorldChecked', False),
+                           ('mapId', True), ('direction', 9), ('position', [1, 2]), ('position', [1, float('nan'), 3]),
+                           ('position', [1, 1.1e12, 3]), ('position', [1, 10**400, 3]),
+                           ('position', [True, 2, 3]), ('nativePointer', 1234)]:
+            capture = sample_opening()
+            capture.metadata['fieldAnchor'] = copy.deepcopy(valid)
+            capture.metadata['fieldAnchor'][key] = value
+            with self.subTest(key=key, value=value), self.assertRaisesRegex(ValueError, 'partial field anchor'):
+                capture.validate()
+
     def test_capture_preserves_exp_mrp_resources_inventory_and_unknown_data(self):
         capture=sample_opening().validate()
         with tempfile.TemporaryDirectory() as folder:

@@ -176,6 +176,22 @@ captured live location/orientation, map/streaming context and world-state covera
 The reflected MapManager encounter-location field alone has not been established
 as a complete field snapshot or safe restore target.
 
+The development observer now adds an optional partial field anchor at native
+entry. It checks that the encounter context resolves back to the current map
+manager, calls the exact-profile player/map-ID getters, and copies the player's
+root-component world position and map-operation direction. Those reads match the
+native map-save preparation path; the direction enum includes None and eight
+compass directions. The probe does not call save preparation, setters or the slot
+writer. Null objects, unreadable pointers and invalid/non-finite values leave the
+anchor unavailable while preserving encounter/progression capture.
+
+The serialized anchor is explicitly position/direction-only and non-restorable.
+It contains no object pointers and round-trips in new `.ffropening` archives;
+older archives without an anchor still load. Python rejects invalid coordinates,
+unknown anchor fields and claims of complete state. Portable tests and the actual
+observer DLL in a dummy process verify deep copying, refusal and transport.
+This new anchor has not been verified against a live FFR player position.
+
 Normal native loading assigns the deserialized root and broadcasts SaveData.Update,
 as well as load-start/end notifications and additional cache setup. A direct
 pointer swap would bypass those consumers. Tracing these handlers, their derived

@@ -14,6 +14,12 @@ coverage remains incomplete; RNG and full combat state are not captured. The liv
 test verified serialized progression changes after fleeing and collecting victory
 rewards, with independent archives and no capture failures.
 
+The newer development source also captures an optional **partial field anchor**:
+current map ID, live player-root position and map-operation direction. Exact
+getter profiles and same-map checks gate the reads. This addition passes isolated
+tests but has not been installed or live-verified. It does not capture camera,
+streaming, actors, events or a complete world state, and cannot restore a position.
+
 ## Bounds and compatibility
 
 - Requires Windows x64 and exact SHA-256 matches for game build 24250053 and
@@ -36,6 +42,9 @@ rewards, with independent archives and no capture failures.
   writes a fixed GVAS sidecar before publishing its size/hash/revision in a report.
   A new/invalid entry invalidates the previous opening. All capture happens
   synchronously at native entry; disk writes happen on the observer worker.
+- Field-anchor failure is separate from progression failure. Non-finite/out-of-range
+  coordinates, unavailable player components or a changed context produce a null
+  anchor. No game object pointer is exported in this metadata.
 - The original call still executes if capture fails or throws. Observation never
   changes the original call's arguments or return/exception behavior.
 - The module is pinned after enabling its detour. On unload, the detour is

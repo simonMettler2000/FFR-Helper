@@ -29,6 +29,9 @@ std::array<unsigned char,0x280> fake_manager{};
 std::array<unsigned char,0x80> fake_jobs{},fake_units{};
 std::array<unsigned char,0x90> fake_ui{};
 std::array<unsigned char,32> fake_world{},fake_map{};
+std::array<unsigned char,0x800> fake_field_player{};
+std::array<unsigned char,0x230> fake_field_component{};
+std::array<unsigned char,0xd0> fake_field_operation{};
 std::array<std::array<unsigned char,0x850>,2> fake_actors{};
 std::array<std::array<unsigned char,0x500>,2> fake_parameters{};
 unsigned abort_calls{},tick_calls{};
@@ -36,6 +39,14 @@ float last_delta{};
 }
 extern "C" {__declspec(dllexport) std::uint64_t ffr_test_btl_vtable[1]={0};}
 extern "C" {__declspec(dllexport) std::uint64_t ffr_test_save_vtable[1]={0};}
+extern "C" __declspec(dllexport) __declspec(noinline)
+void* __fastcall ffr_test_field_get_world(void* map) {
+    if(map!=fake_map.data()){++fixture_errors;return nullptr;}return fake_world.data();
+}
+extern "C" __declspec(dllexport) __declspec(noinline)
+void* __fastcall ffr_test_field_get_player() {return fake_field_player.data();}
+extern "C" __declspec(dllexport) __declspec(noinline)
+std::int32_t __fastcall ffr_test_field_get_map_id() {return 1000;}
 extern "C" __declspec(dllexport) __declspec(noinline)
 void* __fastcall ffr_test_abort_get_world(void* manager) {
     if(manager!=fake_manager.data()){++fixture_errors;return nullptr;}return fake_world.data();
@@ -138,6 +149,10 @@ int wmain(int argc, wchar_t** argv) {
         const std::filesystem::path connection = argv[3];
         const std::wstring mode = argv[4];
         const std::uint64_t klass=1; std::memcpy(fake_root.data()+16,&klass,sizeof(klass));
+        object(fake_world);object(fake_map);object(fake_field_player);object(fake_field_component);object(fake_field_operation);
+        put(fake_field_player,0x1b8,reinterpret_cast<std::uint64_t>(fake_field_component.data()));
+        put(fake_field_player,0x778,reinterpret_cast<std::uint64_t>(fake_field_operation.data()));
+        put(fake_field_component,0x200,std::array<double,3>{123.125,-456.25,7.5});fake_field_operation[0xc9]=2;
         auto loader = LoadLibraryW(loader_path.c_str()); CHECK(loader);
         auto host_count = reinterpret_cast<int(*)()>(GetProcAddress(loader, "ffr_test_hosts_alive")); CHECK(host_count);
         auto host_errors = reinterpret_cast<int(*)()>(GetProcAddress(loader, "ffr_test_host_errors")); CHECK(host_errors);
@@ -177,7 +192,7 @@ int wmain(int argc, wchar_t** argv) {
         entry.enemy_ids = array(enemies); entry.enemy_locations = array(positions);
         entry.passives = array(passives); entry.bgm = array(bgm); entry.group = 123; entry.stage = 456;
         entry.can_escape = 1; entry.escape_probability = 0.75f;
-        void* context = reinterpret_cast<void*>(0x12345678);
+        void* context = fake_map.data();
         entry_function(context, &entry, true);
         CHECK(calls == 1 && last_context == context && last_data == &entry && last_skip && last_friend == 1001);
         auto lease = [&](const std::string& nonce, std::int64_t expiry) {

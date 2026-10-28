@@ -60,6 +60,11 @@ def main():
     for key,name in [('loader_ready','ffr_test_loader_ready'),('is_rooted','ffr_test_object_rooted'),('add_root','ffr_test_object_add_root'),('remove_root','ffr_test_object_remove_root')]:
         import_text+=f'inline constexpr char {key}_name[]="{name}";\ninline constexpr std::uintptr_t {key}_rva={loader_pe.exports[name]};\n'
     (output/'good_import_profile.hpp').write_text(import_text+'}\n',encoding='utf8')
+    field_text='#pragma once\n#include <cstdint>\nnamespace ffr::field_profile {\n'
+    for function,export in [('get_world','ffr_test_field_get_world'),('get_map','ffr_test_abort_get_map'),('get_player','ffr_test_field_get_player'),('get_map_id','ffr_test_field_get_map_id')]:
+        rva=game_pe.exports[export];start=game_pe.offset(rva)
+        field_text+=f'inline constexpr std::uintptr_t {function}_rva={rva};\ninline constexpr char {function}_sha256[]="{hashlib.sha256(game_pe.raw[start:start+64]).hexdigest()}";\n'
+    (output/'good_field_profile.hpp').write_text(field_text+'}\n',encoding='utf8')
     extra_functions = {name: game_pe.exports['ffr_test_'+name] for name in ['root_getter','save_memory','memory_free']}
     for name in ['good', 'bad_game', 'bad_loader', 'bad_function']:
         text = f'''#pragma once

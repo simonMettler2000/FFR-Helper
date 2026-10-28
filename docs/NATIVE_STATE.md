@@ -12,8 +12,36 @@ The offline editor and ordinary-save checkpoints work independently. **Native
 battle-opening restart and mid-battle save-state restoration are not implemented.**
 The development build adds an optional read-only recorder and a Runtime research
 tab. This is a tool for the remaining implementation, not a replacement for it.
-Loader/recorder installation is opt-in, with the game closed. Live FFR
-compatibility has not yet been established.
+Loader/recorder installation is opt-in, with the game closed. The read-only
+recorder has now been verified through an overworld–battle–overworld cycle on
+the target build. Restoration has not been tested or implemented.
+
+## Live recorder findings
+
+The loader registered all three requested hooks. However, none of those
+reflected notifications fired during the tested ordinary encounter. They cannot
+serve as the sole capture trigger. Direct native calls and Blueprint overrides
+are possible bypass paths; hook registration alone does not prove coverage.
+
+Polling detected the actual battle, read all 12 runtime units in that encounter,
+and captured HP, MP, stagger, levels, AI plans and counters. A user-issued command
+produced corresponding HP/stagger/counter changes. Dead enemies remained in the
+unit collection through the end of that encounter. Working/waiting job counts
+varied during actions and reached zero at the sampled command menus.
+
+On returning to exploration, the battle flag cleared, the acting-unit focus
+reset, and the battle-unit collection emptied. This verifies observation of the
+tested lifecycle; it does not establish a safe restore boundary or complete
+state coverage. Empty job queues alone are not a sufficient restore condition.
+
+The first collection run exposed a Windows file-sharing race between the Lua
+reader and an atomic desktop lease replacement. Bounded retries preserve the
+complete destination rather than truncating it. Regression tests cover transient
+and persistent locks; the resumed live collection stayed connected through the
+tested battle. The full-host running-game guard also correctly detected the game.
+
+All raw reports, save backups and user-specific values stay outside Git. No game
+progression/resource setters, save/load calls or restore operations were invoked.
 
 ## Verified static findings
 
@@ -129,6 +157,8 @@ python tools/observe_runtime.py /path/to/FFRHelperRuntime --output local/observa
 It prints only availability, battle-active state and collection counts. It never
 launches or controls the game, installs a loader or sends restore commands. At
 timeout or Ctrl+C it expires the lease. Keep its output outside source control.
+For scripted shutdown, pass `--stop-file local/stop-observer` and create that
+local marker when collection is complete; this also expires the lease cleanly.
 
 ## Platform references
 

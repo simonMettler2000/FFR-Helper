@@ -35,7 +35,8 @@ The development branch adds a **Runtime research** tab and a separate, read-only
 installation. It records observations, not restorable save states. See the
 [verified findings and remaining acceptance requirements](docs/NATIVE_STATE.md).
 The loader and recorder are opt-in; the app does not install a loader
-automatically. Live FFR compatibility has not yet been established.
+automatically. Read-only observations have been verified through one live
+overworld–battle–overworld cycle. Native restoration remains unimplemented.
 
 Further development/testing of **Saving anywhere** is deferred until battle
 restart, native save states and the other requested features are implemented,

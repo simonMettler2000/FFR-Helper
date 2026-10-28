@@ -358,7 +358,7 @@ class MainWindow(QMainWindow):
         page = QWidget()
         layout = QVBoxLayout(page)
         layout.addWidget(text('Native battle restart and save states are under development. This read-only recorder collects encounter setup and available combat values for compatibility research. It does not restore state or change gameplay.', 'notice'))
-        group = QGroupBox('Optional runtime recorder — unverified in game')
+        group = QGroupBox('Optional runtime recorder — read only')
         box = QVBoxLayout(group)
         row = QHBoxLayout()
         row.addWidget(button('Prepare recorder…', self.prepare_runtime))

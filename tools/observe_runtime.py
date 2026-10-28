@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 import sys
 import time
+import uuid
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from ffr_helper.runtime import RuntimeRecorder, export_report
@@ -14,6 +15,7 @@ def main():
     parser.add_argument('recorder', type=Path)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--duration', type=int, default=600)
+    parser.add_argument('--stop-file', type=Path, help='Optional local marker file for graceful shutdown')
     args = parser.parse_args()
     if not 1 <= args.duration <= 1800:
         parser.error('--duration must be between 1 and 1800 seconds')
@@ -24,14 +26,29 @@ def main():
     next_capture = 0
     last_summary = None
     samples = 0
+    first_io_error = None
     try:
         print('Read-only observation session started; waiting for the game recorder.', flush=True)
-        while time.monotonic() < deadline:
-            recorder.heartbeat()
+        while time.monotonic() < deadline and not (args.stop_file and args.stop_file.exists()):
+            try:
+                recorder.heartbeat()
+            except OSError:
+                if first_io_error is None:
+                    first_io_error = time.monotonic()
+                    print('Recorder connection is temporarily busy; retrying.', flush=True)
+                if time.monotonic()-first_io_error > 10:
+                    raise
+                time.sleep(0.5)
+                continue
+            first_io_error = None
             status = recorder.status()
             now = time.monotonic()
             if status and pending is None and now >= next_capture:
-                pending = recorder.capture()
+                # heartbeat() above already published the previous request.
+                # Updating the in-memory request defers its publication to the
+                # next heartbeat and avoids a second immediate file replace.
+                recorder.request = uuid.uuid4().hex
+                pending = recorder.request
                 next_capture = now+2
             if pending is not None:
                 report = recorder.report()
@@ -58,7 +75,10 @@ def main():
     except KeyboardInterrupt:
         pass
     finally:
-        recorder.disconnect()
+        try:
+            recorder.disconnect()
+        except OSError:
+            print('Disconnect file busy; the short-lived observation lease will expire.', flush=True)
     print(f'Observation finished: {samples} private reports. No restore commands were sent.', flush=True)
 
 

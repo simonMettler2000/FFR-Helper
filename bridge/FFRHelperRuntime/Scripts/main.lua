@@ -249,7 +249,7 @@ local function poll()
     if not lease() then return end
     local ok = pcall(discover)
     if not ok then message = "Function discovery unavailable; object observation may still work"
-    else message = "Read-only recorder connected; game compatibility is not yet verified" end
+    else message = "Read-only recorder connected; diagnostic coverage is incomplete" end
     if request ~= string.rep("0", 32) and request ~= lastRequest then
         local captured = pcall(function()
             local report = {

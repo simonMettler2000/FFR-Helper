@@ -1,8 +1,9 @@
 # Read-only native runtime recorder
 
 This separate adapter supports battle-restart/save-state research for the
-existing Steam game. It is **not a save-state implementation**, and it has not
-been verified in a live FFR session. It does not enable Saving anywhere.
+existing Steam game. It is **not a save-state implementation**. Read-only
+observations have been verified through one overworld–battle–overworld cycle
+on build 24250053. It does not enable Saving anywhere.
 
 Use these instructions for an explicitly opted-in test session. The app does
 not install a loader automatically.
@@ -27,6 +28,8 @@ arguments. Reports list missing state and are explicitly non-restorable.
 It records up to 32 recent notifications in the current desktop session. This
 does not prove complete event coverage: native C++ calls may bypass reflected
 hooks. Ambiguous subsystem instances are reported without choosing one.
+In the tested ordinary encounter, the three hooks registered but produced no
+opening/end notifications. Polling still observed the combat state correctly.
 
 Keep reports private if they contain encounters you do not want to spoil. No
 personal report is included in source control or distributed packages.

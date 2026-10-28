@@ -10,6 +10,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 import zipfile
 
 from .codec import MAX_FILE, SaveFormatError
@@ -52,7 +53,17 @@ def atomic_write(path: Path, data: bytes):
             f.write(data)
             f.flush()
             os.fsync(f.fileno())
-        os.replace(name, path)
+        # Windows C-runtime readers may briefly omit FILE_SHARE_DELETE. Keep
+        # the complete temporary file and retry the atomic rename; never fall
+        # back to truncating the live destination while another reader uses it.
+        for attempt in range(6):
+            try:
+                os.replace(name, path)
+                break
+            except PermissionError as error:
+                if getattr(error, 'winerror', None) not in (5, 32, 33) or attempt == 5:
+                    raise
+                time.sleep(min(0.01 * 2**attempt, 0.1))
     finally:
         if name is not None and name.exists():
             name.unlink()

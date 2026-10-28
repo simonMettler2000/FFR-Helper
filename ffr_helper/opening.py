@@ -11,9 +11,9 @@ import re
 import zipfile
 
 from .codec import SaveDocument
+from .game_build import GAME_SHA256
 from .storage import atomic_write
 
-GAME_SHA256 = 'b8c588e46ebadbe37feca7bdf2da0ae63a8538099d14a53ec0c2241b086e5ffa'
 MAX_PROGRESSION = 16 * 1024 * 1024
 MAX_METADATA = 192 * 1024
 MISSING = ['Verified live resource/progression coverage', 'Full combat and RNG state', 'Verified restoration path']

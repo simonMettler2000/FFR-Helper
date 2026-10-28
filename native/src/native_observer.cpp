@@ -22,6 +22,7 @@
 #ifdef FFR_PRACTICE_BUILD
 #include "abort_trial.hpp"
 #include "progression_clone.hpp"
+#include "combat_transport.hpp"
 #ifdef FFR_IMPORT_PROFILE_HEADER
 #include FFR_IMPORT_PROFILE_HEADER
 #else
@@ -226,7 +227,10 @@ struct Observer {
     std::string import_nonce, import_session, import_hash, import_phase="idle";
     std::uint64_t import_sequence{};
     ffr::CloneProbeResult import_result;
+    std::optional<ffr::CombatReadRequest> combat_request;
+    ffr::CombatReadController combat_controller;
     void publish_abort(const Lease& lease);
+    void publish_combat(const Lease& lease);
 #endif
     std::thread worker;
 
@@ -250,6 +254,9 @@ struct Observer {
                     if (session != lease->session) {
                         events.clear(); event_bytes = 0; sequence = 0; request.clear(); session = lease->session;
                         opening.reset(); published.reset(); opening_metadata="null";
+#ifdef FFR_PRACTICE_BUILD
+                        combat_request.reset();combat_controller.clear_latest();
+#endif
                     }
                     expires.store(lease->expiry);
                     note = message;
@@ -300,6 +307,7 @@ struct Observer {
                 }
 #ifdef FFR_PRACTICE_BUILD
                 publish_abort(*lease);
+                publish_combat(*lease);
 #endif
             } catch (...) { /* Invalid input/I/O cannot affect the game's encounter call. */ }
             Sleep(250);

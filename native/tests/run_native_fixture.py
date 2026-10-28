@@ -6,6 +6,8 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+import sys
+from unittest.mock import patch
 
 
 def main():
@@ -14,18 +16,45 @@ def main():
     parser.add_argument('--loader', required=True, type=Path)
     parser.add_argument('--module', required=True, type=Path)
     parser.add_argument('--mode', required=True, choices=['good', 'bad-game', 'bad-loader','bad-function','abort','abort-denied',
-                                                       'clone','clone-unready','clone-mismatch','clone-mutates','clone-denied'])
+                                                       'clone','clone-unready','clone-mismatch','clone-mutates','clone-denied',
+                                                       'combat','combat-after-action','combat-denied','combat-stale'])
     parser.add_argument('--work', required=True, type=Path)
     args = parser.parse_args()
     args.work.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=args.work.resolve()) as folder:
-        root = Path(folder)/('FFRHelperBattlePractice' if args.mode.startswith(('abort','clone')) else 'FFRHelperRuntimeNative')
+        root = Path(folder)/('FFRHelperBattlePractice' if args.mode.startswith(('abort','clone','combat')) else 'FFRHelperRuntimeNative')
         (root/'dlls').mkdir(parents=True)
         (root/'connection').mkdir()
         module = root/'dlls/main.dll'
         shutil.copy2(args.module, module)
         subprocess.run([str(args.exe.resolve()), str(module), str(args.loader.resolve()), str(root/'connection'), args.mode], check=True, timeout=30)
-        if args.mode.startswith('clone'):
+        if args.mode.startswith('combat'):
+            report=json.loads((root/'connection/combat-final-report.json').read_text(encoding='utf8'))
+            # Test only: substitute the independently verified dummy EXE identity
+            # while checking the actual DLL output with the production parser.
+            # The production API has no switch for accepting another game build.
+            sys.path.insert(0,str(Path(__file__).resolve().parents[2]))
+            from ffr_helper import combat
+            fixture_hash=hashlib.sha256(args.exe.read_bytes()).hexdigest()
+            assert report['gameSha256']==fixture_hash
+            with patch.object(combat,'GAME_SHA256',fixture_hash):
+                combat.validate_combat_report(report)
+                if (root/'connection/combat-first-report.json').exists():
+                    combat.validate_combat_report(json.loads((root/'connection/combat-first-report.json').read_text(encoding='utf8')))
+            assert report['adapter']=='ffr-helper-native-combat-observer' and report['readOnly'] is True and report['restorable'] is False
+            assert report['format']=='ffr-helper-combat-report' and report['gameSha256']
+            if args.mode in ['combat-denied','combat-stale']:
+                assert report['phase']=='rejected' and report['observation'] is None
+            else:
+                first=json.loads((root/'connection/combat-first-report.json').read_text(encoding='utf8'))
+                assert report['captureNumber']==2 and first['captureNumber']==1
+                assert first['observation']['units'][0]['raw']['hpBase']==150
+                assert report['observation']['units'][0]['raw']['hpBase']==7
+                assert report['observation']['units'][0]['raw']['temporaryHp']==25
+                assert report['observation']['units'][0]['raw']['actionCount']==(2 if args.mode=='combat-after-action' else 0)
+                assert report['observation']['kind']=='partial-combat-observation' and report['observation']['restorable'] is False
+                assert len(report['observation']['units'])==2 and report['request']=='d'*32
+        elif args.mode.startswith('clone'):
             status=json.loads((root/'connection/clone-final-status.json').read_text(encoding='utf8'))
             assert status['readOnly'] is False and status['restorable'] is False and status['phase']=='idle'
             probe=status['importProbe']

@@ -29,6 +29,9 @@ add_test(NAME partial_live_field_anchor COMMAND field_anchor_tests)
 add_executable(combat_observation_tests tests/combat_observation_tests.cpp)
 target_include_directories(combat_observation_tests PRIVATE include)
 add_test(NAME detached_partial_combat_observation COMMAND combat_observation_tests)
+add_executable(combat_transport_tests tests/combat_transport_tests.cpp)
+target_include_directories(combat_transport_tests PRIVATE include)
+add_test(NAME read_only_combat_transport_guards COMMAND combat_transport_tests)
 
 option(FFR_BUILD_NATIVE_OBSERVER "Build the exact-profile experimental Windows observer DLL" OFF)
 option(FFR_BUILD_ABORT_TRIAL "Build the separate, disabled-by-default opening-abort trial DLL" OFF)
@@ -99,7 +102,7 @@ if(FFR_BUILD_NATIVE_OBSERVER)
     target_compile_options(fixture_observer_abort PRIVATE /W4 /EHsc /utf-8)
     target_compile_definitions(fixture_observer_abort PRIVATE UNICODE _UNICODE FFR_PRACTICE_BUILD=1
       "FFR_CAPTURE_PROFILE_HEADER=\"good_profile.hpp\"" "FFR_ABORT_PROFILE_HEADER=\"good_abort_profile.hpp\"" "FFR_IMPORT_PROFILE_HEADER=\"good_import_profile.hpp\"" "FFR_FIELD_PROFILE_HEADER=\"good_field_profile.hpp\"")
-    foreach(mode abort abort-denied clone clone-unready clone-mismatch clone-mutates clone-denied)
+    foreach(mode abort abort-denied clone clone-unready clone-mismatch clone-mutates clone-denied combat combat-after-action combat-denied combat-stale)
       add_test(NAME native_${mode} COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/run_native_fixture.py"
         --exe "$<TARGET_FILE:native_host_fixture>" --loader "$<TARGET_FILE:native_mock_loader>"
         --module "$<TARGET_FILE:fixture_observer_abort>" --mode "${mode}" --work "${CMAKE_CURRENT_BINARY_DIR}/test-work")

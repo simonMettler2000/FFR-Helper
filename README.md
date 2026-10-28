@@ -67,7 +67,8 @@ control is disabled and labelled accordingly. Complete mid-battle/process
 save states are also unavailable. Named checkpoints currently restore the
 game's ordinary saved field position and progression through normal loading.
 The separate development practice module now includes guarded opening-abort and
-detached engine-import experiments. They pass isolated DLL tests but have not
+detached engine-import experiments, plus read-only command-state diagnostics.
+They pass isolated DLL tests but have not
 been installed or verified in FFR; they do not provide restoration. See
 [native development status](docs/NATIVE_STATE.md).
 

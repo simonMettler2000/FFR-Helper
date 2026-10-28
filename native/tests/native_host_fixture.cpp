@@ -32,8 +32,9 @@ std::array<unsigned char,32> fake_world{},fake_map{};
 std::array<unsigned char,0x800> fake_field_player{};
 std::array<unsigned char,0x230> fake_field_component{};
 std::array<unsigned char,0xd0> fake_field_operation{};
-std::array<std::array<unsigned char,0x850>,2> fake_actors{};
-std::array<std::array<unsigned char,0x500>,2> fake_parameters{};
+std::array<std::array<unsigned char,0x880>,2> fake_actors{};
+std::array<std::array<unsigned char,0x560>,2> fake_parameters{};
+std::array<unsigned char,0x40> fake_scheduler{};
 unsigned abort_calls{},tick_calls{};
 float last_delta{};
 }
@@ -137,10 +138,12 @@ template<class T> ffr::RawArray array(std::vector<T>& value) {
 }
 void run_abort_fixture(const std::filesystem::path& connection,bool deny);
 void run_clone_fixture(const std::filesystem::path& connection,const std::wstring& mode,HMODULE loader);
+void run_combat_fixture(const std::filesystem::path& connection,const std::wstring& mode);
 }
 
 #include "abort_fixture.inl"
 #include "clone_fixture.inl"
+#include "combat_fixture.inl"
 int wmain(int argc, wchar_t** argv) {
     try {
         CHECK(argc == 5);
@@ -172,6 +175,12 @@ int wmain(int argc, wchar_t** argv) {
         }
         CHECK(object != nullptr && host_count() == 1);
         CHECK(start() == nullptr); // Restart is required; no duplicate detour/worker.
+        if(mode.starts_with(L"combat")) {
+            run_combat_fixture(connection,mode);stop(object);
+            CHECK(host_count()==0 && host_errors()==0 && fixture_errors==0);
+            CHECK(std::memcmp(initial_code,reinterpret_cast<const void*>(entry_function),sizeof(initial_code))==0);
+            std::cout<<"Read-only command-boundary combat DLL fixture passed without FFR.\n";return 0;
+        }
         if(mode.starts_with(L"clone")) {
             run_clone_fixture(connection,mode,loader);stop(object);
             CHECK(host_count()==0 && host_errors()==0 && fixture_errors==0);

@@ -127,6 +127,45 @@ comparison outcomes without presenting enemy/story details. Isolated DLL fixture
 cover success, uninitialized-loader refusal, clone mismatch, live-data changes,
 prior party actions and command replay. **Live FFR verification remains pending.**
 
+## Read-only command-state observations
+
+The practice component also has a separate read-only observation channel. It
+does not send abort/import commands, invoke a serializer or change gameplay
+values. The native copy runs only at a matching ordinary player-command menu,
+with the known world and idle queues. Prior party actions are permitted for this
+read-only operation. Pending abort/import experiments block it.
+
+The six-line combat-request protocol carries only session, nonce, expiry,
+opening revision and opening hash. It cannot name files, addresses or values to
+write. Nonces are consumed before copying; replay never captures a different
+moment. Request history and detached output are bounded. Actor references become
+capture-local indices, preserving duplicate unit IDs and nested AI targets.
+
+Start the controller before entering the encounter so its opening is observed
+in the same session. Observe readiness without requesting a frame:
+
+    python tools/observe_combat.py <FFRHelperBattlePractice-folder> --output local/combat-observe --duration 300
+
+Explicitly capture one supported command boundary:
+
+    python tools/observe_combat.py <FFRHelperBattlePractice-folder> --output local/combat-first --capture
+
+Wait for at least one party action before capturing:
+
+    python tools/observe_combat.py <FFRHelperBattlePractice-folder> --output local/combat-after-action --capture --minimum-party-actions 1
+
+Use a fresh output directory. The optional --stop-file marker and Ctrl+C expire
+the observation lease on exit. The client prints counts/readiness, without enemy
+names. Its `.ffrcombat.json` export is a **partial diagnostic**, not a restore
+format. Raw resource/base-stat components may differ from the game's displayed
+values: HP has a separate temporary component, MP/stagger getters clamp, and
+level calculation applies a multiplier.
+
+Effect durations, resistance maps/modifiers, shared AI state, the main scheduler,
+callbacks, RNG, world/lifecycle state and restoration remain missing. Both the
+native producer and Python consumer state these gaps and reject completeness
+claims. Actual-DLL fixture/consumer tests pass; live FFR verification is pending.
+
 After ForceEnd and detached import behavior are understood, remaining restart
 work includes live progression rebinding and verified cache notifications, then
 reconstruction through the engine allocator.

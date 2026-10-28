@@ -3,6 +3,7 @@ from dataclasses import dataclass
 import hashlib
 from pathlib import Path
 import struct
+from .game_build import GAME_SHA256
 
 
 @dataclass(frozen=True)
@@ -13,7 +14,7 @@ class SignatureProfile:
 
 
 FFR_STATIC_CONSTRUCT = SignatureProfile(
-    'b8c588e46ebadbe37feca7bdf2da0ae63a8538099d14a53ec0c2241b086e5ffa',
+    GAME_SHA256,
     0x15bce60,
     '7ede0ed5808b58862ead7bcd3a2c2589d0c5a804acf8380d96317bc91edb4f27',
 )

@@ -251,9 +251,12 @@ reflected UFunction hook.
 ### Detached native combat-component core
 
 A portable read-only capture core now copies verified native combat components
-into owned values. It is **not wired to a runtime command or installed in FFR**.
-The future caller must establish the game thread, matching world and actual
-command-menu boundary; empty queues and an active flag alone are insufficient.
+into owned values. The separate practice build exposes it through an explicit
+read-only request channel on the profiled game-thread dispatcher. This addition
+has **not been installed or tested in FFR**. The dispatcher requires the matching
+world and actual ordinary player-command boundary; empty queues and an active
+flag alone are insufficient. Unlike the abort experiment, observation supports
+command menus after prior party actions.
 
 The core captures raw unit resources/base stats/equipment, separate temporary HP,
 action/think/damage/break counters, selected/target unit references, the additional
@@ -282,6 +285,21 @@ scheduler, callbacks, additional AI state, RNG and lifecycle reconstruction are
 explicitly missing. The JSON is read-only, partial and non-restorable. Tests cover
 duplicate-ID identity mapping, nested targets, preserved raw values outside UI
 clamps, deep copying, ownership checks, dangling targets and aggregate bounds.
+
+The transport binds a fresh session, nonce, opening sequence/hash and an
+eight-second deadline. A nonce is consumed before copying, and replay cannot move
+the same request to a later frame. At most 128 request identities are retained
+per process. Pending abort/import operations block capture. The copy performs
+bounded memory reads and owned allocations without game calls, serialization or
+setters. Only its latest detached report is retained.
+
+The client validates the full schema, reference graph, raw-value types, aggregate
+bounds, game identity and receipt freshness. `.ffrcombat.json` exports stay
+separate from ordinary saves and snapshots. Isolated compiled-DLL fixtures verify
+capture before/after prior actions, replay preservation, new-nonce replacement,
+queued-work/stale-opening refusal and zero abort/import/serialization calls from
+the combat request. Their actual JSON is also checked by the production Python
+parser using only a test-scoped dummy-executable identity substitution.
 
 The separate `FFRHelperRuntime` UE4SS mod:
 

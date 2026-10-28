@@ -96,6 +96,18 @@ class LuaTests(unittest.TestCase):
             self.assertFalse(bridge.status()['ready'])
             self.assertIsNone(runtime.globals().testPost)
 
+    def test_function_discovery_retries_after_the_game_loads_its_library(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root, runtime = self.setup_runtime(folder, count=0)
+            bridge = FieldSaveBridge(root)
+            bridge.heartbeat()
+            runtime.globals().testPoll()
+            self.assertFalse(bridge.status()['ready'])
+            runtime.globals().testCount = 1
+            runtime.execute('local originalTime=os.time;os.time=function() return originalTime()+6 end')
+            runtime.globals().testPoll()
+            self.assertIsNotNone(runtime.globals().testPost)
+
 
 if __name__ == '__main__':
     unittest.main()

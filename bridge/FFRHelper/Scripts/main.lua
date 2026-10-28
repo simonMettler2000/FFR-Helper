@@ -4,6 +4,7 @@ local source = debug.getinfo(1, "S").source:gsub("^@", "")
 local root = source:gsub("Scripts[/\\]main%.lua$", "")
 local connection = root .. "connection/"
 local ready, enabled, attempted = false, false, false
+local nextAttempt = 0
 local hookPath, preId, postId = nil, nil, nil
 local lastError = "Waiting for game reflection"
 local leaseSession = nil
@@ -40,7 +41,7 @@ local function control()
 end
 
 local function installHook()
-    if attempted then return end
+    if attempted or os.time() < nextAttempt then return end
     attempted = true
     local candidates = {}
     local functions = FindAllOf("Function") or {}
@@ -50,7 +51,12 @@ local function installHook()
             if full:find("/Script/mucha%.") then candidates[#candidates + 1] = fn end
         end
     end
-    if #candidates ~= 1 then
+    if #candidates == 0 then
+        attempted = false
+        nextAttempt = os.time() + 5
+        lastError = "Waiting for the game-native save-point function to load"
+        return
+    elseif #candidates ~= 1 then
         lastError = "Expected exactly one game-native IsTouchSavePoint function; found " .. #candidates
         return
     end
@@ -69,7 +75,7 @@ local function installHook()
 end
 
 local function poll()
-    if not attempted then
+    if not attempted and os.time() >= nextAttempt then
         local ok, message = pcall(installHook)
         if not ok then lastError = tostring(message) end
     end

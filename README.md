@@ -18,7 +18,8 @@ development branch is **0.2.0.dev0** and adds native-runtime research tools.
 - Build and save route plans from credited EXP/MRP rewards and repeated
   encounters, then apply the calculated totals to a working save.
 - Make automatic backups before replacing an existing save file. Replacing
-  live slots is blocked while a detected game process is running.
+  live slots is blocked while a detected game process is running or an
+  AppContainer host prevents reliable process visibility.
 - Keep later character/item choices behind a chapter reveal limit (Chapter 3
   by default). Owned items and visions are visible because they are already
   present in the opened save.

@@ -1,0 +1,69 @@
+"""Generate profiles only for isolated test DLLs; never used by production main.dll."""
+from pathlib import Path
+import hashlib
+import struct
+import sys
+
+
+class PE:
+    def __init__(self, path):
+        self.raw = Path(path).read_bytes()
+        nt = self.u32(0x3c)
+        assert self.raw[nt:nt+4] == b'PE\0\0'
+        count, size = self.u16(nt+6), self.u16(nt+20)
+        optional = nt+24
+        assert self.u16(optional) == 0x20b and 0 < count < 128
+        table = optional+size
+        self.sections = [struct.unpack_from('<IIII', self.raw, table+40*i+8) for i in range(count)]
+        export = self.offset(self.u32(optional+112))
+        self.function_table = self.u32(export+28)
+        names, ordinals = self.u32(export+32), self.u32(export+36)
+        number = self.u32(export+24)
+        assert number < 20000
+        self.exports = {}
+        for index in range(number):
+            name = self.offset(self.u32(self.offset(names)+4*index))
+            end = self.raw.index(b'\0', name, min(name+2048, len(self.raw)))
+            ordinal = self.u16(self.offset(ordinals)+2*index)
+            self.exports[self.raw[name:end].decode('ascii')] = self.u32(self.offset(self.function_table)+4*ordinal)
+
+    def u16(self, pos): return struct.unpack_from('<H', self.raw, pos)[0]
+    def u32(self, pos): return struct.unpack_from('<I', self.raw, pos)[0]
+    def offset(self, rva):
+        for virtual_size, virtual, raw_size, raw in self.sections:
+            if virtual <= rva < virtual+raw_size:
+                return raw+rva-virtual
+        raise ValueError('RVA outside file-backed sections')
+
+
+def main():
+    game, loader, output = Path(sys.argv[1]), Path(sys.argv[2]), Path(sys.argv[3])
+    game_pe, loader_pe = PE(game), PE(loader)
+    entry = game_pe.exports['ffr_test_encounter']
+    ctor, dtor = '??0CppUserModBase@RC@@QEAA@XZ', '??1CppUserModBase@RC@@UEAA@XZ'
+    game_hash = hashlib.sha256(game_pe.raw).hexdigest()
+    loader_hash = hashlib.sha256(loader_pe.raw).hexdigest()
+    offset = game_pe.offset(entry)
+    code_hash = hashlib.sha256(game_pe.raw[offset:offset+64]).hexdigest()
+    output.mkdir(parents=True, exist_ok=True)
+    for name in ['good', 'bad_game', 'bad_loader']:
+        text = f'''#pragma once
+#include <cstddef>
+#include <cstdint>
+namespace ffr::profile {{
+inline constexpr char game_sha256[] = "{'0'*64 if name=='bad_game' else game_hash}";
+inline constexpr char loader_sha256[] = "{'0'*64 if name=='bad_loader' else loader_hash}";
+inline constexpr char prologue_sha256[] = "{code_hash}";
+inline constexpr std::uintptr_t entry_rva = {entry};
+inline constexpr std::size_t prologue_size = 64;
+inline constexpr std::uintptr_t constructor_rva = {loader_pe.exports[ctor]};
+inline constexpr std::uintptr_t destructor_rva = {loader_pe.exports[dtor]};
+inline constexpr std::size_t host_storage_size = 4096;
+inline constexpr char constructor_name[] = "{ctor}";
+inline constexpr char destructor_name[] = "{dtor}";
+}}
+'''
+        (output/(name+'_profile.hpp')).write_text(text, encoding='utf8')
+
+
+if __name__ == '__main__': main()

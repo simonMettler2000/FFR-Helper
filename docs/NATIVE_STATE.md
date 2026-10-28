@@ -39,9 +39,22 @@ reader and an atomic desktop lease replacement. Bounded retries preserve the
 complete destination rather than truncating it. Regression tests cover transient
 and persistent locks; the resumed live collection stayed connected through the
 tested battle. The full-host running-game guard also correctly detected the game.
+Restricted AppContainer process lists cannot establish that the host game is
+closed; live-slot writes now fail closed in that context. The normal profile
+save directory is also considered when LOCALAPPDATA is redirected.
 
 All raw reports, save backups and user-specific values stay outside Git. No game
 progression/resource setters, save/load calls or restore operations were invoked.
+
+## Native capture prototype after the live test
+
+An [experimental C++ entry observer](../native/README.md) now builds independently
+of the Lua recorder. It uses exact binary/prologue fingerprints and a single
+native detour to copy encounter setup before forwarding the original call. It
+has passed an isolated executable/DLL harness, including mismatch refusal and
+lease expiry. It has **not** been installed or verified in FFR and does not
+implement restoration. The full pre-battle progression/resources and RNG payload
+remain outstanding alongside the reconstruction/restore path.
 
 ## Verified static findings
 

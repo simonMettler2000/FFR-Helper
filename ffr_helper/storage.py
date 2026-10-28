@@ -31,6 +31,9 @@ def discover_saves(extra_roots=()):
     roots = [Path(p).expanduser() for p in extra_roots]
     if sys.platform == 'win32':
         roots.append(Path(os.environ.get('LOCALAPPDATA', Path.home() / 'AppData/Local')) / 'FFRS/Steam')
+        # AppContainer hosts may redirect LOCALAPPDATA while the user's actual
+        # Steam saves remain in the profile's ordinary local-data directory.
+        roots.append(Path.home() / 'AppData/Local/FFRS/Steam')
     else:
         for steam in [Path.home() / '.steam/steam', Path.home() / '.local/share/Steam',
                       Path.home() / 'Library/Application Support/Steam']:
@@ -69,8 +72,36 @@ def atomic_write(path: Path, data: bytes):
             name.unlink()
 
 
+def _windows_is_app_container():
+    """A filtered process list cannot establish that the host game is closed."""
+    import ctypes
+    from ctypes import wintypes
+    kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+    security = ctypes.WinDLL('advapi32', use_last_error=True)
+    kernel.GetCurrentProcess.argtypes = []
+    kernel.GetCurrentProcess.restype = wintypes.HANDLE
+    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+    security.OpenProcessToken.argtypes = [wintypes.HANDLE, wintypes.DWORD, ctypes.POINTER(wintypes.HANDLE)]
+    security.OpenProcessToken.restype = wintypes.BOOL
+    security.GetTokenInformation.argtypes = [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p,
+                                              wintypes.DWORD, ctypes.POINTER(wintypes.DWORD)]
+    security.GetTokenInformation.restype = wintypes.BOOL
+    token = wintypes.HANDLE()
+    if not security.OpenProcessToken(kernel.GetCurrentProcess(), 0x0008, ctypes.byref(token)):
+        raise RuntimeError('Unable to verify host process visibility.')
+    try:
+        result, size = wintypes.DWORD(), wintypes.DWORD()
+        if not security.GetTokenInformation(token, 29, ctypes.byref(result), ctypes.sizeof(result), ctypes.byref(size)):
+            raise RuntimeError('Unable to verify host process visibility.')
+        return bool(result.value)
+    finally:
+        kernel.CloseHandle(token)
+
+
 def game_is_running():
     if sys.platform == 'win32':
+        if _windows_is_app_container():
+            raise RuntimeError('This restricted host cannot verify whether the game is closed. Export a separate copy, or use the desktop app outside the restricted host to replace a live slot.')
         import ctypes
         from ctypes import wintypes
 

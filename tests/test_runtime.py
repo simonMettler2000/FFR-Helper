@@ -5,7 +5,7 @@ import tempfile
 import time
 import unittest
 
-from ffr_helper.runtime import RuntimeRecorder, export_report, prepare_recorder, validate_report
+from ffr_helper.runtime import RuntimeRecorder, NativeEntryRecorder, export_report, prepare_recorder, validate_report
 
 try:
     from lupa import LuaRuntime
@@ -21,6 +21,20 @@ def sample_report(recorder):
 
 
 class RecorderProtocolTests(unittest.TestCase):
+    def test_native_and_lua_producer_identities_cannot_be_confused(self):
+        with tempfile.TemporaryDirectory() as folder:
+            (Path(folder)/'connection').mkdir()
+            native = NativeEntryRecorder(Path(folder))
+            native.capture()
+            report = sample_report(native)
+            report['adapter'] = 'ffr-helper-native-entry-observer'
+            path = Path(folder)/'connection/runtime-report.json'
+            path.write_text(json.dumps(report))
+            self.assertIsNotNone(native.report())
+            report['adapter'] = 'ffr-helper-runtime-observer'
+            path.write_text(json.dumps(report))
+            self.assertIsNone(native.report())
+
     def test_report_matches_current_request_session_and_time(self):
         with tempfile.TemporaryDirectory() as folder:
             (Path(folder)/'connection').mkdir()

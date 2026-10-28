@@ -7,7 +7,7 @@ import time
 import uuid
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from ffr_helper.runtime import RuntimeRecorder, export_report
+from ffr_helper.runtime import RuntimeRecorder, NativeEntryRecorder, export_report
 
 
 def main():
@@ -16,11 +16,12 @@ def main():
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--duration', type=int, default=600)
     parser.add_argument('--stop-file', type=Path, help='Optional local marker file for graceful shutdown')
+    parser.add_argument('--native', action='store_true', help='Connect the experimental native entry observer instead of the Lua recorder')
     args = parser.parse_args()
     if not 1 <= args.duration <= 1800:
         parser.error('--duration must be between 1 and 1800 seconds')
     args.output.mkdir(parents=True, exist_ok=True)
-    recorder = RuntimeRecorder(args.recorder)
+    recorder = (NativeEntryRecorder if args.native else RuntimeRecorder)(args.recorder)
     deadline = time.monotonic()+args.duration
     pending = None
     next_capture = 0
@@ -59,9 +60,15 @@ def main():
                     battle = report['objects'].get('battle', {})
                     ui = report['objects'].get('battleUI', {})
                     active = ui.get('values', {}).get('bDuringBattle')
-                    summary = (status is not None, active, len(battle.get('units', [])), len(report['events']))
+                    native_state = report['objects'].get('nativeEntry', {})
+                    summary = ((native_state.get('ready'), len(report['events']), native_state.get('captureFailures')) if args.native
+                               else (status is not None, active, len(battle.get('units', [])), len(report['events'])))
                     if summary != last_summary:
-                        print(f'Observed: battle active={active}; units={summary[2]}; events={summary[3]}; samples={samples}', flush=True)
+                        if args.native:
+                            note = (status or {}).get('message', 'Waiting for a fresh status heartbeat')
+                            print(f'Native entry observer: ready={summary[0]}; entries={summary[1]}; capture failures={summary[2]}; samples={samples}. {note}', flush=True)
+                        else:
+                            print(f'Observed: battle active={active}; units={summary[2]}; events={summary[3]}; samples={samples}', flush=True)
                         last_summary = summary
                     pending = None
                 elif now > next_capture+8:

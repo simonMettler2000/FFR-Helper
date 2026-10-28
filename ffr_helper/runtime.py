@@ -12,10 +12,13 @@ from .storage import atomic_write
 
 MAX_REPORT = 512 * 1024
 RECORDER_NAME = 'FFRHelperRuntime'
+KNOWN_ADAPTERS = {'ffr-helper-runtime-observer', 'ffr-helper-native-entry-observer'}
 
 
 class RuntimeRecorder:
     """Only requests observation; the protocol has no mutation/restore command."""
+
+    adapter_name = 'ffr-helper-runtime-observer'
 
     def __init__(self, directory: Path):
         self.directory = Path(directory)
@@ -65,7 +68,7 @@ class RuntimeRecorder:
         if not isinstance(data, dict):
             return False
         timestamp = data.get('time')
-        return (data.get('protocol') == 1 and data.get('adapter') == 'ffr-helper-runtime-observer'
+        return (data.get('protocol') == 1 and data.get('adapter') == self.adapter_name
                 and data.get('session') == self.session and type(timestamp) is int
                 and -2 <= time.time() - timestamp <= 5)
 
@@ -91,12 +94,18 @@ def validate_report(data):
         raise ValueError('Runtime observation exceeds its collection limits.')
     if not isinstance(data.get('missingState'), list) or not data['missingState']:
         raise ValueError('Runtime observation must state its incomplete coverage.')
-    if data.get('protocol') != 1 or data.get('adapter') != 'ffr-helper-runtime-observer':
+    if data.get('protocol') != 1 or not isinstance(data.get('adapter'), str) or data['adapter'] not in KNOWN_ADAPTERS:
         raise ValueError('Unexpected runtime report producer.')
     raw = json.dumps(data, ensure_ascii=False, allow_nan=False).encode('utf8')
     if len(raw) > MAX_REPORT:
         raise ValueError('Runtime report is too large.')
     return data
+
+
+class NativeEntryRecorder(RuntimeRecorder):
+    """Separate transport identity for the exact-profile C++ entry observer."""
+
+    adapter_name = 'ffr-helper-native-entry-observer'
 
 
 def export_report(path: Path, report):

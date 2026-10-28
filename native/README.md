@@ -1,0 +1,97 @@
+# Experimental native encounter-entry observer
+
+**Development component, not installed by the desktop app.** This module has
+not been tested inside FFR. It does not restart battles or restore save states.
+The separately tested Lua recorder remains the current live observation tool.
+
+The tested ordinary encounter bypassed reflected opening hooks. This prototype
+instead observes the native map manager's encounter entry. It deep-copies all
+known `BATTLE_ENTRY_DATA` fields before forwarding the original call exactly once.
+It does not capture a full pre-battle resource/progression payload or RNG yet.
+
+## Bounds and compatibility
+
+- Requires Windows x64 and exact SHA-256 matches for game build 24250053 and
+  UE4SS `v3.0.1-1183-gcdbc0b66`. Other loader builds are refused before host-object
+  construction; other game builds produce an unavailable native-capture status.
+- Checks the target function's loaded 64-byte code fingerprint before hooking.
+  No signature scan or guessed fallback is used.
+- Uses a MinHook detour to observe one native entry point. This changes code
+  routing; it does **not** write gameplay values. It is opt-in and unverified.
+- Reads input through bounded `ReadProcessMemory` calls within the game process.
+  Arrays, nested passives, strings, flags and floating-point values are validated.
+- Retains only detached vectors/UTF-8 strings. No engine pointer is exported or
+  retained in a captured encounter.
+- Defaults to no collection. The independent desktop lease expires within eight
+  seconds. It has no mutation, restore, console or arbitrary-code command.
+- Keeps at most 32 events and 384 KiB of queued JSON; reports are bounded to
+  512 KiB and explicitly `restorable: false`.
+- The original call still executes if capture fails or throws. Observation never
+  changes the original call's arguments or return/exception behavior.
+- The module is pinned after enabling its detour. On unload, the detour is
+  disabled and its trampoline retained until process exit to protect in-flight
+  calls. Restart the game for another native-module load; hot reload is unsupported.
+
+The UE4SS host object is opaque: its constructor and non-deleting destructor are
+resolved from the exact verified DLL exports/RVAs. That DLL constructs and
+destroys its own object in aligned storage. The module does not transcribe or
+replace an SDK vtable, inspect STL members, or pass STL objects across the DLL
+boundary. The pinned public host definition uses 192 bytes; 4096 bytes are
+reserved. A null factory result is supported by the pinned UE4SS loader.
+
+## Build
+
+MSVC, Windows SDK, Python and CMake are needed for the DLL. The portable copying
+core and its tests build with a C++20 compiler on other platforms too.
+
+```sh
+python tools/fetch_native_dependencies.py
+cmake -S native -B local/native-build -A x64 -DFFR_BUILD_NATIVE_OBSERVER=ON -DMINHOOK_SOURCE_DIR=<absolute-path>/local/native-deps/minhook-1.3.4
+cmake --build local/native-build --config Release
+ctest --test-dir local/native-build -C Release --output-on-failure
+```
+
+The dependency fetch validates the pinned official source archive and refuses
+to overwrite altered cached files. No game or loader binaries are distributed.
+
+The DLL is `local/native-build/Release/main.dll`. **Do not load it for routine
+play.** Live compatibility, pre-entry timing and teardown still need verification.
+An opted-in future test would use a separate `FFRHelperRuntimeNative/dlls/main.dll`
+directory, an existing `connection/` directory, and an enabled marker under UE4SS
+Mods. This native observer DLL has not been installed in the game. The desktop
+Prepare/Connect controls target the Lua recorder; this prototype currently uses
+the source collector CLI below.
+
+The private collector supports the separate producer identity:
+
+```sh
+python tools/observe_runtime.py <FFRHelperRuntimeNative-folder> --native --output local/native-observations --duration 600 --stop-file local/stop-native
+```
+
+This module does not enable or depend on Saving anywhere.
+
+## Verification and packaging
+
+The native tests cover the bounded copying/UTF-16/JSON core and run the real DLL
+in an isolated Windows fixture executable with a mock host DLL. They verify
+actual detour capture, detached data, exactly-once forwarding, preserved arguments
+and Win32 error state, malformed-input transparency, lease expiry, code restoration
+on unload, and rejection of mismatched game/loader profiles. This fixture is not
+FFR and does not establish live game compatibility.
+
+CI also builds the portable copying core on Linux and macOS. The development
+package tool accepts only production-profile DLLs, includes the required licenses,
+and excludes all mock/test binaries. Packages omit `enabled.txt` so extracting a
+development archive alone does not opt into running it.
+
+```sh
+python tools/package_native_observer.py --dll local/native-build/Release/main.dll
+```
+
+## Source references
+
+- [Exact UE4SS host definition](https://github.com/UE4SS-RE/RE-UE4SS/blob/cdbc0b66/UE4SS/include/Mod/CppUserModBase.hpp).
+- [Pinned loader factory/lifecycle](https://github.com/UE4SS-RE/RE-UE4SS/blob/cdbc0b66/UE4SS/src/Mod/CppMod.cpp).
+- [UE4SS explanation of direct-call hook bypass](https://github.com/UE4SS-RE/RE-UE4SS/issues/626).
+- [MinHook](https://github.com/TsudaKageyu/minhook), licensed under BSD-2-Clause;
+  its license must accompany binary distribution.

@@ -19,3 +19,11 @@
   reference/practice tool. No game art or executable is bundled.
 
 Lupa is an optional test dependency and is not used by the packaged application.
+
+## Optional native observer
+
+The separately built experimental native observer statically links MinHook
+1.3.4, copyright (c) 2009–2017 Tsuda Kageyu and contributors, under BSD-2-Clause.
+Its complete license is in `native/licenses/MinHook.txt` and accompanies the
+native development package. The normal desktop executable does not include this
+native DLL. UE4SS itself remains an independently installed prerequisite.

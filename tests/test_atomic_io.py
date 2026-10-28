@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from ffr_helper.storage import atomic_write
+from ffr_helper.storage import atomic_write, game_is_running
 
 
 def sharing_error():
@@ -14,6 +14,11 @@ def sharing_error():
 
 
 class AtomicWriteTests(unittest.TestCase):
+    def test_restricted_host_never_treats_filtered_processes_as_a_closed_game(self):
+        with patch('ffr_helper.storage.sys.platform', 'win32'), patch('ffr_helper.storage._windows_is_app_container', return_value=True):
+            with self.assertRaisesRegex(RuntimeError, 'restricted host cannot verify'):
+                game_is_running()
+
     def test_temporary_reader_lock_retries_without_truncating_the_old_file(self):
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder)/'observe.txt'

@@ -53,8 +53,42 @@ of the Lua recorder. It uses exact binary/prologue fingerprints and a single
 native detour to copy encounter setup before forwarding the original call. It
 has passed an isolated executable/DLL harness, including mismatch refusal and
 lease expiry. It has **not** been installed or verified in FFR and does not
-implement restoration. The full pre-battle progression/resources and RNG payload
+implement restoration. It now serializes the current progression object in memory
+at the same entry point, frees the game's temporary allocation and publishes a
+bounded, hashed GVAS sidecar. The desktop/CLI can validate and export it as a
+non-restorable `.ffropening` archive. Live progression/resource coverage and RNG
 remain outstanding alongside the reconstruction/restore path.
+
+The native fixture verifies that serialization completes before the original
+encounter call, the original still executes once, and engine-owned output is
+freed on success/failure. Python tests retain EXP, MRP, HP/MP, inventory and unknown
+fields through archive export/import. These tests establish the capture/storage
+mechanism, not the state actually synchronized by FFR at that point.
+
+## In-memory progression and teardown findings
+
+On this exact binary, the ordinary encrypted save writer calls the engine's
+in-memory GVAS serializer at RVA `0x3cba5d0`, passing the save object and an empty
+16-byte TArray. It releases the returned buffer through RVA `0x12331f0` on both
+success and failure. The save-object getter at RVA `0x51173d0` traverses the game's
+live world/subsystem chain and returns the save manager's `m_pGameSaveData`.
+The prototype checks exact loaded code fingerprints for all three functions.
+It calls only this in-memory serialization path, without the encrypted slot writer,
+date/playtime updater, SaveData.Update delegate or disk-save function.
+
+Further read-only tracing shows that `EndBattle`'s manager flag is consumed by a
+battle-state path which selects `eBtlResultType::ForceEnd` (value 5), rather than
+Win/Lose/Escape. One result handler bypasses the ordinary party-resource writeback
+and win/escape counter branches for ForceEnd. This is a promising abort path, but
+does not establish that every transition, event, achievement, autosave or reward
+side effect is bypassed. No ForceEnd operation has been invoked by the helper.
+The full state-machine teardown and reconstruction remain unverified.
+
+The native memory loader was located separately at RVA `0x3caf450`, and normal
+loading additionally replaces the save manager object pointer and invokes game
+delegates. Merely deserializing an object does not rebind live managers, stop
+queued combat or reconstruct field actors. The prototype does not expose that
+loader or pointer replacement as a restore command.
 
 ## Verified static findings
 
@@ -154,8 +188,11 @@ remain separate from diagnostic reports and ordinary-save checkpoints.
 
 ## Future live verification
 
-First confirm recorder compatibility and observations in an already-visited
-field and early encounter.
+The next test checks the separately built native observer in an already-visited
+field and ordinary encounter. Verify native entry timing and compare serialized
+EXP/MRP, inventory and resources with the actual opening before implementing
+restoration. Capture a second encounter to check replacement/independence. The
+previous Lua test already established basic live combat observation.
 Do not enable mutation or restore hooks merely because recorder tests pass.
 Subsequent tests need repeated retries, deaths/summons/statuses and interrupted
 restores on disposable practice data before any completeness claim.

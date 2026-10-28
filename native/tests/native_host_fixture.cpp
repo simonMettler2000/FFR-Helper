@@ -18,10 +18,31 @@ const void* last_data{};
 bool last_skip{};
 std::int32_t last_friend{};
 DWORD last_input_error{};
+unsigned serialized{}, released{}, last_serialized{};
+unsigned fixture_errors{};
+std::array<unsigned char,32> fake_root{};
+}
+extern "C" __declspec(dllexport) __declspec(noinline)
+void* __fastcall ffr_test_root_getter() {
+    return fake_root.data();
+}
+extern "C" __declspec(dllexport) __declspec(noinline)
+bool __fastcall ffr_test_save_memory(void* object, ffr::RawArray* output) {
+    if (object!=fake_root.data()) { ++fixture_errors; return false; } ++serialized;
+    const unsigned char bytes[]{'G','V','A','S',3,0,0,0,static_cast<unsigned char>(41+serialized),7,9,0};
+    auto* data=HeapAlloc(GetProcessHeap(),0,sizeof(bytes)); if (!data) return false;
+    std::memcpy(data,bytes,sizeof(bytes));
+    *output={reinterpret_cast<std::uint64_t>(data),sizeof(bytes),sizeof(bytes)};
+    return true;
+}
+extern "C" __declspec(dllexport) __declspec(noinline)
+void __fastcall ffr_test_memory_free(void* data) {
+    if (data) { ++released; if (!HeapFree(GetProcessHeap(),0,data)) ++fixture_errors; }
 }
 extern "C" __declspec(dllexport) __declspec(noinline)
 void __fastcall ffr_test_encounter(void* context, const void* data, bool skip) {
     last_input_error = GetLastError();
+    last_serialized=serialized;
     calls = calls+1;
     last_context = context; last_data = data; last_skip = skip;
     const auto* entry = static_cast<const ffr::RawEntry*>(data);
@@ -60,6 +81,7 @@ int wmain(int argc, wchar_t** argv) {
         const std::filesystem::path loader_path = argv[2];
         const std::filesystem::path connection = argv[3];
         const std::wstring mode = argv[4];
+        const std::uint64_t klass=1; std::memcpy(fake_root.data()+16,&klass,sizeof(klass));
         auto loader = LoadLibraryW(loader_path.c_str()); CHECK(loader);
         auto host_count = reinterpret_cast<int(*)()>(GetProcAddress(loader, "ffr_test_hosts_alive")); CHECK(host_count);
         auto host_errors = reinterpret_cast<int(*)()>(GetProcAddress(loader, "ffr_test_host_errors")); CHECK(host_errors);
@@ -95,7 +117,7 @@ int wmain(int argc, wchar_t** argv) {
         };
         lease(std::string(32, '0'), now()+8);
         wait_for([&] { return !read(connection/L"observer-status.json").empty(); });
-        if (mode == L"bad-game") {
+        if (mode != L"good") {
             CHECK(read(connection/L"observer-status.json").find("unavailable") != std::string::npos);
             CHECK(std::memcmp(initial_code, reinterpret_cast<const void*>(entry_function), sizeof(initial_code)) == 0);
         } else {
@@ -105,6 +127,7 @@ int wmain(int argc, wchar_t** argv) {
         SetLastError(1234);
         entry_function(context, &entry, false);
         CHECK(calls == 2 && !last_skip && last_input_error == 1234);
+        CHECK(serialized==released && last_serialized==(mode==L"good" ? 1u : 0u));
         friends[0] = 9999; enemies[0] = 999; skills[0] = 999; bgm[0] = u'X';
         lease(std::string(32,'b'), now()+8);
         wait_for([&] { return read(connection/L"runtime-report.json").find(std::string(32,'b')) != std::string::npos; });
@@ -114,21 +137,33 @@ int wmain(int argc, wchar_t** argv) {
             CHECK(snapshot.find("encounter-opening-native") != std::string::npos);
             CHECK(snapshot.find("\"friendliesUnitIdList\":[1001,1002]") != std::string::npos);
             CHECK(snapshot.find("\"bgmCueName\":\"Fixture\"") != std::string::npos);
+            CHECK(snapshot.find("\"byteLength\":12") != std::string::npos);
+            CHECK(snapshot.find("\"progressionCaptureFailures\":0") != std::string::npos);
+            write(connection/L"first-progression.gvas",read(connection/L"opening-progression.gvas"));
             auto bad_entry = entry; bad_entry.enemy_ids.count = -1;
             entry_function(context, &bad_entry, true);
             CHECK(calls == 3 && last_data == &bad_entry && last_friend == 9999);
+            CHECK(serialized==1 && released==1);
             lease(std::string(32,'c'), now()+8);
             wait_for([&] { return read(connection/L"runtime-report.json").find(std::string(32,'c')) != std::string::npos; });
             CHECK(read(connection/L"runtime-report.json").find("\"captureFailures\":1") != std::string::npos);
-            lease(std::string(32,'c'), 0);
-            std::this_thread::sleep_for(std::chrono::milliseconds(800));
-            entry_function(context, &entry, true); CHECK(calls == 4);
-            lease(std::string(32,'d'), now()+8);
+            CHECK(read(connection/L"runtime-report.json").find("\"opening\":null") != std::string::npos);
+            entry_function(context,&entry,false); CHECK(calls==4 && serialized==2 && released==2);
+            lease(std::string(32,'d'),now()+8);
             wait_for([&] { return read(connection/L"runtime-report.json").find(std::string(32,'d')) != std::string::npos; });
+            write(connection/L"replacement-report.json",read(connection/L"runtime-report.json"));
+            write(connection/L"replacement-progression.gvas",read(connection/L"opening-progression.gvas"));
+            lease(std::string(32,'d'), 0);
+            std::this_thread::sleep_for(std::chrono::milliseconds(800));
+            entry_function(context, &entry, true); CHECK(calls == 5);
+            CHECK(serialized==2 && released==2);
+            lease(std::string(32,'e'), now()+8);
+            wait_for([&] { return read(connection/L"runtime-report.json").find(std::string(32,'e')) != std::string::npos; });
             write(connection/L"after-expiry-report.json", read(connection/L"runtime-report.json"));
         } else CHECK(snapshot.find("encounter-opening-native") == std::string::npos);
         stop(object);
         CHECK(host_count() == 0 && host_errors() == 0);
+        CHECK(fixture_errors==0);
         CHECK(std::memcmp(initial_code, reinterpret_cast<const void*>(entry_function), sizeof(initial_code)) == 0);
         const auto before = calls;
         entry_function(context, &entry, false); CHECK(calls == before+1);

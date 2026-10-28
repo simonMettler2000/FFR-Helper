@@ -11,6 +11,9 @@ else()
   target_compile_options(capture_core_tests PRIVATE -Wall -Wextra -Wpedantic)
 endif()
 add_test(NAME detached_encounter_capture COMMAND capture_core_tests)
+add_executable(progression_capture_tests tests/progression_capture_tests.cpp)
+target_include_directories(progression_capture_tests PRIVATE include)
+add_test(NAME detached_progression_capture COMMAND progression_capture_tests)
 
 option(FFR_BUILD_NATIVE_OBSERVER "Build the exact-profile experimental Windows observer DLL" OFF)
 if(FFR_BUILD_NATIVE_OBSERVER)
@@ -39,14 +42,14 @@ if(FFR_BUILD_NATIVE_OBSERVER)
   target_include_directories(native_host_fixture PRIVATE include)
   target_compile_options(native_host_fixture PRIVATE /W4 /EHsc /utf-8)
   set(generated "${CMAKE_CURRENT_BINARY_DIR}/fixture_profiles")
-  set(profiles "${generated}/good_profile.hpp" "${generated}/bad_game_profile.hpp" "${generated}/bad_loader_profile.hpp")
+  set(profiles "${generated}/good_profile.hpp" "${generated}/bad_game_profile.hpp" "${generated}/bad_loader_profile.hpp" "${generated}/bad_function_profile.hpp")
   add_custom_command(OUTPUT ${profiles}
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/make_fixture_profiles.py"
       "$<TARGET_FILE:native_host_fixture>" "$<TARGET_FILE:native_mock_loader>" "${generated}"
     DEPENDS native_host_fixture native_mock_loader tests/make_fixture_profiles.py
     VERBATIM)
   add_custom_target(generate_fixture_profiles DEPENDS ${profiles})
-  foreach(mode good bad_game bad_loader)
+  foreach(mode good bad_game bad_loader bad_function)
     add_library(fixture_observer_${mode} SHARED src/native_observer.cpp)
     add_dependencies(fixture_observer_${mode} generate_fixture_profiles)
     target_include_directories(fixture_observer_${mode} PRIVATE include "${generated}")

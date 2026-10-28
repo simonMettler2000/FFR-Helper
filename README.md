@@ -39,6 +39,13 @@ The loader and recorder are opt-in; the app does not install a loader
 automatically. Read-only observations have been verified through one live
 overworld–battle–overworld cycle. Native restoration remains unimplemented.
 
+An experimental [native entry capture](native/README.md) also deep-copies encounter
+setup and serializes progression before the native encounter call. It has passed
+an isolated Windows harness but has not been tested inside FFR. The desktop can
+connect its separate recorder folder and export verified `.ffropening` diagnostics;
+these archives remain non-restorable. Native capture requires a separate opt-in
+installation and never enables Saving anywhere.
+
 Further development/testing of **Saving anywhere** is deferred until battle
 restart, native save states and the other requested features are implemented,
 unless the user requests otherwise. The existing field-save adapter is unchanged.

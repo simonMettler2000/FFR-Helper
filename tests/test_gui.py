@@ -13,6 +13,7 @@ from ffr_helper.app import MainWindow
 from ffr_helper.editor import SaveEditor
 from test_core import synthetic_save
 from test_runtime import sample_report
+from test_opening import sample_opening
 
 
 class GuiTests(unittest.TestCase):
@@ -131,6 +132,29 @@ class GuiTests(unittest.TestCase):
         self.assertEqual(self.source.read_bytes(), self.raw)
         w.disconnect_runtime()
         self.assertFalse(w.runtime_export.isEnabled())
+
+    def test_native_opening_enables_only_diagnostic_export(self):
+        w=self.window
+        target=self.directory/'FFRHelperRuntimeNative';connection=target/'connection';connection.mkdir(parents=True)
+        original=w.editor.export();w.attach_runtime(target);w.capture_runtime()
+        capture=sample_opening();report=sample_report(w.recorder);report['adapter']=w.recorder.adapter_name
+        report['objects']={'nativeEntry':{'opening':capture.metadata}}
+        status={key:report[key] for key in ['protocol','adapter','session','time','readOnly']}
+        status.update(hooks={},message='Native observation')
+        (connection/'observer-status.json').write_text(json.dumps(status))
+        (connection/'runtime-report.json').write_text(json.dumps(report))
+        (connection/'opening-progression.gvas').write_bytes(capture.progression)
+        w.poll_recorder()
+        self.assertTrue(w.runtime_opening_export.isEnabled())
+        self.assertFalse(w.restart_battle.isEnabled())
+        self.assertFalse(w.save_anywhere.isEnabled())
+        self.assertNotIn('987654',w.runtime_status.text())
+        self.assertIn('not a save state',w.runtime_status.text())
+        self.assertEqual(w.editor.export(),original)
+        (connection/'opening-progression.gvas').write_bytes(b'changed')
+        w.poll_recorder();self.assertFalse(w.runtime_opening_export.isEnabled())
+        self.assertIsNone(w.runtime_opening)
+        w.disconnect_runtime();self.assertFalse(w.runtime_opening_export.isEnabled())
 
 
 if __name__ == '__main__':

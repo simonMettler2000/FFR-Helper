@@ -18,7 +18,8 @@ from .editor import SaveEditor
 from .progression import INT_MAX, level_at, reference_data, route_totals
 from .storage import CheckpointStore, app_directory, discover_saves, write_save, atomic_write
 from .bridge import FieldSaveBridge, prepare_adapter
-from .runtime import RuntimeRecorder, prepare_recorder, export_report
+from .runtime import RuntimeRecorder, NativeEntryRecorder, prepare_recorder, export_report
+from .opening import export_opening
 
 
 STYLE = """QMainWindow,QWidget{background:#f4f5f3;color:#22353e;font-family:'Segoe UI';font-size:13px}
@@ -83,6 +84,7 @@ class MainWindow(QMainWindow):
         self.bridge = None
         self.recorder = None
         self.runtime_report = None
+        self.runtime_opening = None
         self.store = CheckpointStore()
         self.settings_path = app_directory() / 'settings.json'
         try:
@@ -374,12 +376,16 @@ class MainWindow(QMainWindow):
         row = QHBoxLayout()
         self.runtime_capture = button('Capture diagnostic report', self.capture_runtime)
         self.runtime_export = button('Export report…', self.export_runtime)
+        self.runtime_opening_export = button('Export opening capture…', self.export_runtime_opening)
         self.runtime_capture.setEnabled(False)
         self.runtime_export.setEnabled(False)
+        self.runtime_opening_export.setEnabled(False)
         row.addWidget(self.runtime_capture)
         row.addWidget(self.runtime_export)
+        row.addWidget(self.runtime_opening_export)
         row.addStretch()
         box.addLayout(row)
+        box.addWidget(text('An experimental FFRHelperRuntimeNative folder can also be connected. It captures serialized progression at encounter entry and exports .ffropening diagnostics. The native DLL requires a separate installation and live compatibility check; Prepare recorder installs the Lua recorder only.'))
         layout.addWidget(group)
         group = QGroupBox('What a reliable restore still needs')
         box = QVBoxLayout(group)
@@ -396,12 +402,12 @@ class MainWindow(QMainWindow):
             self.guard(lambda: self.attach_runtime(prepare_recorder(Path(folder))))
 
     def connect_runtime(self):
-        folder = QFileDialog.getExistingDirectory(self, 'Choose the FFRHelperRuntime recorder directory', self.settings.get('recorderFolder', ''))
+        folder = QFileDialog.getExistingDirectory(self, 'Choose FFRHelperRuntime or FFRHelperRuntimeNative', self.settings.get('recorderFolder', ''))
         if folder:
             self.guard(lambda: self.attach_runtime(Path(folder)))
 
     def attach_runtime(self, folder):
-        recorder = RuntimeRecorder(folder)
+        recorder = (NativeEntryRecorder if Path(folder).name.casefold() == 'ffrhelperruntimenative' else RuntimeRecorder)(folder)
         recorder.heartbeat()
         self.disconnect_runtime()
         self.recorder = recorder
@@ -415,8 +421,10 @@ class MainWindow(QMainWindow):
             self.guard(self.recorder.disconnect)
         self.recorder = None
         self.runtime_report = None
+        self.runtime_opening = None
         self.runtime_capture.setEnabled(False)
         self.runtime_export.setEnabled(False)
+        self.runtime_opening_export.setEnabled(False)
         self.runtime_disconnect.setEnabled(False)
         self.runtime_status.setText('Disconnected. Capture requests and observation expire automatically.')
 
@@ -425,7 +433,9 @@ class MainWindow(QMainWindow):
             def operation():
                 self.recorder.capture()
                 self.runtime_report = None
+                self.runtime_opening = None
                 self.runtime_export.setEnabled(False)
+                self.runtime_opening_export.setEnabled(False)
                 self.runtime_status.setText('Observation requested. The game continues normally; nothing is restored or changed.')
             self.guard(operation)
 
@@ -444,6 +454,16 @@ class MainWindow(QMainWindow):
                 self.runtime_report = report
                 self.runtime_export.setEnabled(True)
                 self.runtime_status.setText(f'Diagnostic report captured · {len(report["events"])} recorded encounter events. Incomplete coverage; this is not a save state.')
+                self.runtime_opening = None
+                self.runtime_opening_export.setEnabled(False)
+                if isinstance(self.recorder, NativeEntryRecorder):
+                    try:
+                        self.runtime_opening = self.recorder.opening(report)
+                        self.runtime_opening_export.setEnabled(self.runtime_opening is not None)
+                        if self.runtime_opening is not None:
+                            self.runtime_status.setText(f'Encounter opening captured · {len(self.runtime_opening.progression):,} serialized bytes verified. Restoration is not implemented; this is not a save state.')
+                    except (OSError, ValueError):
+                        self.runtime_status.setText('Diagnostic report captured. Serialized opening is unavailable or has changed; request another report. Restoration is not implemented.')
             elif self.runtime_report is None:
                 self.runtime_status.setText(state['message'])
         except (OSError, ValueError):
@@ -456,6 +476,13 @@ class MainWindow(QMainWindow):
         name, _ = QFileDialog.getSaveFileName(self, 'Export a non-restorable runtime report', 'observation.ffrruntime.json', 'Runtime diagnostic report (*.ffrruntime.json)')
         if name:
             self.guard(lambda: export_report(Path(name), self.runtime_report))
+
+    def export_runtime_opening(self):
+        if self.runtime_opening is None:
+            return
+        name, _ = QFileDialog.getSaveFileName(self, 'Export an incomplete opening capture', 'opening.ffropening', 'Opening capture (*.ffropening)')
+        if name:
+            self.guard(lambda: export_opening(Path(name), self.runtime_opening))
 
     def connect_bridge(self):
         folder = QFileDialog.getExistingDirectory(self, 'Choose the installed FFRHelper adapter directory', self.settings.get('adapterFolder', ''))

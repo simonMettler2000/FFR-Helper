@@ -8,6 +8,7 @@ import uuid
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from ffr_helper.runtime import RuntimeRecorder, NativeEntryRecorder, export_report
+from ffr_helper.opening import export_opening
 
 
 def main():
@@ -28,6 +29,7 @@ def main():
     last_summary = None
     samples = 0
     first_io_error = None
+    last_opening = None
     try:
         print('Read-only observation session started; waiting for the game recorder.', flush=True)
         while time.monotonic() < deadline and not (args.stop_file and args.stop_file.exists()):
@@ -56,6 +58,16 @@ def main():
                 if report is not None:
                     stamp = datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S-%f')
                     export_report(args.output/(stamp+'.ffrruntime.json'), report)
+                    if args.native:
+                        try:
+                            opening=recorder.opening(report)
+                            identity=(opening.metadata['sequence'],opening.metadata['sha256']) if opening else None
+                            if opening is not None and identity!=last_opening:
+                                export_opening(args.output/(stamp+'.ffropening'),opening)
+                                last_opening=identity
+                                print(f'Private opening capture verified: {len(opening.progression):,} serialized bytes. Restoration is unavailable.',flush=True)
+                        except (OSError,ValueError):
+                            print('Serialized opening is not verified yet; collection will retry on the next report.',flush=True)
                     samples += 1
                     battle = report['objects'].get('battle', {})
                     ui = report['objects'].get('battleUI', {})

@@ -1,5 +1,5 @@
 // Experimental, exact-build native entry observer. No gameplay-state setters,
-// save/load calls or restart commands. The original encounter call runs once.
+// disk save/load calls or restart commands. The original encounter call runs once.
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
@@ -11,6 +11,7 @@
 #include "build_profile.hpp"
 #endif
 #include "encounter_capture.hpp"
+#include "progression_capture.hpp"
 #include <atomic>
 #include <chrono>
 #include <deque>
@@ -19,11 +20,18 @@
 #include <memory>
 #include <mutex>
 #include <thread>
+#include <string_view>
 
 namespace {
 using Clock = std::chrono::system_clock;
 using EntryFunction = void(__fastcall*)(void*, const void*, bool);
 using HostMethod = void(__fastcall*)(void*);
+using RootGetter = void*(__fastcall*)();
+using SaveMemory = bool(__fastcall*)(void*, ffr::RawArray*);
+using MemoryFree = void(__fastcall*)(void*);
+RootGetter root_getter{};
+SaveMemory save_memory{};
+MemoryFree memory_free{};
 HMODULE own_module{};
 std::atomic<EntryFunction> original_entry{nullptr};
 void* hook_address{};
@@ -112,8 +120,8 @@ bool read_small(const std::filesystem::path& path, std::string& out, DWORD maxim
     return true;
 }
 
-bool write_atomic(const std::filesystem::path& path, const std::string& data) {
-    if (data.size() > 512*1024) return false;
+bool write_atomic(const std::filesystem::path& path, std::string_view data, std::size_t maximum=512*1024) {
+    if (data.size() > maximum) return false;
     auto temporary = path;
     temporary += L".native-tmp";
     {
@@ -152,6 +160,12 @@ std::optional<Lease> read_lease(const std::filesystem::path& path) {
 }
 
 struct Observer {
+    struct Opening {
+        std::uint64_t sequence{};
+        std::int64_t time{};
+        std::string session, entry;
+        std::vector<unsigned char> progression;
+    };
     std::filesystem::path connection;
     std::mutex mutex;
     std::deque<std::string> events;
@@ -161,6 +175,8 @@ struct Observer {
     std::atomic<std::int64_t> expires{0};
     std::atomic<bool> quit{false}, ready{false};
     std::atomic<unsigned> failures{0};
+    std::atomic<unsigned> progression_failures{0};
+    std::shared_ptr<const Opening> opening;
     std::thread worker;
 
     std::string envelope(const Lease& lease) {
@@ -168,23 +184,45 @@ struct Observer {
             + ffr::quote(lease.session) + ",\"time\":" + std::to_string(seconds()) + ",\"readOnly\":true";
     }
     void run() noexcept {
+        std::shared_ptr<const Opening> published;
+        std::string opening_metadata="null";
         while (!quit.load()) {
             try {
                 auto lease = read_lease(connection/L"observe.txt");
                 if (!lease) { expires.store(0); Sleep(250); continue; }
                 std::deque<std::string> copied;
                 std::string note;
+                std::shared_ptr<const Opening> current_opening;
                 bool requested = false;
                 {
                     std::lock_guard lock(mutex);
                     if (session != lease->session) {
                         events.clear(); event_bytes = 0; sequence = 0; request.clear(); session = lease->session;
+                        opening.reset(); published.reset(); opening_metadata="null";
                     }
                     expires.store(lease->expiry);
                     note = message;
+                    current_opening = opening;
                     if (lease->request != std::string(32, '0') && lease->request != request) {
                         copied = events; requested = true;
                     }
+                }
+                if (current_opening != published) {
+                    opening_metadata="null";
+                    if (current_opening && !current_opening->progression.empty()) {
+                        const auto& payload=current_opening->progression;
+                        Sha256 hash; hash.add(payload.data(),payload.size());
+                        const auto digest=hash.finish();
+                        if (write_atomic(connection/L"opening-progression.gvas",
+                                std::string_view(reinterpret_cast<const char*>(payload.data()),payload.size()),ffr::max_progression_bytes)) {
+                            opening_metadata="{\"sequence\":"+std::to_string(current_opening->sequence)
+                                +",\"time\":"+std::to_string(current_opening->time)
+                                +",\"capturePoint\":\"before-native-entry\",\"gameSha256\":"+ffr::quote(ffr::profile::game_sha256)
+                                +",\"file\":\"opening-progression.gvas\",\"byteLength\":"+std::to_string(payload.size())
+                                +",\"sha256\":"+ffr::quote(digest)+",\"entry\":"+current_opening->entry+'}';
+                            published=current_opening;
+                        }
+                    } else published=current_opening;
                 }
                 const auto base = envelope(*lease);
                 auto status = "{" + base + ",\"hooks\":{\"native-encounter-entry\":"
@@ -194,9 +232,11 @@ struct Observer {
                     std::string report = "{" + base + ",\"request\":" + ffr::quote(lease->request)
                         + ",\"format\":\"ffr-helper-runtime-report\",\"version\":1,\"kind\":\"diagnostic-observation\",\"restorable\":false"
                         + ",\"objects\":{\"nativeEntry\":{\"ready\":" + (ready.load() ? "true" : "false")
-                        + ",\"captureFailures\":" + std::to_string(failures.load()) + "}},\"events\":[";
+                        + ",\"captureFailures\":" + std::to_string(failures.load())
+                        + ",\"progressionCaptureFailures\":"+std::to_string(progression_failures.load())
+                        + ",\"opening\":"+opening_metadata+"}},\"events\":[";
                     for (std::size_t i=0; i<copied.size(); ++i) { if (i) report += ','; report += copied[i]; }
-                    report += "],\"missingState\":[\"Complete pre-battle progression and resources\",\"Full combat and RNG state\",\"Verified restore path\"]}";
+                    report += "],\"missingState\":[\"Live verification of serialized progression/resource coverage\",\"Full combat and RNG state\",\"Verified restore path\"]}";
                     if (write_atomic(connection/L"runtime-report.json", report)) {
                         std::lock_guard lock(mutex); request = lease->request;
                     }
@@ -220,12 +260,29 @@ void __fastcall encounter_hook(void* context, const void* entry, bool skip_intro
     const auto last_error = GetLastError();
     auto* current = published_observer.load(std::memory_order_acquire);
     ffr::observe_and_forward([&] {
-        if (!current || current->quit.load() || current->expires.load() < seconds()) return;
+        if (!current || current->quit.load()) return;
+        if (current->expires.load() < seconds()) {
+            // An encounter entered while observation is off cannot inherit a
+            // previous encounter's opening when the same session reconnects.
+            std::lock_guard lock(current->mutex); current->opening.reset(); return;
+        }
+        std::string capture_session;
+        { std::lock_guard lock(current->mutex); capture_session=current->session; current->opening.reset(); }
         auto copied = ffr::capture_entry(read_memory, reinterpret_cast<std::uint64_t>(entry), skip_intro);
         if (!copied) { current->failures.fetch_add(1); return; }
         auto json = ffr::to_json(*copied);
         if (json.size() > 128*1024) { current->failures.fetch_add(1); return; }
+        auto opening=std::make_shared<Observer::Opening>();
+        opening->entry=json; opening->time=seconds(); opening->session=capture_session;
+        try {
+            auto progression=ffr::capture_progression(read_memory,root_getter,save_memory,memory_free);
+            if (progression) opening->progression=std::move(*progression);
+            else current->progression_failures.fetch_add(1);
+        } catch (...) { current->progression_failures.fetch_add(1); }
         std::lock_guard lock(current->mutex);
+        if (current->session!=capture_session || current->expires.load()<seconds() || current->quit.load()) return;
+        opening->sequence=current->sequence+1;
+        current->opening=std::move(opening);
         auto event = "{\"kind\":\"encounter-opening-native\",\"sequence\":" + std::to_string(++current->sequence)
             + ",\"time\":" + std::to_string(seconds()) + ",\"capturePoint\":\"before-native-entry\",\"entry\":" + json + '}';
         while (!current->events.empty() && (current->events.size() >= 32 || current->event_bytes+event.size() > 384*1024)) {
@@ -249,6 +306,21 @@ bool install_entry_hook() {
         set_message("Unsupported game build; native hook was not installed"); return false;
     }
     auto base = reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr));
+    for (const auto& profile : {std::pair{ffr::profile::root_getter_rva,ffr::profile::root_getter_sha256},
+                               std::pair{ffr::profile::save_memory_rva,ffr::profile::save_memory_sha256},
+                               std::pair{ffr::profile::memory_free_rva,ffr::profile::memory_free_sha256}}) {
+        std::array<unsigned char,64> code{};
+        if (!read_memory(base+profile.first,code.data(),code.size())) {
+            set_message("Progression serializer code is unreadable; hook was not installed"); return false;
+        }
+        Sha256 hash; hash.add(code.data(),code.size());
+        if (hash.finish()!=profile.second) {
+            set_message("Progression serializer does not match its verified code profile; hook was not installed"); return false;
+        }
+    }
+    root_getter=reinterpret_cast<RootGetter>(base+ffr::profile::root_getter_rva);
+    save_memory=reinterpret_cast<SaveMemory>(base+ffr::profile::save_memory_rva);
+    memory_free=reinterpret_cast<MemoryFree>(base+ffr::profile::memory_free_rva);
     hook_address = reinterpret_cast<void*>(base+ffr::profile::entry_rva);
     std::array<unsigned char, ffr::profile::prologue_size> bytes{};
     if (!read_memory(reinterpret_cast<std::uint64_t>(hook_address), bytes.data(), bytes.size())) {

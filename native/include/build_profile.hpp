@@ -12,4 +12,10 @@ inline constexpr std::uintptr_t destructor_rva = 0x2e09a0;
 inline constexpr std::size_t host_storage_size = 4096;
 inline constexpr char constructor_name[] = "??0CppUserModBase@RC@@QEAA@XZ";
 inline constexpr char destructor_name[] = "??1CppUserModBase@RC@@UEAA@XZ";
+inline constexpr std::uintptr_t root_getter_rva = 0x51173d0;
+inline constexpr char root_getter_sha256[] = "feb73caaa7b32325fdd1eebbc8afcf4fbf1e15053b2f6c246015917050299119";
+inline constexpr std::uintptr_t save_memory_rva = 0x3cba5d0;
+inline constexpr char save_memory_sha256[] = "19df132806770e56241d01b907cfdc788c89c6967733e96f3da19ec7261b36df";
+inline constexpr std::uintptr_t memory_free_rva = 0x12331f0;
+inline constexpr char memory_free_sha256[] = "0bae0d96eb3dd33997b7f6d2006acf7e3728dbe400ef83d2668addb900d7cc29";
 } // namespace ffr::profile

@@ -7,14 +7,18 @@ The separately tested Lua recorder remains the current live observation tool.
 The tested ordinary encounter bypassed reflected opening hooks. This prototype
 instead observes the native map manager's encounter entry. It deep-copies all
 known `BATTLE_ENTRY_DATA` fields before forwarding the original call exactly once.
-It does not capture a full pre-battle resource/progression payload or RNG yet.
+At that same boundary it calls the verified engine in-memory serializer on the
+current progression object, copies the resulting GVAS bytes into its own storage,
+and frees the temporary buffer through the game's allocator. Resource/progression
+coverage still needs a live comparison; RNG and full combat state are not captured.
 
 ## Bounds and compatibility
 
 - Requires Windows x64 and exact SHA-256 matches for game build 24250053 and
   UE4SS `v3.0.1-1183-gcdbc0b66`. Other loader builds are refused before host-object
   construction; other game builds produce an unavailable native-capture status.
-- Checks the target function's loaded 64-byte code fingerprint before hooking.
+- Checks the encounter entry, progression getter, serializer and allocator's
+  loaded 64-byte code fingerprints before hooking.
   No signature scan or guessed fallback is used.
 - Uses a MinHook detour to observe one native entry point. This changes code
   routing; it does **not** write gameplay values. It is opt-in and unverified.
@@ -26,6 +30,10 @@ It does not capture a full pre-battle resource/progression payload or RNG yet.
   seconds. It has no mutation, restore, console or arbitrary-code command.
 - Keeps at most 32 events and 384 KiB of queued JSON; reports are bounded to
   512 KiB and explicitly `restorable: false`.
+- Retains only the latest opening progression, bounded to 16 MiB. The worker
+  writes a fixed GVAS sidecar before publishing its size/hash/revision in a report.
+  A new/invalid entry invalidates the previous opening. All capture happens
+  synchronously at native entry; disk writes happen on the observer worker.
 - The original call still executes if capture fails or throws. Observation never
   changes the original call's arguments or return/exception behavior.
 - The module is pinned after enabling its detour. On unload, the detour is
@@ -59,8 +67,9 @@ play.** Live compatibility, pre-entry timing and teardown still need verificatio
 An opted-in future test would use a separate `FFRHelperRuntimeNative/dlls/main.dll`
 directory, an existing `connection/` directory, and an enabled marker under UE4SS
 Mods. This native observer DLL has not been installed in the game. The desktop
-Prepare/Connect controls target the Lua recorder; this prototype currently uses
-the source collector CLI below.
+Prepare control installs the Lua recorder only. Connect accepts either recorder
+folder and selects the matching protocol identity. The native DLL must be
+installed separately for an opted-in test.
 
 The private collector supports the separate producer identity:
 
@@ -70,13 +79,20 @@ python tools/observe_runtime.py <FFRHelperRuntimeNative-folder> --native --outpu
 
 This module does not enable or depend on Saving anywhere.
 
+The desktop or CLI verifies the sidecar against the matched report, parses its
+GVAS class/engine/property layout and exports a `.ffropening` archive. The archive
+contains the detached encounter setup, serialized progression and explicit
+missing-state metadata. It cannot be loaded as a game save or ordinary checkpoint.
+It is not a battle restart or a restorable save state.
+
 ## Verification and packaging
 
 The native tests cover the bounded copying/UTF-16/JSON core and run the real DLL
 in an isolated Windows fixture executable with a mock host DLL. They verify
 actual detour capture, detached data, exactly-once forwarding, preserved arguments
 and Win32 error state, malformed-input transparency, lease expiry, code restoration
-on unload, and rejection of mismatched game/loader profiles. This fixture is not
+on unload, game-allocator cleanup on failed capture, binary/report hash binding,
+and rejection of mismatched game/loader/serializer profiles. This fixture is not
 FFR and does not establish live game compatibility.
 
 CI also builds the portable copying core on Linux and macOS. The development

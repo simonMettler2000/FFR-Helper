@@ -46,7 +46,8 @@ def main():
     offset = game_pe.offset(entry)
     code_hash = hashlib.sha256(game_pe.raw[offset:offset+64]).hexdigest()
     output.mkdir(parents=True, exist_ok=True)
-    for name in ['good', 'bad_game', 'bad_loader']:
+    extra_functions = {name: game_pe.exports['ffr_test_'+name] for name in ['root_getter','save_memory','memory_free']}
+    for name in ['good', 'bad_game', 'bad_loader', 'bad_function']:
         text = f'''#pragma once
 #include <cstddef>
 #include <cstdint>
@@ -61,8 +62,13 @@ inline constexpr std::uintptr_t destructor_rva = {loader_pe.exports[dtor]};
 inline constexpr std::size_t host_storage_size = 4096;
 inline constexpr char constructor_name[] = "{ctor}";
 inline constexpr char destructor_name[] = "{dtor}";
-}}
 '''
+        for function,rva in extra_functions.items():
+            start=game_pe.offset(rva)
+            digest=hashlib.sha256(game_pe.raw[start:start+64]).hexdigest()
+            if name=='bad_function' and function=='save_memory': digest='0'*64
+            text += f'inline constexpr std::uintptr_t {function}_rva = {rva};\ninline constexpr char {function}_sha256[] = "{digest}";\n'
+        text += '}\n'
         (output/(name+'_profile.hpp')).write_text(text, encoding='utf8')
 
 

@@ -107,6 +107,13 @@ class NativeEntryRecorder(RuntimeRecorder):
 
     adapter_name = 'ffr-helper-native-entry-observer'
 
+    def opening(self, report):
+        from .opening import read_live_opening
+        validate_report(report)
+        if not self._current(report) or report.get('request') != self.request:
+            raise ValueError('Capture a fresh report from this native recorder first.')
+        return read_live_opening(self.connection, report)
+
 
 def export_report(path: Path, report):
     validate_report(report)

@@ -11,7 +11,7 @@ from ffr_helper.codec import (FORMAT_KEY, NONE, Property, PropertyList, Reader, 
 from ffr_helper.editor import SaveEditor
 from ffr_helper.progression import level_at, reference_data, route_totals
 from ffr_helper.storage import CheckpointStore, write_save
-from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from Crypto.Cipher import AES
 
 
 def prop(name, kind, raw):
@@ -53,8 +53,7 @@ def synthetic_save():
     prefix = b'GVAS' + i32(3) + i32(522) + i32(1017) + struct.pack('<HHHI', 5, 6, 1, 0) + fstring('UE5') + i32(3) + i32(0) + fstring('/Script/mucha.CPP_MuchaGameSaveData') + b'\0'
     plain = prefix + root.encode() + bytes(4)
     plain += bytes(16-len(plain)%16)
-    enc = Cipher(algorithms.AES(FORMAT_KEY), modes.ECB()).encryptor()
-    payload = enc.update(plain)+enc.finalize()
+    payload = AES.new(FORMAT_KEY, AES.MODE_ECB).encrypt(plain)
     return b'SVHD\x01\0\x01\0'+hashlib.sha1(payload).digest()+bytes(4)+payload
 
 

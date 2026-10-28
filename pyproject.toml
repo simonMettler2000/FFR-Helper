@@ -7,7 +7,7 @@ name = "ffr-helper"
 version = "0.1.0"
 description = "Offline Final Fantasy Resonance practice saves and route planning"
 requires-python = ">=3.11"
-dependencies = ["PySide6>=6.8,<7", "cryptography>=44,<51"]
+dependencies = ["PySide6>=6.8,<7", "pycryptodome>=4.2,<5"]
 
 [project.scripts]
 ffr-helper = "ffr_helper.app:main"

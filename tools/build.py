@@ -10,10 +10,11 @@ command = [sys.executable, '-m', 'PyInstaller', '--noconfirm', '--clean', '--win
            '--add-data', str(root / 'ffr_helper/data') + ':ffr_helper/data',
            '--add-data', str(root / 'bridge') + ':bridge',
            '--exclude-module', 'PySide6.QtWebEngineCore', '--exclude-module', 'PySide6.QtWebEngineWidgets',
-           '--exclude-module', 'PySide6.QtQml', '--exclude-module', 'PySide6.QtQuick']
+           '--exclude-module', 'PySide6.QtQml', '--exclude-module', 'PySide6.QtQuick',
+           '--exclude-module', 'cryptography']
 for name in ['README.md', 'LICENSE', 'THIRD_PARTY_NOTICES.md']:
     command += ['--add-data', str(root/name) + ':documentation']
-for name in ['PySide6_Essentials', 'shiboken6', 'cryptography', 'pyinstaller']:
+for name in ['PySide6_Essentials', 'shiboken6', 'pycryptodome', 'pyinstaller']:
     distribution = metadata.distribution(name)
     for entry in distribution.files or []:
         if entry.name.lower().startswith(('license', 'copying')):

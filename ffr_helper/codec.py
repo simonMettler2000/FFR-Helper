@@ -10,7 +10,7 @@ import hashlib
 import hmac
 import struct
 
-from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from Crypto.Cipher import AES
 
 # Game-format constant from DefaultSaveGameUtility.ini, not an account credential.
 FORMAT_KEY = b"wwrqPkdwzPvgfchQ8kTYHVbn4umTf3d7"
@@ -232,8 +232,7 @@ class SaveDocument:
             if not hmac.compare_digest(hashlib.sha1(data[32:]).digest(), data[8:28]):
                 raise SaveFormatError("Save checksum does not match; refusing to open damaged data.")
             envelope = data[:32]
-            decryptor = Cipher(algorithms.AES(FORMAT_KEY), modes.ECB()).decryptor()
-            data = decryptor.update(data[32:]) + decryptor.finalize()
+            data = AES.new(FORMAT_KEY, AES.MODE_ECB).decrypt(data[32:])
         reader = Reader(data)
         if reader.take(4) != b"GVAS" or reader.number() != 3:
             raise SaveFormatError("This is not a supported FFR GVAS save.")
@@ -271,8 +270,7 @@ class SaveDocument:
             return logical + self.suffix
         logical += bytes(4)
         padding = bytes(16 - len(logical) % 16)
-        encryptor = Cipher(algorithms.AES(FORMAT_KEY), modes.ECB()).encryptor()
-        encrypted = encryptor.update(logical + padding) + encryptor.finalize()
+        encrypted = AES.new(FORMAT_KEY, AES.MODE_ECB).encrypt(logical + padding)
         envelope = self.envelope[:8] + hashlib.sha1(encrypted).digest() + self.envelope[28:32]
         return envelope + encrypted
 

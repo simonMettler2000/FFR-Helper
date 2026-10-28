@@ -5,8 +5,8 @@
   These are dynamically loaded runtime libraries; the full FFR Helper source
   and build instructions are provided so an app can be rebuilt with compatible
   replacement libraries.
-- **cryptography**: Python Cryptographic Authority and contributors. Apache-2.0
-  or BSD-3-Clause. [Project](https://github.com/pyca/cryptography).
+- **PyCryptodome**: PyCryptodome contributors. BSD-2-Clause and public-domain
+  portions. [License](https://www.pycryptodome.org/src/license).
 - **PyInstaller**: PyInstaller contributors. GPL with the bootloader exception
   permitting distribution of generated applications. [License](https://pyinstaller.org/en/stable/license.html).
 - **uesave**: trumank and contributors. MIT. Its published complete-type-name

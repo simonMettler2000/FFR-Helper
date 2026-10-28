@@ -248,6 +248,41 @@ reflected UFunction hook.
 
 ## Recorder boundaries
 
+### Detached native combat-component core
+
+A portable read-only capture core now copies verified native combat components
+into owned values. It is **not wired to a runtime command or installed in FFR**.
+The future caller must establish the game thread, matching world and actual
+command-menu boundary; empty queues and an active flag alone are insufficient.
+
+The core captures raw unit resources/base stats/equipment, separate temporary HP,
+action/think/damage/break counters, selected/target unit references, the additional
+timeline list, basic AI skill plans and nested skill-stack targets. It retains
+duplicate unit IDs as separate entries. All actor references are translated to
+capture-local unit indices; null references use -1. An unresolved non-null target,
+duplicate actor/parameter, wrong owner or invalid collection causes refusal.
+Neither pointers nor shallow engine containers leave the core.
+
+These are raw stored components, **not displayed or fully calculated stats**.
+The native HP getter adds base HP at +0x10c to temporary HP at +0x268. MP and
+stagger getters clamp the underlying +0x110/+0x114 values against calculated maxima;
+the level getter applies a multiplier to the stored level at +0x100. Normalizing
+those values during capture would lose state. Raw maxima and base stats come from
+the reflected UNIT_PARAMETER embedded at +0xc8 and do not include every runtime
+modifier.
+
+Static evidence also establishes duplication ID +0x550, action count +0x4dc,
+think count +0x4fc, received-damage count +0x500 and break count +0x504. Reflected
+AI skill-stack entries are 24 bytes, with skill ID at 0 and a nested actor array
+at 8. The additional timeline array also contains battle actors. Per-array and
+aggregate reference/stack limits bound detached output.
+
+Continuous-effect count is recorded, but effect objects/durations, the main native
+scheduler, callbacks, additional AI state, RNG and lifecycle reconstruction are
+explicitly missing. The JSON is read-only, partial and non-restorable. Tests cover
+duplicate-ID identity mapping, nested targets, preserved raw values outside UI
+clamps, deep copying, ownership checks, dangling targets and aggregate bounds.
+
 The separate `FFRHelperRuntime` UE4SS mod:
 
 - Collects encounter-opening/end notifications where reflected hooks execute.

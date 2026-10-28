@@ -324,6 +324,49 @@ restorable output. None of this establishes live game compatibility by itself.
 
 ## Battle-opening restart: acceptance requirements
 
+### Native load prerequisites verified offline
+
+The new scoped load router and progression-rebind controller are callback-driven
+cores. They are **not connected to FFR, a runtime command or the restore UI**.
+The router permits one validity check and one in-memory slot-reader substitution
+for a private slot, exact manager, actual thread and exact native return addresses.
+Unrelated calls retain their original path. Closing the scope removes the borrowed
+target and prevents reuse. Its owner must retain both save objects through the
+verified engine rooting API for the entire synchronous operation.
+
+An isolated Windows executable verifies real MinHook detours around simulated
+native load functions. The simulated native function owns its pointer assignment
+and cache notifications; the detours substitute only its input. Wrong callers,
+threads and managers pass through. This proves routing mechanics, not the actual
+game's load delegates, cache consistency or world side effects.
+
+The rebind core requires durable, read-back recovery bytes matching the current
+root, imports and pins a separate target, verifies its bytes and input, and checks
+the original progression and field preconditions again immediately before its
+injected native-load callback. It marks the attempt before calling, never retries
+or rolls back automatically, and compares the resulting root, bytes and context.
+Uncertain application retains at most its two owned GC pins until process exit;
+pre-existing engine roots are preserved. Tests cover rejected prerequisites,
+changed recovery/target/input, callback exceptions, changed roots/bytes/context,
+pin-release failure and the one-attempt rule. A future adapter still needs exact
+function/ABI validation, one process-wide attempt and tested game-side effects.
+
+### Live playtime is a separate coverage gap
+
+The saved `Player.PlayTime` value was unchanged across the three live opening
+captures, despite elapsed wall time. Static inspection identifies a separate
+`CPP_PlayTimeSubsystem`: the normal save-preparation path adds its elapsed seconds
+to the saved float, then resets the live clock. The normal load path also resets
+that clock. Calling save preparation would write an ordinary slot, so the observer
+does not call it.
+
+Consequently, byte-identical progression import/rebinding alone cannot establish
+correct playtime restoration. A supported implementation needs a separately
+captured and validated live clock basis for both its target and recovery, alongside
+the existing live-position gap. Current captures do not provide that basis. The
+absence of a property from a serialized object is not evidence that every possible
+non-default value is omitted; no broader serialization-loss claim is made here.
+
 Before enabling a restart button, an implementation must demonstrate:
 
 1. Capture occurs before party resources or encounter flags change, including

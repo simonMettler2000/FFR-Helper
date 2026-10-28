@@ -79,6 +79,9 @@ public:
             return true;
         } catch(...) {return false;}
     }
+    bool retain_until_exit() noexcept {
+        const bool retained=owned;owned=false;return retained;
+    }
     ~ScopedObjectRoot() {if(owned)release();}
 };
 

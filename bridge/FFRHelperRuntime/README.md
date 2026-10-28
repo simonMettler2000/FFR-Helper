@@ -4,8 +4,8 @@ This separate adapter supports battle-restart/save-state research for the
 existing Steam game. It is **not a save-state implementation**, and it has not
 been verified in a live FFR session. It does not enable Saving anywhere.
 
-Live testing is currently deferred. These instructions are for when testing
-resumes; the app does not install anything automatically.
+Use these instructions for an explicitly opted-in test session. The app does
+not install a loader automatically.
 
 1. With the game closed, use an independently installed, compatible UE4SS
    loader. The loader is not bundled with FFR Helper.

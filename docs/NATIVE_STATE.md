@@ -12,8 +12,8 @@ The offline editor and ordinary-save checkpoints work independently. **Native
 battle-opening restart and mid-battle save-state restoration are not implemented.**
 The development build adds an optional read-only recorder and a Runtime research
 tab. This is a tool for the remaining implementation, not a replacement for it.
-No loader or recorder has been installed in the user's game, and no game process
-has been launched or altered as part of this work.
+Loader/recorder installation is opt-in, with the game closed. Live FFR
+compatibility has not yet been established.
 
 ## Verified static findings
 
@@ -113,11 +113,22 @@ remain separate from diagnostic reports and ordinary-save checkpoints.
 
 ## Future live verification
 
-In-game testing was deferred by the user. When it resumes, first confirm recorder
-compatibility and observations in an already-visited field and early encounter.
+First confirm recorder compatibility and observations in an already-visited
+field and early encounter.
 Do not enable mutation or restore hooks merely because recorder tests pass.
 Subsequent tests need repeated retries, deaths/summons/statuses and interrupted
 restores on disposable practice data before any completeness claim.
+
+For development sessions where the user operates the game, the optional command
+line collector maintains the observer lease and writes private timestamped reports:
+
+```sh
+python tools/observe_runtime.py /path/to/FFRHelperRuntime --output local/observations --duration 600
+```
+
+It prints only availability, battle-active state and collection counts. It never
+launches or controls the game, installs a loader or sends restore commands. At
+timeout or Ctrl+C it expires the lease. Keep its output outside source control.
 
 ## Platform references
 

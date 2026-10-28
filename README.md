@@ -1,7 +1,8 @@
 # FFR Helper
 
 An offline desktop practice tool for **Final Fantasy Resonance**, built for
-speedrunners and route planners. The current version is **0.1.0 alpha**.
+speedrunners and route planners. The stable alpha release is **0.1.0**; this
+development branch is **0.2.0.dev0** and adds native-runtime research tools.
 
 ## What works in this version
 
@@ -28,6 +29,17 @@ the matching artifact. The application's UI/save editor is cross-platform.
 Actual game runtime/compatibility-layer support is a separate concern.
 
 ## Still experimental / unavailable
+
+The development branch adds a **Runtime research** tab and a separate, read-only
+[native recorder](bridge/FFRHelperRuntime/README.md) for the existing Steam
+installation. It records observations, not restorable save states. See the
+[verified findings and remaining acceptance requirements](docs/NATIVE_STATE.md).
+No recorder or loader has been installed in the user's game. In-game testing
+remains deferred.
+
+Further development/testing of **Saving anywhere** is deferred until battle
+restart, native save states and the other requested features are implemented,
+unless the user requests otherwise. The existing field-save adapter is unchanged.
 
 The **Saving anywhere** checkbox uses an optional UE4SS field-save adapter.
 Its Lua logic and short-lived desktop lease are tested with a mocked engine;

@@ -18,6 +18,7 @@ from .editor import SaveEditor
 from .progression import INT_MAX, level_at, reference_data, route_totals
 from .storage import CheckpointStore, app_directory, discover_saves, write_save, atomic_write
 from .bridge import FieldSaveBridge, prepare_adapter
+from .runtime import RuntimeRecorder, prepare_recorder, export_report
 
 
 STYLE = """QMainWindow,QWidget{background:#f4f5f3;color:#22353e;font-family:'Segoe UI';font-size:13px}
@@ -80,6 +81,8 @@ class MainWindow(QMainWindow):
         self.source = None
         self.dirty = False
         self.bridge = None
+        self.recorder = None
+        self.runtime_report = None
         self.store = CheckpointStore()
         self.settings_path = app_directory() / 'settings.json'
         try:
@@ -113,6 +116,7 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self.inventory_page(), 'Items && equipment')
         self.tabs.addTab(self.route_page(), 'Route planner')
         self.tabs.addTab(self.practice_page(), 'Live practice')
+        self.tabs.addTab(self.runtime_page(), 'Runtime research')
         layout.addWidget(self.tabs, 1)
         self.status = text('Offline · Originals remain untouched until you choose “Write to selected slot”.', 'status')
         layout.addWidget(self.status)
@@ -123,6 +127,7 @@ class MainWindow(QMainWindow):
         self.refresh()
         self.bridge_timer = QTimer(self)
         self.bridge_timer.timeout.connect(self.poll_bridge)
+        self.bridge_timer.timeout.connect(self.poll_recorder)
         self.bridge_timer.start(500)
 
     def guard(self, operation):
@@ -348,6 +353,109 @@ class MainWindow(QMainWindow):
                 self.attach_bridge(target)
                 self.status.setText('Optional adapter prepared. Start the game with a compatible UE4SS loader; no game binaries were changed.')
             self.guard(operation)
+
+    def runtime_page(self):
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.addWidget(text('Native battle restart and save states are under development. This read-only recorder collects encounter setup and available combat values for compatibility research. It does not restore state or change gameplay.', 'notice'))
+        group = QGroupBox('Optional runtime recorder — unverified in game')
+        box = QVBoxLayout(group)
+        row = QHBoxLayout()
+        row.addWidget(button('Prepare recorder…', self.prepare_runtime))
+        row.addWidget(button('Connect recorder folder…', self.connect_runtime))
+        self.runtime_disconnect = button('Disconnect', self.disconnect_runtime)
+        self.runtime_disconnect.setEnabled(False)
+        row.addWidget(self.runtime_disconnect)
+        row.addStretch()
+        box.addLayout(row)
+        box.addWidget(text('Requires a compatible UE4SS installation. It is separate from the “Saving anywhere” adapter, whose development and testing are deferred. Installing or connecting the recorder never enables field saving.'))
+        self.runtime_status = text('Not connected. No game files or running game state have been changed.')
+        box.addWidget(self.runtime_status)
+        row = QHBoxLayout()
+        self.runtime_capture = button('Capture diagnostic report', self.capture_runtime)
+        self.runtime_export = button('Export report…', self.export_runtime)
+        self.runtime_capture.setEnabled(False)
+        self.runtime_export.setEnabled(False)
+        row.addWidget(self.runtime_capture)
+        row.addWidget(self.runtime_export)
+        row.addStretch()
+        box.addLayout(row)
+        layout.addWidget(group)
+        group = QGroupBox('What a reliable restore still needs')
+        box = QVBoxLayout(group)
+        box.addWidget(text('A battle-opening restart must restore party resources, items, progression and encounter setup, then restart the battle without duplicating rewards or story events.'))
+        box.addWidget(text('A mid-battle save state additionally needs enemy AI, turn order, statuses, summons, pending actions, event state and RNG. The normal save does not contain this state, and copying reflected values alone is incomplete.'))
+        box.addWidget(text('Diagnostic reports are labelled non-restorable and cannot be opened as game saves or checkpoints. Detailed reports contain numeric IDs from the current encounter; they are not displayed automatically.'))
+        layout.addWidget(group)
+        layout.addStretch()
+        return page
+
+    def prepare_runtime(self):
+        folder = QFileDialog.getExistingDirectory(self, 'Choose an existing UE4SS Mods directory for the read-only recorder')
+        if folder:
+            self.guard(lambda: self.attach_runtime(prepare_recorder(Path(folder))))
+
+    def connect_runtime(self):
+        folder = QFileDialog.getExistingDirectory(self, 'Choose the FFRHelperRuntime recorder directory', self.settings.get('recorderFolder', ''))
+        if folder:
+            self.guard(lambda: self.attach_runtime(Path(folder)))
+
+    def attach_runtime(self, folder):
+        recorder = RuntimeRecorder(folder)
+        recorder.heartbeat()
+        self.disconnect_runtime()
+        self.recorder = recorder
+        self.settings['recorderFolder'] = str(folder)
+        self.save_settings()
+        self.runtime_disconnect.setEnabled(True)
+        self.runtime_status.setText('Waiting for the read-only recorder. This does not enable “Saving anywhere”.')
+
+    def disconnect_runtime(self):
+        if self.recorder is not None:
+            self.guard(self.recorder.disconnect)
+        self.recorder = None
+        self.runtime_report = None
+        self.runtime_capture.setEnabled(False)
+        self.runtime_export.setEnabled(False)
+        self.runtime_disconnect.setEnabled(False)
+        self.runtime_status.setText('Disconnected. Capture requests and observation expire automatically.')
+
+    def capture_runtime(self):
+        if self.recorder is not None:
+            def operation():
+                self.recorder.capture()
+                self.runtime_report = None
+                self.runtime_export.setEnabled(False)
+                self.runtime_status.setText('Observation requested. The game continues normally; nothing is restored or changed.')
+            self.guard(operation)
+
+    def poll_recorder(self):
+        if self.recorder is None:
+            return
+        try:
+            self.recorder.heartbeat()
+            state = self.recorder.status()
+            self.runtime_capture.setEnabled(state is not None)
+            if state is None:
+                self.runtime_status.setText('Recorder not available. Waiting for a fresh matching connection.')
+                return
+            report = self.recorder.report()
+            if report is not None:
+                self.runtime_report = report
+                self.runtime_export.setEnabled(True)
+                self.runtime_status.setText(f'Diagnostic report captured · {len(report["events"])} recorded encounter events. Incomplete coverage; this is not a save state.')
+            elif self.runtime_report is None:
+                self.runtime_status.setText(state['message'])
+        except (OSError, ValueError):
+            self.runtime_capture.setEnabled(False)
+            self.runtime_status.setText('Recorder communication failed. No game state was changed.')
+
+    def export_runtime(self):
+        if self.runtime_report is None:
+            return
+        name, _ = QFileDialog.getSaveFileName(self, 'Export a non-restorable runtime report', 'observation.ffrruntime.json', 'Runtime diagnostic report (*.ffrruntime.json)')
+        if name:
+            self.guard(lambda: export_report(Path(name), self.runtime_report))
 
     def connect_bridge(self):
         folder = QFileDialog.getExistingDirectory(self, 'Choose the installed FFRHelper adapter directory', self.settings.get('adapterFolder', ''))
@@ -770,6 +878,11 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         if self.confirm_discard():
+            if self.recorder is not None:
+                try:
+                    self.recorder.disconnect()
+                except OSError:
+                    pass
             if self.bridge is not None:
                 try:
                     self.bridge.stop()

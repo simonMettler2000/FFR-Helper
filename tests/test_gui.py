@@ -1,5 +1,6 @@
 """In-process Qt logic tests; no user's desktop window is controlled."""
 import copy
+import json
 import os
 from pathlib import Path
 import tempfile
@@ -11,6 +12,7 @@ from PySide6.QtWidgets import QApplication
 from ffr_helper.app import MainWindow
 from ffr_helper.editor import SaveEditor
 from test_core import synthetic_save
+from test_runtime import sample_report
 
 
 class GuiTests(unittest.TestCase):
@@ -91,6 +93,44 @@ class GuiTests(unittest.TestCase):
         self.assertEqual(w.source, self.source)
         self.assertEqual(w.editor.experience(1001), 1234)
         self.assertEqual(self.source.read_bytes(), self.raw)
+
+    def test_runtime_connection_does_not_attach_or_enable_field_save(self):
+        w = self.window
+        target = self.directory/'FFRHelperRuntime'
+        (target/'connection').mkdir(parents=True)
+        w.attach_runtime(target)
+        self.assertIsNone(w.bridge)
+        self.assertFalse(w.save_anywhere.isEnabled())
+        self.assertFalse(w.save_anywhere.isChecked())
+        self.assertFalse(w.restart_battle.isEnabled())
+        self.assertTrue(w.runtime_disconnect.isEnabled())
+        self.assertFalse(w.runtime_capture.isEnabled())
+        w.disconnect_runtime()
+        self.assertIsNone(w.recorder)
+        self.assertEqual((target/'connection/observe.txt').read_text().splitlines()[2], '0')
+
+    def test_runtime_report_does_not_change_working_save_or_show_enemy_ids(self):
+        w = self.window
+        target = self.directory/'FFRHelperRuntime'
+        (target/'connection').mkdir(parents=True)
+        original = w.editor.export()
+        w.attach_runtime(target)
+        w.capture_runtime()
+        report = sample_report(w.recorder)
+        report['events'] = [dict(kind='encounter-opening', entry=dict(enemiesUnitIdList=[987654]))]
+        (target/'connection/runtime-report.json').write_text(json.dumps(report))
+        status = {key: report[key] for key in ['protocol', 'adapter', 'session', 'time', 'readOnly']}
+        status.update(hooks={}, message='Read-only connection')
+        (target/'connection/observer-status.json').write_text(json.dumps(status))
+        w.poll_recorder()
+        self.assertTrue(w.runtime_export.isEnabled())
+        self.assertTrue(w.runtime_capture.isEnabled())
+        self.assertIn('not a save state', w.runtime_status.text())
+        self.assertNotIn('987654', w.runtime_status.text())
+        self.assertEqual(w.editor.export(), original)
+        self.assertEqual(self.source.read_bytes(), self.raw)
+        w.disconnect_runtime()
+        self.assertFalse(w.runtime_export.isEnabled())
 
 
 if __name__ == '__main__':

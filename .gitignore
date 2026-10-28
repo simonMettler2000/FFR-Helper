@@ -10,6 +10,7 @@ dist/
 *.ffrpractice
 *.ffrsnapshot
 *.ffrroute
+*.ffrruntime.json
 *.spec
 local/
 screenshots/

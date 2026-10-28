@@ -1,5 +1,5 @@
-// Experimental, exact-build native entry observer. No gameplay-state setters,
-// disk save/load calls or restart commands. The original encounter call runs once.
+// Default build: exact-build observation only. The separately named practice
+// build adds an explicit opening-abort experiment, without restoration or saves.
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
@@ -12,6 +12,15 @@
 #endif
 #include "encounter_capture.hpp"
 #include "progression_capture.hpp"
+#ifdef FFR_PRACTICE_BUILD
+#include "abort_trial.hpp"
+#ifdef FFR_ABORT_PROFILE_HEADER
+#include FFR_ABORT_PROFILE_HEADER
+#else
+#include "abort_profile.hpp"
+#endif
+#include <set>
+#endif
 #include <atomic>
 #include <chrono>
 #include <deque>
@@ -165,6 +174,11 @@ struct Observer {
         std::int64_t time{};
         std::string session, entry;
         std::vector<unsigned char> progression;
+#ifdef FFR_PRACTICE_BUILD
+        ffr::Encounter encounter;
+        std::uint64_t context_identity{};
+        DWORD thread{};
+#endif
     };
     std::filesystem::path connection;
     std::mutex mutex;
@@ -177,6 +191,17 @@ struct Observer {
     std::atomic<unsigned> failures{0};
     std::atomic<unsigned> progression_failures{0};
     std::shared_ptr<const Opening> opening;
+#ifdef FFR_PRACTICE_BUILD
+    ffr::AbortTrial trial;
+    ffr::AbortGuard last_guard;
+    std::optional<ffr::AbortRequest> abort_request;
+    bool abort_available=false;
+    std::string abort_message="Abort trial has not initialized", opening_hash, recovery_hash;
+    std::int64_t probe_time{};
+    std::vector<unsigned char> after_progression;
+    std::string after_hash;
+    void publish_abort(const Lease& lease);
+#endif
     std::thread worker;
 
     std::string envelope(const Lease& lease) {
@@ -221,6 +246,9 @@ struct Observer {
                                 +",\"file\":\"opening-progression.gvas\",\"byteLength\":"+std::to_string(payload.size())
                                 +",\"sha256\":"+ffr::quote(digest)+",\"entry\":"+current_opening->entry+'}';
                             published=current_opening;
+#ifdef FFR_PRACTICE_BUILD
+                            {std::lock_guard lock(mutex); if(opening==current_opening) opening_hash=digest;}
+#endif
                         }
                     } else published=current_opening;
                 }
@@ -241,6 +269,9 @@ struct Observer {
                         std::lock_guard lock(mutex); request = lease->request;
                     }
                 }
+#ifdef FFR_PRACTICE_BUILD
+                publish_abort(*lease);
+#endif
             } catch (...) { /* Invalid input/I/O cannot affect the game's encounter call. */ }
             Sleep(250);
         }
@@ -251,6 +282,9 @@ struct Observer {
 // until process exit so an in-flight callback cannot return into unloaded code.
 std::unique_ptr<Observer> observer;
 std::atomic<Observer*> published_observer{nullptr};
+#ifdef FFR_PRACTICE_BUILD
+#include "abort_runtime.inl"
+#endif
 
 void __fastcall encounter_hook(void* context, const void* entry, bool skip_intro) {
     struct Guard {
@@ -274,6 +308,10 @@ void __fastcall encounter_hook(void* context, const void* entry, bool skip_intro
         if (json.size() > 128*1024) { current->failures.fetch_add(1); return; }
         auto opening=std::make_shared<Observer::Opening>();
         opening->entry=json; opening->time=seconds(); opening->session=capture_session;
+#ifdef FFR_PRACTICE_BUILD
+        opening->encounter=std::move(*copied); opening->context_identity=reinterpret_cast<std::uint64_t>(context);
+        opening->thread=GetCurrentThreadId();
+#endif
         try {
             auto progression=ffr::capture_progression(read_memory,root_getter,save_memory,memory_free);
             if (progression) opening->progression=std::move(*progression);
@@ -283,6 +321,9 @@ void __fastcall encounter_hook(void* context, const void* entry, bool skip_intro
         if (current->session!=capture_session || current->expires.load()<seconds() || current->quit.load()) return;
         opening->sequence=current->sequence+1;
         current->opening=std::move(opening);
+#ifdef FFR_PRACTICE_BUILD
+        current->opening_hash.clear();
+#endif
         auto event = "{\"kind\":\"encounter-opening-native\",\"sequence\":" + std::to_string(++current->sequence)
             + ",\"time\":" + std::to_string(seconds()) + ",\"capturePoint\":\"before-native-entry\",\"entry\":" + json + '}';
         while (!current->events.empty() && (current->events.size() >= 32 || current->event_bytes+event.size() > 384*1024)) {
@@ -357,7 +398,12 @@ extern "C" __declspec(dllexport) void* start_mod() noexcept {
     if (ever_started.exchange(true)) return nullptr;
     try {
         const auto root = module_path(own_module).parent_path().parent_path();
-        if (root.filename() != L"FFRHelperRuntimeNative" || !std::filesystem::is_directory(root/L"connection")) return nullptr;
+#ifdef FFR_PRACTICE_BUILD
+        const auto expected_folder=L"FFRHelperBattlePractice";
+#else
+        const auto expected_folder=L"FFRHelperRuntimeNative";
+#endif
+        if (root.filename() != expected_folder || !std::filesystem::is_directory(root/L"connection")) return nullptr;
         auto loader = GetModuleHandleW(L"UE4SS.dll");
         if (!loader || file_hash(module_path(loader)) != ffr::profile::loader_sha256) return nullptr;
         auto construct = reinterpret_cast<HostMethod>(GetProcAddress(loader, ffr::profile::constructor_name));
@@ -375,11 +421,19 @@ extern "C" __declspec(dllexport) void* start_mod() noexcept {
         observer->connection = root/L"connection";
         auto* state = observer.get();
         observer->worker = std::thread([state] { state->run(); });
-        install_entry_hook();
+        const auto installed=install_entry_hook();
+#ifdef FFR_PRACTICE_BUILD
+        if(installed)install_abort_tick_hook();
+#else
+        (void)installed;
+#endif
         return host_object;
     } catch (...) {
         if (observer) {
             observer->expires.store(0); observer->quit.store(true);
+#ifdef FFR_PRACTICE_BUILD
+            shutdown_abort_tick_hook();
+#endif
             if (observer->worker.joinable()) observer->worker.join();
             if (observer->ready.exchange(false)) MH_DisableHook(hook_address);
         }
@@ -397,6 +451,9 @@ extern "C" __declspec(dllexport) void uninstall_mod(void* object) noexcept {
     try {
         if (observer) {
             observer->expires.store(0); observer->quit.store(true);
+#ifdef FFR_PRACTICE_BUILD
+            shutdown_abort_tick_hook();
+#endif
             if (observer->worker.joinable()) observer->worker.join();
             if (observer->ready.exchange(false)) MH_DisableHook(hook_address);
         }
@@ -410,6 +467,13 @@ extern "C" __declspec(dllexport) void uninstall_mod(void* object) noexcept {
 
 extern "C" __declspec(dllexport) const char* ffr_observer_game_profile() noexcept { return ffr::profile::game_sha256; }
 extern "C" __declspec(dllexport) const char* ffr_observer_loader_profile() noexcept { return ffr::profile::loader_sha256; }
+extern "C" __declspec(dllexport) const char* ffr_observer_runtime_mode() noexcept {
+#ifdef FFR_PRACTICE_BUILD
+    return "experimental-abort-test";
+#else
+    return "read-only-observer";
+#endif
+}
 
 BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, LPVOID) {
     if (reason == DLL_PROCESS_ATTACH) { own_module = instance; DisableThreadLibraryCalls(instance); }

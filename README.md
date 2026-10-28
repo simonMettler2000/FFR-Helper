@@ -47,6 +47,12 @@ connect its separate recorder folder and export verified `.ffropening` diagnosti
 these archives remain non-restorable. Native capture requires a separate opt-in
 installation and never enables Saving anywhere.
 
+Restart development now includes tested encounter reconstruction and a separate
+[opening-abort experiment](native/ABORT_TRIAL.md). The experiment can request the
+game's ForceEnd path once after a verified recovery write. It has passed dummy
+process tests, but has not been installed/tested in FFR and does not restore or
+restart battles. It is packaged separately and disabled by default.
+
 Further development/testing of **Saving anywhere** is deferred until battle
 restart, native save states and the other requested features are implemented,
 unless the user requests otherwise. The existing field-save adapter is unchanged.

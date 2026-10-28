@@ -21,6 +21,41 @@ DWORD last_input_error{};
 unsigned serialized{}, released{}, last_serialized{};
 unsigned fixture_errors{};
 std::array<unsigned char,32> fake_root{};
+std::array<unsigned char,0x280> fake_manager{};
+std::array<unsigned char,0x80> fake_jobs{},fake_units{};
+std::array<unsigned char,0x90> fake_ui{};
+std::array<unsigned char,32> fake_world{},fake_map{};
+std::array<std::array<unsigned char,0x850>,2> fake_actors{};
+std::array<std::array<unsigned char,0x500>,2> fake_parameters{};
+unsigned abort_calls{},tick_calls{};
+float last_delta{};
+}
+extern "C" {__declspec(dllexport) std::uint64_t ffr_test_btl_vtable[1]={0};}
+extern "C" __declspec(dllexport) __declspec(noinline)
+void* __fastcall ffr_test_abort_get_world(void* manager) {
+    if(manager!=fake_manager.data()){++fixture_errors;return nullptr;}return fake_world.data();
+}
+extern "C" __declspec(dllexport) __declspec(noinline)
+void* __fastcall ffr_test_abort_get_map(void* world) {
+    if(world!=fake_world.data()){++fixture_errors;return nullptr;}return fake_map.data();
+}
+extern "C" __declspec(dllexport) __declspec(noinline)
+void* __fastcall ffr_test_abort_get_ui(void* world) {
+    if(world!=fake_world.data()){++fixture_errors;return nullptr;}return fake_ui.data();
+}
+extern "C" __declspec(dllexport) __declspec(noinline)
+void __fastcall ffr_test_abort_end_battle() {
+    ++abort_calls;fake_manager[0x222]=1;
+}
+extern "C" __declspec(dllexport) __declspec(noinline)
+void __fastcall ffr_test_abort_tick(void* context,float delta) {
+    ++tick_calls;last_delta=delta;
+    if(context!=fake_manager.data()+0x30)++fixture_errors;
+    if(fake_manager[0x222]) {
+        fake_manager[0x222]=0;fake_manager[0x1a9]=0;fake_ui[0x80]=0;
+        const std::int32_t zero=0;std::memcpy(fake_units.data()+0x30,&zero,4);
+    }
+    SetLastError(9876);
 }
 extern "C" __declspec(dllexport) __declspec(noinline)
 void* __fastcall ffr_test_root_getter() {
@@ -56,8 +91,10 @@ std::string read(const std::filesystem::path& path) {
     return std::string(std::istreambuf_iterator<char>(input), {});
 }
 void write(const std::filesystem::path& path, const std::string& value) {
-    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    auto temporary=path;temporary+=L".fixture-tmp";
+    std::ofstream out(temporary, std::ios::binary | std::ios::trunc);
     out << value; out.close(); CHECK(out.good());
+    CHECK(MoveFileExW(temporary.c_str(),path.c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH));
 }
 std::int64_t now() {
     return std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
@@ -72,8 +109,10 @@ template<class Condition> void wait_for(Condition condition) {
 template<class T> ffr::RawArray array(std::vector<T>& value) {
     return {reinterpret_cast<std::uint64_t>(value.data()), static_cast<std::int32_t>(value.size()), static_cast<std::int32_t>(value.size())};
 }
+void run_abort_fixture(const std::filesystem::path& connection,bool deny);
 }
 
+#include "abort_fixture.inl"
 int wmain(int argc, wchar_t** argv) {
     try {
         CHECK(argc == 5);
@@ -101,6 +140,12 @@ int wmain(int argc, wchar_t** argv) {
         }
         CHECK(object != nullptr && host_count() == 1);
         CHECK(start() == nullptr); // Restart is required; no duplicate detour/worker.
+        if(mode==L"abort"||mode==L"abort-denied") {
+            run_abort_fixture(connection,mode==L"abort-denied");stop(object);
+            CHECK(host_count()==0 && host_errors()==0 && fixture_errors==0);
+            CHECK(std::memcmp(initial_code,reinterpret_cast<const void*>(entry_function),sizeof(initial_code))==0);
+            std::cout<<"Experimental abort DLL fixture passed without FFR.\n";return 0;
+        }
         std::vector<std::int32_t> friends{1001, 1002}, enemies{11, 22}, positions{0, 1}, skills{77, 88};
         std::vector<ffr::RawArray> passives{array(skills)};
         std::vector<char16_t> bgm{u'F', u'i', u'x', u't', u'u', u'r', u'e', 0};

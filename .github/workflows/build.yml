@@ -34,7 +34,7 @@ jobs:
         shell: pwsh
         run: |
           $ffrMinHook = (Resolve-Path 'local/native-deps/minhook-1.3.4').Path
-          cmake -S native -B local/native-ci -A x64 -DFFR_BUILD_NATIVE_OBSERVER=ON "-DMINHOOK_SOURCE_DIR=$ffrMinHook"
+          cmake -S native -B local/native-ci -A x64 -DFFR_BUILD_NATIVE_OBSERVER=ON -DFFR_BUILD_ABORT_TRIAL=ON "-DMINHOOK_SOURCE_DIR=$ffrMinHook"
       - name: Build native capture
         run: cmake --build local/native-ci --config Release
       - name: Test detached data, real fixture detour and profile refusal
@@ -47,6 +47,16 @@ jobs:
         with:
           name: FFR-Helper-Native-Observer-Development
           path: dist/native-packages/*
+          if-no-files-found: error
+          retention-days: 30
+      - name: Package separate disabled opening-abort trial
+        if: runner.os == 'Windows'
+        run: python tools/package_abort_trial.py --dll local/native-ci/Release/FFRHelperBattlePractice.dll
+      - uses: actions/upload-artifact@v7
+        if: runner.os == 'Windows'
+        with:
+          name: FFR-Helper-Opening-Abort-Trial-Development
+          path: dist/abort-trial-packages/*
           if-no-files-found: error
           retention-days: 30
   desktop:

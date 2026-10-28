@@ -106,11 +106,55 @@ does not establish that every transition, event, achievement, autosave or reward
 side effect is bypassed. No ForceEnd operation has been invoked by the helper.
 The full state-machine teardown and reconstruction remain unverified.
 
-The native memory loader was located separately at RVA `0x3caf450`, and normal
+The native memory loader was located separately at RVA 0x3caf450, and normal
 loading additionally replaces the save manager object pointer and invokes game
 delegates. Merely deserializing an object does not rebind live managers, stop
 queued combat or reconstruct field actors. The prototype does not expose that
 loader or pointer replacement as a restore command.
+
+## Restart implementation after capture verification
+
+The portable reconstruction core now rebuilds every captured encounter field,
+including nested passives and UTF-16 strings, using supplied engine allocation
+and release functions. It never passes captured vector pointers into the game.
+Failure-injection tests cover each allocation boundary, detached copying,
+Unicode validation, ownership transfer and exactly-once consuming destruction.
+The verified engine allocator entry is RVA 0x12406c0 with size/alignment arguments;
+integration with actual native encounter recreation remains pending.
+
+The separately compiled [abort trial](../native/ABORT_TRIAL.md) adds a profiled
+battle-tick dispatcher and one EndBattle request, with session/revision/hash/nonce
+binding, expiry, a durable progression-only recovery gate and a second explicit
+commit. It checks the native command-menu boundary and rejects prior friendly
+actions, queued jobs and unsupported encounter flags. Cleanup observation includes
+the matching context and cleared battle UI/unit/job state. Isolated DLL fixtures
+verify the complete file/dispatcher path and exactly-once behavior, including
+rejection after a prior action. It has not been installed or tested in FFR.
+
+Profiled layout evidence includes the manager's secondary tick interface at
+offset 0x30, active flag at 0x1a9, unit/job managers at 0x48/0x40, unit parameter
+pointer at 0x838, unit ID at 0xd0 and action counter at 0x4dc. The UI phase is at
+0x50; the generated bDuringBattle setter writes the byte at 0x80. These reads
+are constrained to the exact binary and game thread. Empty queues alone are
+not accepted as sufficient evidence of a command menu or field return.
+
+There is still no deserialization/rebinding, complete abort rollback, battle
+recreation or mid-battle restoration. The trial's recovery file represents
+progression, not the running battle. The ordinary observer excludes this command
+path, and packaging checks refuse to label the trial DLL as read-only.
+
+## Loader compatibility profile
+
+The function missed by UE4SS's scan was independently located at RVA 0x15bce60
+through native object-construction call sites. A preparer now verifies the full
+game hash, x64 PE layout, executable section, function fingerprint and unique
+64-byte match before generating the supported UE4SS symbol-lookup override.
+The function bytes are extracted from the user's own executable and are not
+distributed in the repository. The generated lookup has no game calls or writes.
+It is staged locally and has not been installed or verified in a fresh launch.
+
+The generator follows the official UE4SS Register/OnMatchFound interface:
+[compatibility guide](https://github.com/UE4SS/UE4SS/blob/master/Guides/FixingBrokenAOBs.md).
 
 ## Verified static findings
 

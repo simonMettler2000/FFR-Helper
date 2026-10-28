@@ -21,6 +21,8 @@ def main():
     for export in [b'start_mod\0', b'uninstall_mod\0', b'ffr_observer_game_profile\0', b'ffr_observer_loader_profile\0']:
         if export not in raw:
             raise RuntimeError('Observer metadata/lifecycle exports are missing.')
+    if b'read-only-observer\0' not in raw or b'experimental-abort-test\0' in raw:
+        raise RuntimeError('A mutation-capable test build must never be packaged as the read-only observer.')
     args.output.mkdir(parents=True, exist_ok=True)
     target = args.output/'FFR-Helper-Native-Observer-Windows-x86_64-dev.zip'
     prefix = 'FFRHelperRuntimeNative/'

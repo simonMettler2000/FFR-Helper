@@ -81,6 +81,11 @@ python tools/observe_runtime.py <FFRHelperRuntimeNative-folder> --native --outpu
 
 This module does not enable or depend on Saving anywhere.
 
+A separate [opening-abort trial](ABORT_TRIAL.md) is compiled only when explicitly
+requested. Its game-thread command path is excluded from the ordinary observer.
+It is a mutation-capable experiment, has not been tested inside FFR, and does
+not yet perform restart or save-state restoration.
+
 The desktop or CLI verifies the sidecar against the matched report, parses its
 GVAS class/engine/property layout and exports a `.ffropening` archive. The archive
 contains the detached encounter setup, serialized progression and explicit

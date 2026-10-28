@@ -13,18 +13,27 @@ def main():
     parser.add_argument('--exe', required=True, type=Path)
     parser.add_argument('--loader', required=True, type=Path)
     parser.add_argument('--module', required=True, type=Path)
-    parser.add_argument('--mode', required=True, choices=['good', 'bad-game', 'bad-loader','bad-function'])
+    parser.add_argument('--mode', required=True, choices=['good', 'bad-game', 'bad-loader','bad-function','abort','abort-denied'])
     parser.add_argument('--work', required=True, type=Path)
     args = parser.parse_args()
     args.work.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=args.work.resolve()) as folder:
-        root = Path(folder)/'FFRHelperRuntimeNative'
+        root = Path(folder)/('FFRHelperBattlePractice' if args.mode.startswith('abort') else 'FFRHelperRuntimeNative')
         (root/'dlls').mkdir(parents=True)
         (root/'connection').mkdir()
         module = root/'dlls/main.dll'
         shutil.copy2(args.module, module)
         subprocess.run([str(args.exe.resolve()), str(module), str(args.loader.resolve()), str(root/'connection'), args.mode], check=True, timeout=30)
-        if args.mode != 'bad-loader':
+        if args.mode.startswith('abort'):
+            status=json.loads((root/'connection/abort-final-status.json').read_text(encoding='utf8'))
+            assert status['adapter']=='ffr-helper-opening-abort-trial' and status['readOnly'] is False
+            assert status['restorable'] is False and status['runtimeMode']=='experimental-abort-test'
+            assert status['phase']==('manager-cleared' if args.mode=='abort' else 'rejected')
+            if args.mode=='abort':
+                for key,name in [('recovery','abort-recovery.gvas'),('after','abort-after.gvas')]:
+                    raw=(root/'connection'/name).read_bytes()
+                    assert status[key]['sha256']==hashlib.sha256(raw).hexdigest() and status[key]['byteLength']==len(raw)
+        elif args.mode != 'bad-loader':
             report = json.loads((root/'connection/first-report.json').read_text(encoding='utf8'))
             assert report['adapter']=='ffr-helper-native-entry-observer'
             assert report['readOnly'] is True and report['restorable'] is False

@@ -13,18 +13,29 @@ def main():
     parser.add_argument('--exe', required=True, type=Path)
     parser.add_argument('--loader', required=True, type=Path)
     parser.add_argument('--module', required=True, type=Path)
-    parser.add_argument('--mode', required=True, choices=['good', 'bad-game', 'bad-loader','bad-function','abort','abort-denied'])
+    parser.add_argument('--mode', required=True, choices=['good', 'bad-game', 'bad-loader','bad-function','abort','abort-denied',
+                                                       'clone','clone-unready','clone-mismatch','clone-mutates','clone-denied'])
     parser.add_argument('--work', required=True, type=Path)
     args = parser.parse_args()
     args.work.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=args.work.resolve()) as folder:
-        root = Path(folder)/('FFRHelperBattlePractice' if args.mode.startswith('abort') else 'FFRHelperRuntimeNative')
+        root = Path(folder)/('FFRHelperBattlePractice' if args.mode.startswith(('abort','clone')) else 'FFRHelperRuntimeNative')
         (root/'dlls').mkdir(parents=True)
         (root/'connection').mkdir()
         module = root/'dlls/main.dll'
         shutil.copy2(args.module, module)
         subprocess.run([str(args.exe.resolve()), str(module), str(args.loader.resolve()), str(root/'connection'), args.mode], check=True, timeout=30)
-        if args.mode.startswith('abort'):
+        if args.mode.startswith('clone'):
+            status=json.loads((root/'connection/clone-final-status.json').read_text(encoding='utf8'))
+            assert status['readOnly'] is False and status['restorable'] is False and status['phase']=='idle'
+            probe=status['importProbe']
+            assert probe['available'] is True and probe['restorable'] is False and probe['pinsReleased'] is True
+            assert probe['phase']==('rejected' if args.mode in ['clone-unready','clone-denied'] else 'passed' if args.mode=='clone' else 'failed')
+            assert probe['passed']==(args.mode=='clone')
+            if args.mode=='clone-mismatch':assert probe['cloneMatches'] is False and probe['liveUnchanged'] is True
+            if args.mode=='clone-mutates':assert probe['cloneMatches'] is True and probe['liveUnchanged'] is False
+            assert probe['loaderReady']==(args.mode!='clone-unready')
+        elif args.mode.startswith('abort'):
             status=json.loads((root/'connection/abort-final-status.json').read_text(encoding='utf8'))
             assert status['adapter']=='ffr-helper-opening-abort-trial' and status['readOnly'] is False
             assert status['restorable'] is False and status['runtimeMode']=='experimental-abort-test'

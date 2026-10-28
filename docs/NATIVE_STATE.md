@@ -138,10 +138,50 @@ pointer at 0x838, unit ID at 0xd0 and action counter at 0x4dc. The UI phase is a
 are constrained to the exact binary and game thread. Empty queues alone are
 not accepted as sufficient evidence of a command menu or field return.
 
-There is still no deserialization/rebinding, complete abort rollback, battle
+There is still no live progression rebinding, complete abort rollback, battle
 recreation or mid-battle restoration. The trial's recovery file represents
 progression, not the running battle. The ordinary observer excludes this command
 path, and packaging checks refuse to label the trial DLL as read-only.
+
+## Detached import implementation
+
+The separate practice build now exposes an explicit import-only comparison,
+mutually exclusive with the abort trial. The command names only an observed
+session/revision/hash; it cannot supply file paths, arbitrary bytes, addresses or
+replacement values. It uses the observer's retained engine-produced opening.
+The native type gate validates the GVAS header/class/footer before calling the
+profiled memory loader. The desktop also validates the complete opening object.
+
+It keeps the current progression object assigned, creates a separate save UObject
+through LoadGameFromMemory, retains both objects with the exact loader's rooting
+API, then compares the clone serialization with the captured opening. Success
+also requires the original live pointer and serialized bytes to remain unchanged,
+the borrowed input to remain unchanged, and temporary roots to be released.
+Roots already owned by the engine are preserved. No live-root assignment, load
+delegate, EndBattle, encounter reconstruction or disk-slot write is invoked.
+
+This probe refuses an uninitialized UE4SS engine, including the symbol-scan
+failure observed on the last native capture launch. Export names/RVAs and full
+module hashes bind its primitive rooting calls; no SDK containers cross the DLL
+boundary. One attempt is supported per process, with no automatic command retry.
+Isolated real-DLL fixtures cover success, loader refusal, mismatched clones,
+changed live bytes and prior friendly actions. Live import remains unverified.
+
+## Remaining restore-state evidence gaps
+
+The three live opening GVAS captures contained identical saved map coordinates
+despite separate encounters. The root's map data therefore cannot be assumed to
+describe the current field position. A full field restore needs independently
+captured live location/orientation, map/streaming context and world-state coverage.
+The reflected MapManager encounter-location field alone has not been established
+as a complete field snapshot or safe restore target.
+
+Normal native loading assigns the deserialized root and broadcasts SaveData.Update,
+as well as load-start/end notifications and additional cache setup. A direct
+pointer swap would bypass those consumers. Tracing these handlers, their derived
+unit/quest/world caches and rollback behavior remains necessary before rebinding.
+Old/new UObject lifetime must stay valid throughout any future transaction.
+The detached import probe establishes a testable prerequisite, not restoration.
 
 ## Loader compatibility profile
 

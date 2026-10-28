@@ -1,5 +1,6 @@
 // Default build: exact-build observation only. The separately named practice
-// build adds an explicit opening-abort experiment, without restoration or saves.
+// build adds explicit opening-abort and detached-import experiments. Neither
+// replaces the live progression root, restores a battle or writes a game slot.
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
@@ -14,6 +15,12 @@
 #include "progression_capture.hpp"
 #ifdef FFR_PRACTICE_BUILD
 #include "abort_trial.hpp"
+#include "progression_clone.hpp"
+#ifdef FFR_IMPORT_PROFILE_HEADER
+#include FFR_IMPORT_PROFILE_HEADER
+#else
+#include "import_profile.hpp"
+#endif
 #ifdef FFR_ABORT_PROFILE_HEADER
 #include FFR_ABORT_PROFILE_HEADER
 #else
@@ -200,6 +207,10 @@ struct Observer {
     std::int64_t probe_time{};
     std::vector<unsigned char> after_progression;
     std::string after_hash;
+    bool import_available=false, import_attempted=false, import_loader_ready=false;
+    std::string import_nonce, import_session, import_hash, import_phase="idle";
+    std::uint64_t import_sequence{};
+    ffr::CloneProbeResult import_result;
     void publish_abort(const Lease& lease);
 #endif
     std::thread worker;

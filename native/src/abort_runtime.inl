@@ -30,7 +30,7 @@ std::optional<ffr::AbortRequest> read_abort_request(const std::filesystem::path&
         ||expiry.empty()||expiry.size()>12||expiry.find_first_not_of("0123456789")!=std::string::npos
         ||sequence.empty()||sequence.size()>18||sequence.find_first_not_of("0123456789")!=std::string::npos
         ||hash.size()!=64||hash.find_first_not_of("0123456789abcdef")!=std::string::npos
-        ||(phase!="prepare"&&phase!="commit"))return {};
+        ||(phase!="prepare"&&phase!="commit"&&phase!="probe-import"))return {};
     const auto deadline=std::stoll(expiry);const auto number=std::stoull(sequence);
     if(deadline<seconds()||deadline>seconds()+8||number==0)return {};
     return ffr::AbortRequest{session,nonce,hash,phase,deadline,number};
@@ -96,6 +96,8 @@ ffr::AbortGuard probe_abort(void* tick_context,const std::shared_ptr<const Obser
     return out;
 }
 
+#include "import_runtime.inl"
+
 void abort_tick(void* context) {
     auto* current=published_observer.load(std::memory_order_acquire);
     if(!current||current->quit.load())return;
@@ -113,6 +115,9 @@ void abort_tick(void* context) {
     {std::lock_guard lock(current->mutex);
         current->last_guard=guard;current->probe_time=now;current->trial.observe(guard,now);
     }
+    run_import_probe(current,opening,guard,request,now);
+    // The import-only and abort experiments cannot be combined in one launch.
+    {std::lock_guard lock(current->mutex);if(current->import_attempted)return;}
     if(request && request->phase=="prepare") {
         std::lock_guard lock(current->mutex);
         current->trial.prepare(*request,guard,now,[&] {
@@ -188,13 +193,21 @@ void Observer::publish_abort(const Lease& lease) {
         const auto after_metadata=json_object({{"kind",ffr::quote("progression-only")},{"restorable","false"},
             {"file",ffr::quote("abort-after.gvas")},{"sha256",ffr::quote(after_hash)},
             {"byteLength",std::to_string(after_progression.size())}});
+        const auto imported=json_object({{"available",json_flag(import_available)},{"loaderReady",json_flag(import_loader_ready)},
+            {"phase",ffr::quote(import_phase)},{"nonce",ffr::quote(import_nonce)},{"session",ffr::quote(import_session)},
+            {"openingHash",ffr::quote(import_hash)},
+            {"sequence",std::to_string(import_sequence)},{"passed",json_flag(import_result.passed)},
+            {"cloneMatches",json_flag(import_result.clone_matches)},{"liveUnchanged",json_flag(import_result.live_unchanged)},
+            {"inputUnchanged",json_flag(import_result.input_unchanged)},{"pinsReleased",json_flag(import_result.pins_released)},
+            {"byteLength",std::to_string(import_result.clone.size())},{"message",ffr::quote(import_result.message)},
+            {"restorable","false"}});
         status=json_object({{"protocol","1"},{"adapter",ffr::quote("ffr-helper-opening-abort-trial")},
             {"session",ffr::quote(lease.session)},{"time",std::to_string(seconds())},{"readOnly","false"},{"restorable","false"},
             {"format",ffr::quote("ffr-helper-abort-trial-status")},{"runtimeMode",ffr::quote("experimental-abort-test")},
             {"available",json_flag(abort_available)},{"nonce",ffr::quote(action.nonce)},{"trialSession",ffr::quote(action.session)},
             {"sequence",std::to_string(action.sequence)},{"phase",ffr::quote(ffr::phase_name(trial.phase()))},
             {"message",ffr::quote(abort_available?trial.message():abort_message)},{"probeTime",std::to_string(probe_time)},
-            {"guard",guard},{"recovery",recovery},{"after",after_metadata}});
+            {"guard",guard},{"recovery",recovery},{"after",after_metadata},{"importProbe",imported}});
     }
     write_atomic(connection/L"abort-status.json",status);
 }
@@ -211,6 +224,7 @@ void install_abort_tick_hook() {
         Sha256 hash;hash.add(code.data(),code.size());
         if(hash.finish()!=profile.second) {std::lock_guard lock(observer->mutex);observer->abort_message="Abort trial code profile mismatch; no tick hook installed";return;}
     }
+    initialize_import_probe();
     tick_address=reinterpret_cast<void*>(base+ffr::abort_profile::tick_rva);void* trampoline{};
     if(MH_CreateHook(tick_address,reinterpret_cast<void*>(&abort_tick_hook),&trampoline)!=MH_OK)return;
     original_tick.store(reinterpret_cast<TickFunction>(trampoline),std::memory_order_release);

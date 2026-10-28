@@ -2,6 +2,7 @@
 #define NOMINMAX
 #include <windows.h>
 #include "encounter_capture.hpp"
+#include "clone_payload.hpp"
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -21,6 +22,9 @@ DWORD last_input_error{};
 unsigned serialized{}, released{}, last_serialized{};
 unsigned fixture_errors{};
 std::array<unsigned char,32> fake_root{};
+std::array<unsigned char,32> fake_clone{};
+bool clone_fixture{},clone_mismatch{},clone_mutates{};
+unsigned clone_loads{};
 std::array<unsigned char,0x280> fake_manager{};
 std::array<unsigned char,0x80> fake_jobs{},fake_units{};
 std::array<unsigned char,0x90> fake_ui{};
@@ -31,6 +35,7 @@ unsigned abort_calls{},tick_calls{};
 float last_delta{};
 }
 extern "C" {__declspec(dllexport) std::uint64_t ffr_test_btl_vtable[1]={0};}
+extern "C" {__declspec(dllexport) std::uint64_t ffr_test_save_vtable[1]={0};}
 extern "C" __declspec(dllexport) __declspec(noinline)
 void* __fastcall ffr_test_abort_get_world(void* manager) {
     if(manager!=fake_manager.data()){++fixture_errors;return nullptr;}return fake_world.data();
@@ -63,12 +68,22 @@ void* __fastcall ffr_test_root_getter() {
 }
 extern "C" __declspec(dllexport) __declspec(noinline)
 bool __fastcall ffr_test_save_memory(void* object, ffr::RawArray* output) {
-    if (object!=fake_root.data()) { ++fixture_errors; return false; } ++serialized;
-    const unsigned char bytes[]{'G','V','A','S',3,0,0,0,static_cast<unsigned char>(41+serialized),7,9,0};
-    auto* data=HeapAlloc(GetProcessHeap(),0,sizeof(bytes)); if (!data) return false;
-    std::memcpy(data,bytes,sizeof(bytes));
-    *output={reinterpret_cast<std::uint64_t>(data),sizeof(bytes),sizeof(bytes)};
+    if (object!=fake_root.data() && !(clone_fixture && object==fake_clone.data())) { ++fixture_errors; return false; } ++serialized;
+    auto bytes=clone_fixture?clone_fixture_payload():std::vector<unsigned char>{'G','V','A','S',3,0,0,0,static_cast<unsigned char>(41+serialized),7,9,0};
+    if(clone_fixture && ((clone_mismatch && object==fake_clone.data()) || (clone_mutates && clone_loads && object==fake_root.data())))bytes[8]^=1;
+    auto* data=HeapAlloc(GetProcessHeap(),0,bytes.size()); if (!data) return false;
+    std::memcpy(data,bytes.data(),bytes.size());
+    *output={reinterpret_cast<std::uint64_t>(data),static_cast<std::int32_t>(bytes.size()),static_cast<std::int32_t>(bytes.size())};
     return true;
+}
+extern "C" __declspec(dllexport) __declspec(noinline)
+void* __fastcall ffr_test_load_memory(const ffr::RawArray* input) {
+    ++clone_loads;const auto expected=clone_fixture_payload();
+    if(!clone_fixture || input->count!=static_cast<int>(expected.size())
+        || input->capacity!=input->count || std::memcmp(reinterpret_cast<void*>(input->data),expected.data(),expected.size())) {
+        ++fixture_errors;return nullptr;
+    }
+    return fake_clone.data();
 }
 extern "C" __declspec(dllexport) __declspec(noinline)
 void __fastcall ffr_test_memory_free(void* data) {
@@ -110,9 +125,11 @@ template<class T> ffr::RawArray array(std::vector<T>& value) {
     return {reinterpret_cast<std::uint64_t>(value.data()), static_cast<std::int32_t>(value.size()), static_cast<std::int32_t>(value.size())};
 }
 void run_abort_fixture(const std::filesystem::path& connection,bool deny);
+void run_clone_fixture(const std::filesystem::path& connection,const std::wstring& mode,HMODULE loader);
 }
 
 #include "abort_fixture.inl"
+#include "clone_fixture.inl"
 int wmain(int argc, wchar_t** argv) {
     try {
         CHECK(argc == 5);
@@ -140,6 +157,12 @@ int wmain(int argc, wchar_t** argv) {
         }
         CHECK(object != nullptr && host_count() == 1);
         CHECK(start() == nullptr); // Restart is required; no duplicate detour/worker.
+        if(mode.starts_with(L"clone")) {
+            run_clone_fixture(connection,mode,loader);stop(object);
+            CHECK(host_count()==0 && host_errors()==0 && fixture_errors==0);
+            CHECK(std::memcmp(initial_code,reinterpret_cast<const void*>(entry_function),sizeof(initial_code))==0);
+            std::cout<<"Detached import DLL fixture passed without FFR.\n";return 0;
+        }
         if(mode==L"abort"||mode==L"abort-denied") {
             run_abort_fixture(connection,mode==L"abort-denied");stop(object);
             CHECK(host_count()==0 && host_errors()==0 && fixture_errors==0);

@@ -53,6 +53,13 @@ def main():
         abort_text+=f'inline constexpr std::uintptr_t {function}_rva={rva};\ninline constexpr char {function}_sha256[]="{digest}";\n'
     abort_text+=f'inline constexpr std::uintptr_t manager_vtable_rva={game_pe.exports["ffr_test_btl_vtable"]};\n}}\n'
     (output/'good_abort_profile.hpp').write_text(abort_text,encoding='utf8')
+    clone_rva=game_pe.exports['ffr_test_load_memory'];clone_start=game_pe.offset(clone_rva)
+    import_text='#pragma once\n#include <cstdint>\nnamespace ffr::import_profile {\n'
+    import_text+=f'inline constexpr std::uintptr_t load_memory_rva={clone_rva};\ninline constexpr char load_memory_sha256[]="{hashlib.sha256(game_pe.raw[clone_start:clone_start+64]).hexdigest()}";\n'
+    import_text+=f'inline constexpr std::uintptr_t save_vtable_rva={game_pe.exports["ffr_test_save_vtable"]};\n'
+    for key,name in [('loader_ready','ffr_test_loader_ready'),('is_rooted','ffr_test_object_rooted'),('add_root','ffr_test_object_add_root'),('remove_root','ffr_test_object_remove_root')]:
+        import_text+=f'inline constexpr char {key}_name[]="{name}";\ninline constexpr std::uintptr_t {key}_rva={loader_pe.exports[name]};\n'
+    (output/'good_import_profile.hpp').write_text(import_text+'}\n',encoding='utf8')
     extra_functions = {name: game_pe.exports['ffr_test_'+name] for name in ['root_getter','save_memory','memory_free']}
     for name in ['good', 'bad_game', 'bad_loader', 'bad_function']:
         text = f'''#pragma once

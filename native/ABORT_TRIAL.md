@@ -2,9 +2,11 @@
 
 This is a separate, mutation-capable development component. It has passed
 isolated dummy-process tests but has **not been installed or tested in FFR**.
-It does not restart a battle, deserialize a save or restore a save state.
+It does not restart a battle, replace live progression or restore a save state.
+It now also has a separate, explicit **detached import comparison** described
+below. Creating a comparison UObject does not apply it to the running game.
 
-The next implementation milestone is verifying the game's ForceEnd cleanup
+One implementation milestone is verifying the game's ForceEnd cleanup
 without a win, loss or escape. This trial can request that path once at the
 first player-command menu of a captured ordinary encounter. It is intended for
 a separately approved test with backed-up practice data.
@@ -84,7 +86,49 @@ then compares counters, inventory, EXP/MRP and HP/MP after native cleanup. HP/MP
 differences are reported separately because field effects can run after cleanup.
 The comparison does not claim that mid-battle state was restored.
 
-After live ForceEnd behavior is understood, the remaining restart work is
-deserialization/rebinding and reconstruction through the verified engine allocator.
+## Detached import comparison
+
+This separate experiment invokes the exact-profile LoadGameFromMemory on the
+observer's own retained opening bytes. It cannot accept a file path or bytes from
+the client. The native header gate checks GVAS version, engine, save class and
+footer; the desktop additionally parses the complete captured object.
+
+The experiment requires the same ordinary first-command boundary as the abort
+trial, plus successful UE4SS engine initialization. If the loader's symbol scan
+failed, the command refuses to create an object. Its primitive rooting exports
+are resolved by exact name and RVA against the already verified loader hash.
+No loader C++ containers or SDK object layouts cross the DLL boundary.
+
+The live root remains assigned throughout. Temporary GC roots retain the live
+object and detached clone for the synchronous comparison. Existing roots belong
+to the engine and are preserved. The clone must have the exact save vtable and
+same class as the current save. Success requires all of:
+
+- Clone serialization exactly equals the captured opening bytes.
+- The input buffer is unchanged.
+- The live save pointer and its before/after serialized bytes are unchanged.
+- Every temporary root added by the probe is verified released.
+
+One attempt per process is supported; abort and import probes cannot be combined
+in the same launch. Uncertain release retains at most the probe's two objects
+until process exit and reports failure. There is no automatic retry or recovery
+write. The ordinary read-only observer excludes this code entirely.
+
+Observe availability without issuing an import:
+
+    python tools/run_import_probe.py <FFRHelperBattlePractice-folder> --output local/import-observe --duration 300
+
+Explicitly request one detached import comparison:
+
+    python tools/run_import_probe.py <FFRHelperBattlePractice-folder> --output local/import-test --duration 300 --probe-import
+
+The private receipt binds session, nonce, opening revision and hash. It reports
+comparison outcomes without presenting enemy/story details. Isolated DLL fixtures
+cover success, uninitialized-loader refusal, clone mismatch, live-data changes,
+prior party actions and command replay. **Live FFR verification remains pending.**
+
+After ForceEnd and detached import behavior are understood, remaining restart
+work includes live progression rebinding and verified cache notifications, then
+reconstruction through the engine allocator.
 Full mid-battle states additionally require scheduler, AI, status, jobs, event and
 RNG reconstruction. Those operations are not exposed by this trial.

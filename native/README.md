@@ -23,7 +23,7 @@ rewards, with independent archives and no capture failures.
   loaded 64-byte code fingerprints before hooking.
   No signature scan or guessed fallback is used.
 - Uses a MinHook detour to observe one native entry point. This changes code
-  routing; it does **not** write gameplay values. It is opt-in and unverified.
+  routing; it does **not** write gameplay values. Installation is opt-in.
 - Reads input through bounded `ReadProcessMemory` calls within the game process.
   Arrays, nested passives, strings, flags and floating-point values are validated.
 - Retains only detached vectors/UTF-8 strings. No engine pointer is exported or

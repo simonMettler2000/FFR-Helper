@@ -35,10 +35,12 @@ void run_abort_fixture(const std::filesystem::path& connection,bool deny) {
     ffr::RawEntry entry{};entry.friend_ids=array(friends);entry.friend_locations=array(positions);
     entry.enemy_ids=array(enemies);entry.group=123;entry.stage=456;entry.event=-1;entry.can_escape=1;entry.escape_probability=50;
     ffr_test_encounter(fake_map.data(),&entry,false);
-    wait([&] {const auto s=read(connection/L"abort-status.json");
-        return s.find("\"commandMenu\":true")!=std::string::npos && s.find("\"openingHash\":\"\"")==std::string::npos;});
+    const std::string key="\"openingHash\":\"";
+    wait([&] {const auto s=read(connection/L"abort-status.json");const auto pos=s.find(key);
+        return s.find("\"commandMenu\":true")!=std::string::npos && pos!=std::string::npos
+            && s.size()>pos+key.size() && s[pos+key.size()]!='"';});
     const auto ready=read(connection/L"abort-status.json");CHECK(ready.find("\"available\":true")!=std::string::npos);
-    const std::string key="\"openingHash\":\"";const auto start=ready.find(key);CHECK(start!=std::string::npos);
+    const auto start=ready.find(key);CHECK(start!=std::string::npos);
     const auto hash=ready.substr(start+key.size(),64);CHECK(hash.size()==64 && hash.find('"')==std::string::npos);
     const auto deadline=now()+8;
     auto request=[&](const std::string& phase) {

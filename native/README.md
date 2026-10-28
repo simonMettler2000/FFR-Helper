@@ -1,8 +1,8 @@
 # Experimental native encounter-entry observer
 
 **Development component, not installed by the desktop app.** This module has
-not been tested inside FFR. It does not restart battles or restore save states.
-The separately tested Lua recorder remains the current live observation tool.
+been verified across three ordinary FFR encounters on the exact target build.
+It does not restart battles or restore save states.
 
 The tested ordinary encounter bypassed reflected opening hooks. This prototype
 instead observes the native map manager's encounter entry. It deep-copies all
@@ -10,7 +10,9 @@ known `BATTLE_ENTRY_DATA` fields before forwarding the original call exactly onc
 At that same boundary it calls the verified engine in-memory serializer on the
 current progression object, copies the resulting GVAS bytes into its own storage,
 and frees the temporary buffer through the game's allocator. Resource/progression
-coverage still needs a live comparison; RNG and full combat state are not captured.
+coverage remains incomplete; RNG and full combat state are not captured. The live
+test verified serialized progression changes after fleeing and collecting victory
+rewards, with independent archives and no capture failures.
 
 ## Bounds and compatibility
 
@@ -62,11 +64,11 @@ ctest --test-dir local/native-build -C Release --output-on-failure
 The dependency fetch validates the pinned official source archive and refuses
 to overwrite altered cached files. No game or loader binaries are distributed.
 
-The DLL is `local/native-build/Release/main.dll`. **Do not load it for routine
-play.** Live compatibility, pre-entry timing and teardown still need verification.
-An opted-in future test would use a separate `FFRHelperRuntimeNative/dlls/main.dll`
+The DLL is `local/native-build/Release/main.dll`. It is a development recorder;
+scripted/preemptive encounter coverage and teardown still need verification.
+An opted-in installation uses a separate `FFRHelperRuntimeNative/dlls/main.dll`
 directory, an existing `connection/` directory, and an enabled marker under UE4SS
-Mods. This native observer DLL has not been installed in the game. The desktop
+Mods. The approved local test installation used that layout. The desktop
 Prepare control installs the Lua recorder only. Connect accepts either recorder
 folder and selects the matching protocol identity. The native DLL must be
 installed separately for an opted-in test.
@@ -94,6 +96,13 @@ and Win32 error state, malformed-input transparency, lease expiry, code restorat
 on unload, game-allocator cleanup on failed capture, binary/report hash binding,
 and rejection of mismatched game/loader/serializer profiles. This fixture is not
 FFR and does not establish live game compatibility.
+
+The separate live test produced three validated opening archives. The original
+remained byte-identical after a user command and subsequent encounters. Escape
+and win counters, resources and credited EXP/MRP changes were observed in later
+openings. The auxiliary Lua recorder failed UE4SS engine-pattern initialization
+on that launch; the independent native capture remained functional. See the
+[live findings](../docs/NATIVE_STATE.md). Restore/abort operations were not tested.
 
 CI also builds the portable copying core on Linux and macOS. The development
 package tool accepts only production-profile DLLs, includes the required licenses,

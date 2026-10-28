@@ -44,7 +44,7 @@ closed; live-slot writes now fail closed in that context. The normal profile
 save directory is also considered when LOCALAPPDATA is redirected.
 
 All raw reports, save backups and user-specific values stay outside Git. No game
-progression/resource setters, save/load calls or restore operations were invoked.
+progression/resource setters, disk save/load calls or restore operations were invoked.
 
 ## Native capture prototype after the live test
 
@@ -52,18 +52,40 @@ An [experimental C++ entry observer](../native/README.md) now builds independent
 of the Lua recorder. It uses exact binary/prologue fingerprints and a single
 native detour to copy encounter setup before forwarding the original call. It
 has passed an isolated executable/DLL harness, including mismatch refusal and
-lease expiry. It has **not** been installed or verified in FFR and does not
-implement restoration. It now serializes the current progression object in memory
+lease expiry. It has now been installed with explicit approval and verified
+across three live ordinary encounters. It does not implement restoration.
+It serializes the current progression object in memory
 at the same entry point, frees the game's temporary allocation and publishes a
 bounded, hashed GVAS sidecar. The desktop/CLI can validate and export it as a
-non-restorable `.ffropening` archive. Live progression/resource coverage and RNG
-remain outstanding alongside the reconstruction/restore path.
+non-restorable `.ffropening` archive. Broader state coverage and RNG remain
+outstanding alongside the reconstruction/restore path.
 
 The native fixture verifies that serialization completes before the original
 encounter call, the original still executes once, and engine-owned output is
 freed on success/failure. Python tests retain EXP, MRP, HP/MP, inventory and unknown
 fields through archive export/import. These tests establish the capture/storage
-mechanism, not the state actually synchronized by FFR at that point.
+mechanism. The subsequent live test established the following observed behavior:
+
+- All three encounter entries produced independently verified GVAS archives with
+  no encounter-copy or progression-serialization failures.
+- All current party members were present, with saved HP/MP, EXP, inventory and
+  per-character vision MRP values. Every payload passed a byte-identical codec
+  round trip, in addition to its reported size/hash/build checks.
+- Executing a command left the first opening's bytes and metadata unchanged.
+- Fleeing, then entering another encounter, produced a new opening with an
+  incremented escape counter, changed resources and unchanged EXP/MRP.
+- Winning the next battle and collecting rewards produced a third opening with
+  increased party EXP, positive vision MRP changes and an incremented win counter.
+  Both earlier opening archives retained their original hashes.
+- The native recorder produced 350 private reports. Both collection leases were
+  explicitly expired after the test; no abort or restoration was invoked.
+
+The auxiliary Lua recorder did not initialize on this launch: UE4SS's engine
+pattern scan timed out locating `StaticConstructObject_Internal`. It produced no
+fresh reports. The native observer initialized independently and remained active,
+so this run does not provide a simultaneous Lua comparison of battle-only fields.
+That loader-initialization issue remains to be addressed separately. No signature
+override or additional hook was installed during this live test.
 
 ## In-memory progression and teardown findings
 
@@ -188,11 +210,12 @@ remain separate from diagnostic reports and ordinary-save checkpoints.
 
 ## Future live verification
 
-The next test checks the separately built native observer in an already-visited
-field and ordinary encounter. Verify native entry timing and compare serialized
-EXP/MRP, inventory and resources with the actual opening before implementing
-restoration. Capture a second encounter to check replacement/independence. The
-previous Lua test already established basic live combat observation.
+The three-encounter native test is complete. Native capture and replacement,
+preservation of earlier openings, escape counters and victory EXP/MRP updates were
+observed in ordinary encounters. Further coverage must include scripted/preemptive
+variants and a simultaneous comparison with live battle resources. The previous
+Lua test established basic combat observation, but its initialization failed on
+the native test launch as described above.
 Do not enable mutation or restore hooks merely because recorder tests pass.
 Subsequent tests need repeated retries, deaths/summons/statuses and interrupted
 restores on disposable practice data before any completeness claim.

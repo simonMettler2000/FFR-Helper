@@ -41,7 +41,8 @@ overworld–battle–overworld cycle. Native restoration remains unimplemented.
 
 An experimental [native entry capture](native/README.md) also deep-copies encounter
 setup and serializes progression before the native encounter call. It has passed
-an isolated Windows harness but has not been tested inside FFR. The desktop can
+an isolated Windows harness and a three-encounter live capture test, including
+escape and victory EXP/MRP changes. This verifies capture, not restoration. The desktop can
 connect its separate recorder folder and export verified `.ffropening` diagnostics;
 these archives remain non-restorable. Native capture requires a separate opt-in
 installation and never enables Saving anywhere.

@@ -8,10 +8,12 @@ import json
 import math
 from pathlib import Path
 import re
+import struct
 import zipfile
 
 from .codec import SaveDocument
 from .game_build import GAME_SHA256
+from .playtime import validate_playtime_basis
 from .storage import atomic_write
 
 MAX_PROGRESSION = 16 * 1024 * 1024
@@ -43,6 +45,8 @@ def _metadata(value):
                 or len(anchor['position']) != 3
                 or any(type(v) not in (int, float) or abs(v) > 1e12 or not math.isfinite(v) for v in anchor['position'])):
             raise ValueError('Invalid partial field anchor; it cannot represent a complete world state.')
+    if value.get('playtimeBasis') is not None:
+        validate_playtime_basis(value['playtimeBasis'])
     raw = json.dumps(value, ensure_ascii=False, allow_nan=False).encode('utf8')
     if len(raw) > MAX_METADATA:
         raise ValueError('Encounter-opening metadata exceeds its limit.')
@@ -68,6 +72,14 @@ class OpeningCapture:
         # Existence/uniqueness is required; unknown properties remain untouched.
         for name in ['player', 'unitParameterList', 'inventory', 'visionList']:
             document.root[name]
+        if metadata.get('playtimeBasis') is not None:
+            try:
+                saved = document.root['player'].struct()['PlayTime']
+            except (KeyError, ValueError) as error:
+                raise ValueError('Playtime basis requires a matching serialized Player.PlayTime.') from error
+            if (saved.kind.name != 'FloatProperty' or len(saved.raw) != 4
+                    or struct.unpack('<f', saved.raw)[0] != metadata['playtimeBasis']['savedSeconds']):
+                raise ValueError('Playtime basis does not match serialized Player.PlayTime.')
         return self
 
 

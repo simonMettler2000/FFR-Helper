@@ -1,6 +1,7 @@
 import copy
 import hashlib
 import json
+import struct
 from pathlib import Path
 import tempfile
 import time
@@ -12,7 +13,9 @@ from ffr_helper.editor import SaveEditor
 from ffr_helper.opening import GAME_SHA256, OpeningCapture, export_opening, load_opening, read_live_opening
 from ffr_helper.runtime import NativeEntryRecorder
 from ffr_helper.storage import CheckpointStore
-from test_core import synthetic_save
+from test_core import synthetic_save, prop
+from ffr_helper.codec import TypeNode
+from test_playtime import sample_basis
 from test_runtime import sample_report
 
 
@@ -26,6 +29,33 @@ def sample_opening():
 
 
 class OpeningTests(unittest.TestCase):
+    def test_optional_live_playtime_round_trips_and_matches_serialized_base(self):
+        capture = sample_opening()
+        document = SaveDocument.decode(capture.progression)
+        document.root['player'].struct().properties.append(prop('PlayTime', TypeNode('FloatProperty'), struct.pack('<f', 1000.25)))
+        raw = document.prefix + document.root.encode() + bytes(4)
+        capture = OpeningCapture(dict(capture.metadata, byteLength=len(raw), sha256=hashlib.sha256(raw).hexdigest(),
+                                      playtimeBasis=sample_basis()), raw)
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder)/'clock.ffropening'
+            export_opening(path, capture)
+            self.assertEqual(load_opening(path).metadata['playtimeBasis'], sample_basis())
+        capture.metadata['playtimeBasis']['savedSeconds'] = 1001.25
+        with self.assertRaisesRegex(ValueError, 'does not match serialized'):
+            capture.validate()
+
+    def test_playtime_basis_requires_present_unambiguous_float_in_progression(self):
+        capture = sample_opening()
+        capture.metadata['playtimeBasis'] = sample_basis()
+        with self.assertRaisesRegex(ValueError, 'matching serialized'):
+            capture.validate()
+        document = SaveDocument.decode(capture.progression)
+        document.root['player'].struct().properties.append(prop('PlayTime', TypeNode('IntProperty'), struct.pack('<i', 1000)))
+        raw = document.prefix + document.root.encode() + bytes(4)
+        metadata = dict(capture.metadata, byteLength=len(raw), sha256=hashlib.sha256(raw).hexdigest())
+        with self.assertRaisesRegex(ValueError, 'does not match serialized'):
+            OpeningCapture(metadata, raw).validate()
+
     def test_optional_partial_live_field_anchor_round_trips_without_restore_claims(self):
         capture = sample_opening()
         capture.metadata['fieldAnchor'] = dict(kind='partial-field-anchor', restorable=False,

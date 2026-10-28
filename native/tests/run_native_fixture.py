@@ -97,11 +97,20 @@ def main():
                 assert anchor['position']==[123.125,-456.25,7.5]
                 assert report['objects']['nativeEntry']['fieldAnchorReady'] is True
                 assert report['objects']['nativeEntry']['fieldAnchorFailures']==0
+                sys.path.insert(0,str(Path(__file__).resolve().parents[2]))
+                from ffr_helper.playtime import validate_playtime_basis
+                basis=validate_playtime_basis(metadata['playtimeBasis'])
+                assert basis['savedSeconds']==1000.25 and basis['startSeconds']==9000
+                assert basis['sampleSeconds']==10000 and basis['totalSuspendedSeconds']==30 and basis['elapsedSeconds']==970
+                assert basis['suspendedStartSeconds']==0 and basis['restorable'] is False
+                assert report['objects']['nativeEntry']['playtimeBasisReady'] is True
+                assert report['objects']['nativeEntry']['playtimeBasisFailures']==0
                 replacement=json.loads((root/'connection/replacement-report.json').read_text(encoding='utf8'))
                 second=replacement['objects']['nativeEntry']['opening']
                 second_raw=(root/'connection/replacement-progression.gvas').read_bytes()
                 assert second['sequence']==2 and second['entry']['friendliesUnitIdList']==[9999,1002]
                 assert second['sha256']==hashlib.sha256(second_raw).hexdigest() and second_raw[8]==43
+                assert second['playtimeBasis'] is None and replacement['objects']['nativeEntry']['playtimeBasisFailures']==1
                 assert progression[8]==42 and metadata['entry']['friendliesUnitIdList']==[1001,1002]
                 after=json.loads((root/'connection/after-expiry-report.json').read_text(encoding='utf8'))
                 assert len(after['events'])==2 and after['objects']['nativeEntry']['captureFailures']==1

@@ -14,6 +14,12 @@
 #include "encounter_capture.hpp"
 #include "progression_capture.hpp"
 #include "field_anchor.hpp"
+#include "playtime_capture.hpp"
+#ifdef FFR_PLAYTIME_PROFILE_HEADER
+#include FFR_PLAYTIME_PROFILE_HEADER
+#else
+#include "playtime_profile.hpp"
+#endif
 #ifdef FFR_FIELD_PROFILE_HEADER
 #include FFR_FIELD_PROFILE_HEADER
 #else
@@ -62,6 +68,11 @@ FieldObjectGetter field_world{},field_map{};
 FieldPlayerGetter field_player{};
 FieldMapIdGetter field_map_id{};
 std::atomic<bool> field_profile_ready{false};
+using PlaytimeClockGetter=void*(__fastcall*)();
+using PlaytimeSecondsGetter=std::int64_t(__fastcall*)();
+PlaytimeClockGetter playtime_clock{};
+PlaytimeSecondsGetter playtime_seconds{};
+std::atomic<bool> playtime_profile_ready{false};
 HMODULE own_module{};
 std::atomic<EntryFunction> original_entry{nullptr};
 void* hook_address{};
@@ -195,6 +206,7 @@ struct Observer {
         std::int64_t time{};
         std::string session, entry;
         std::string field_anchor="null";
+        std::string playtime_basis="null";
         std::vector<unsigned char> progression;
 #ifdef FFR_PRACTICE_BUILD
         ffr::Encounter encounter;
@@ -213,6 +225,7 @@ struct Observer {
     std::atomic<unsigned> failures{0};
     std::atomic<unsigned> progression_failures{0};
     std::atomic<unsigned> field_failures{0};
+    std::atomic<unsigned> playtime_failures{0};
     std::shared_ptr<const Opening> opening;
 #ifdef FFR_PRACTICE_BUILD
     ffr::AbortTrial trial;
@@ -278,7 +291,8 @@ struct Observer {
                                 +",\"capturePoint\":\"before-native-entry\",\"gameSha256\":"+ffr::quote(ffr::profile::game_sha256)
                                 +",\"file\":\"opening-progression.gvas\",\"byteLength\":"+std::to_string(payload.size())
                                 +",\"sha256\":"+ffr::quote(digest)+",\"entry\":"+current_opening->entry
-                                +",\"fieldAnchor\":"+current_opening->field_anchor+'}';
+                                +",\"fieldAnchor\":"+current_opening->field_anchor
+                                +",\"playtimeBasis\":"+current_opening->playtime_basis+'}';
                             published=current_opening;
 #ifdef FFR_PRACTICE_BUILD
                             {std::lock_guard lock(mutex); if(opening==current_opening) opening_hash=digest;}
@@ -298,6 +312,8 @@ struct Observer {
                         + ",\"progressionCaptureFailures\":"+std::to_string(progression_failures.load())
                         + ",\"fieldAnchorReady\":"+(field_profile_ready.load()?"true":"false")
                         + ",\"fieldAnchorFailures\":"+std::to_string(field_failures.load())
+                        + ",\"playtimeBasisReady\":"+(playtime_profile_ready.load()?"true":"false")
+                        + ",\"playtimeBasisFailures\":"+std::to_string(playtime_failures.load())
                         + ",\"opening\":"+opening_metadata+"}},\"events\":[";
                     for (std::size_t i=0; i<copied.size(); ++i) { if (i) report += ','; report += copied[i]; }
                     report += "],\"missingState\":[\"Live verification of serialized progression/resource coverage\",\"Full combat and RNG state\",\"Verified restore path\"]}";
@@ -351,6 +367,19 @@ void initialize_field_profile() {
     field_profile_ready=true;
 }
 
+void initialize_playtime_profile() {
+    const auto base=reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr));
+    for(const auto& function:{std::pair{ffr::playtime_profile::get_clock_rva,ffr::playtime_profile::get_clock_sha256},
+            std::pair{ffr::playtime_profile::get_seconds_rva,ffr::playtime_profile::get_seconds_sha256}}) {
+        std::array<unsigned char,64> code{};
+        if(!read_memory(base+function.first,code.data(),code.size()))return;
+        Sha256 hash;hash.add(code.data(),code.size());if(hash.finish()!=function.second)return;
+    }
+    playtime_clock=reinterpret_cast<PlaytimeClockGetter>(base+ffr::playtime_profile::get_clock_rva);
+    playtime_seconds=reinterpret_cast<PlaytimeSecondsGetter>(base+ffr::playtime_profile::get_seconds_rva);
+    playtime_profile_ready=true;
+}
+
 void __fastcall encounter_hook(void* context, const void* entry, bool skip_intro) {
     struct Guard {
         Guard() { in_flight.fetch_add(1); }
@@ -383,8 +412,16 @@ void __fastcall encounter_hook(void* context, const void* entry, bool skip_intro
         opening->thread=GetCurrentThreadId();
 #endif
         try {
-            auto progression=ffr::capture_progression(read_memory,root_getter,save_memory,memory_free);
-            if (progression) opening->progression=std::move(*progression);
+            void* captured_root=nullptr;
+            auto progression=ffr::capture_progression(read_memory,[&] {captured_root=root_getter();return captured_root;},save_memory,memory_free);
+            if (progression) {
+                opening->progression=std::move(*progression);
+                try {
+                    auto basis=playtime_profile_ready?ffr::capture_playtime_basis(read_memory,captured_root,root_getter,playtime_clock,playtime_seconds):std::nullopt;
+                    if(basis)opening->playtime_basis=ffr::to_json(*basis);
+                    else current->playtime_failures.fetch_add(1);
+                }catch(...) {current->playtime_failures.fetch_add(1);}
+            }
             else current->progression_failures.fetch_add(1);
         } catch (...) { current->progression_failures.fetch_add(1); }
         std::lock_guard lock(current->mutex);
@@ -418,6 +455,7 @@ bool install_entry_hook() {
     }
     auto base = reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr));
     initialize_field_profile();
+    initialize_playtime_profile();
     for (const auto& profile : {std::pair{ffr::profile::root_getter_rva,ffr::profile::root_getter_sha256},
                                std::pair{ffr::profile::save_memory_rva,ffr::profile::save_memory_sha256},
                                std::pair{ffr::profile::memory_free_rva,ffr::profile::memory_free_sha256}}) {

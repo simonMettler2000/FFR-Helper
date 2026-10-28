@@ -20,6 +20,15 @@ getter profiles and same-map checks gate the reads. This addition passes isolate
 tests but has not been installed or live-verified. It does not capture camera,
 streaming, actors, events or a complete world state, and cannot restore a position.
 
+New openings can also include an optional **partial playtime basis**: the saved
+float, live clock start, ongoing suspension start, completed suspension total and
+a sample from the game's seconds source. Profiled read-only getters and coherent
+same-root/clock checks gate capture. The elapsed definition subtracts completed
+suspension only; an ongoing suspension is recorded separately. The consumer also
+checks the saved float against the serialized progression. Invalid clock evidence
+becomes null without suppressing the opening. This addition is fixture-tested,
+not installed or live-verified; it does not reset, restore or advance playtime.
+
 ## Bounds and compatibility
 
 - Requires Windows x64 and exact SHA-256 matches for game build 24250053 and

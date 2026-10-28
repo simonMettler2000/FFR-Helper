@@ -351,7 +351,7 @@ changed recovery/target/input, callback exceptions, changed roots/bytes/context,
 pin-release failure and the one-attempt rule. A future adapter still needs exact
 function/ABI validation, one process-wide attempt and tested game-side effects.
 
-### Live playtime is a separate coverage gap
+### Live playtime basis capture, pending live verification
 
 The saved `Player.PlayTime` value was unchanged across the three live opening
 captures, despite elapsed wall time. Static inspection identifies a separate
@@ -360,12 +360,28 @@ to the saved float, then resets the live clock. The normal load path also resets
 that clock. Calling save preparation would write an ordinary slot, so the observer
 does not call it.
 
-Consequently, byte-identical progression import/rebinding alone cannot establish
-correct playtime restoration. A supported implementation needs a separately
-captured and validated live clock basis for both its target and recovery, alongside
-the existing live-position gap. Current captures do not provide that basis. The
-absence of a property from a serialized object is not evidence that every possible
-non-default value is omitted; no broader serialization-loss claim is made here.
+The newer observer now optionally copies the saved float and the live subsystem's
+`StartSeconds`, `SuspendedStartSeconds` and `TotalSuspendedSeconds`, sampling the
+game's own seconds source. Exact loaded getter fingerprints gate the calls. It
+checks object headers, stable root/clock identities, unchanged raw fields, finite
+saved seconds and bounded, consistent clock arithmetic. It calls no reset, pause,
+resume or save-preparation function. Failure produces null metadata and a separate
+counter while preserving the encounter/progression capture.
+
+The native elapsed getter computes sample minus start minus completed suspension.
+It does not subtract an ongoing suspended interval until resume; the capture
+retains its start separately and labels the elapsed definition explicitly. Do not
+present this as verified active-play duration. The strict Python consumer checks
+the schema/arithmetic and requires the saved float to match `Player.PlayTime` in
+the same GVAS payload. Old archives without this optional metadata still load.
+
+Portable and compiled-DLL fixtures verify detached values, ongoing suspension,
+changed-root/clock refusal, malformed clocks, production-consumer parsing and
+non-suppression of progression when the clock is unavailable. This addition is
+not installed or live-verified. Playtime restoration and a fresh recovery clock
+basis remain outstanding, alongside live field/world restoration. The absence of
+a property from a serialized object is not evidence that every possible non-default
+value is omitted; no broader serialization-loss claim is made here.
 
 Before enabling a restart button, an implementation must demonstrate:
 

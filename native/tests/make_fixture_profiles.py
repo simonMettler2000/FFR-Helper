@@ -65,6 +65,11 @@ def main():
         rva=game_pe.exports[export];start=game_pe.offset(rva)
         field_text+=f'inline constexpr std::uintptr_t {function}_rva={rva};\ninline constexpr char {function}_sha256[]="{hashlib.sha256(game_pe.raw[start:start+64]).hexdigest()}";\n'
     (output/'good_field_profile.hpp').write_text(field_text+'}\n',encoding='utf8')
+    clock_text='#pragma once\n#include <cstdint>\nnamespace ffr::playtime_profile {\n'
+    for function in ['get_clock','get_seconds']:
+        rva=game_pe.exports['ffr_test_playtime_'+function];start=game_pe.offset(rva)
+        clock_text+=f'inline constexpr std::uintptr_t {function}_rva={rva};\ninline constexpr char {function}_sha256[]="{hashlib.sha256(game_pe.raw[start:start+64]).hexdigest()}";\n'
+    (output/'good_playtime_profile.hpp').write_text(clock_text+'}\n',encoding='utf8')
     extra_functions = {name: game_pe.exports['ffr_test_'+name] for name in ['root_getter','save_memory','memory_free']}
     for name in ['good', 'bad_game', 'bad_loader', 'bad_function']:
         text = f'''#pragma once

@@ -21,7 +21,8 @@ std::int32_t last_friend{};
 DWORD last_input_error{};
 unsigned serialized{}, released{}, last_serialized{};
 unsigned fixture_errors{};
-std::array<unsigned char,32> fake_root{};
+std::array<unsigned char,0x40> fake_root{};
+std::array<unsigned char,0x48> fake_playtime{};
 std::array<unsigned char,32> fake_clone{};
 bool clone_fixture{},clone_mismatch{},clone_mutates{};
 unsigned clone_loads{};
@@ -78,6 +79,10 @@ extern "C" __declspec(dllexport) __declspec(noinline)
 void* __fastcall ffr_test_root_getter() {
     return fake_root.data();
 }
+extern "C" __declspec(dllexport) __declspec(noinline)
+void* __fastcall ffr_test_playtime_get_clock() {return fake_playtime.data();}
+extern "C" __declspec(dllexport) __declspec(noinline)
+std::int64_t __fastcall ffr_test_playtime_get_seconds() {return 10000;}
 extern "C" __declspec(dllexport) __declspec(noinline)
 bool __fastcall ffr_test_save_memory(void* object, ffr::RawArray* output) {
     if (object!=fake_root.data() && !(clone_fixture && object==fake_clone.data())) { ++fixture_errors; return false; } ++serialized;
@@ -153,6 +158,9 @@ int wmain(int argc, wchar_t** argv) {
         const std::wstring mode = argv[4];
         const std::uint64_t klass=1; std::memcpy(fake_root.data()+16,&klass,sizeof(klass));
         object(fake_world);object(fake_map);object(fake_field_player);object(fake_field_component);object(fake_field_operation);
+        object(fake_root);object(fake_playtime);
+        put(fake_root,0x38,1000.25f);
+        put(fake_playtime,0x30,std::array<std::int64_t,3>{9000,0,30});
         put(fake_field_player,0x1b8,reinterpret_cast<std::uint64_t>(fake_field_component.data()));
         put(fake_field_player,0x778,reinterpret_cast<std::uint64_t>(fake_field_operation.data()));
         put(fake_field_component,0x200,std::array<double,3>{123.125,-456.25,7.5});fake_field_operation[0xc9]=2;
@@ -220,6 +228,9 @@ int wmain(int argc, wchar_t** argv) {
         entry_function(context, &entry, false);
         CHECK(calls == 2 && !last_skip && last_input_error == 1234);
         CHECK(serialized==released && last_serialized==(mode==L"good" ? 1u : 0u));
+        // Later live changes must not alter the already detached opening basis.
+        put(fake_root,0x38,2000.5f);
+        put(fake_playtime,0x30,std::array<std::int64_t,3>{9500,0,40});
         friends[0] = 9999; enemies[0] = 999; skills[0] = 999; bgm[0] = u'X';
         lease(std::string(32,'b'), now()+8);
         wait_for([&] { return read(connection/L"runtime-report.json").find(std::string(32,'b')) != std::string::npos; });
@@ -240,6 +251,9 @@ int wmain(int argc, wchar_t** argv) {
             wait_for([&] { return read(connection/L"runtime-report.json").find(std::string(32,'c')) != std::string::npos; });
             CHECK(read(connection/L"runtime-report.json").find("\"captureFailures\":1") != std::string::npos);
             CHECK(read(connection/L"runtime-report.json").find("\"opening\":null") != std::string::npos);
+            // Unavailable/incoherent clock evidence must not suppress a valid
+            // progression/encounter capture or invent a restorable timer.
+            put(fake_playtime,0x30,std::int64_t{20000});
             entry_function(context,&entry,false); CHECK(calls==4 && serialized==2 && released==2);
             lease(std::string(32,'d'),now()+8);
             wait_for([&] { return read(connection/L"runtime-report.json").find(std::string(32,'d')) != std::string::npos; });
@@ -252,6 +266,7 @@ int wmain(int argc, wchar_t** argv) {
             lease(std::string(32,'e'), now()+8);
             wait_for([&] { return read(connection/L"runtime-report.json").find(std::string(32,'e')) != std::string::npos; });
             write(connection/L"after-expiry-report.json", read(connection/L"runtime-report.json"));
+            CHECK(abort_calls==0 && clone_loads==0 && serialized==2 && released==2);
         } else CHECK(snapshot.find("encounter-opening-native") == std::string::npos);
         stop(object);
         CHECK(host_count() == 0 && host_errors() == 0);

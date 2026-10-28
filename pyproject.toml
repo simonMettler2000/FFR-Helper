@@ -15,4 +15,3 @@ ffr-helper-cli = "ffr_helper.cli:main"
 
 [tool.setuptools.package-data]
 ffr_helper = ["data/*.json"]
-

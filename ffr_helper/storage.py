@@ -172,4 +172,3 @@ def write_save(path: Path, raw: bytes, backups: CheckpointStore, *, live_slot=Fa
     if path.read_bytes() != raw:
         raise OSError('Save write verification failed.')
     return backup
-

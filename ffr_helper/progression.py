@@ -39,4 +39,3 @@ def route_totals(start_exp: int, start_mrp: int, rows: list[dict]):
         checked_total(exp)
         checked_total(mrp)
     return exp, mrp
-

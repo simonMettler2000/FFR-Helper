@@ -106,7 +106,9 @@ saves, checkpoints and build outputs are excluded from Git. No personal saves
 are included in the repository or packages.
 
 The Linux build targets a modern desktop distribution and needs the usual
-Qt/X11 or Wayland system libraries. The macOS package is unsigned. Runtime
+Qt/X11 or Wayland system libraries. The macOS package is an unsigned Intel
+build; Apple Silicon users can run the Python source natively or use an
+appropriate Intel compatibility environment. Runtime
 support must be tested on the actual target system; a successful build alone
 does not establish game-hook compatibility.
 

@@ -32,4 +32,3 @@ run arbitrary supplied code, or modify game binaries.
 Communication stays in the mod's own `connection` directory. There is no
 network listener. On Proton, select the same mod directory from the host app;
 Wine and the host then access the same files without translating AppData paths.
-

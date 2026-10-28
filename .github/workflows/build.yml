@@ -1,0 +1,55 @@
+name: Test and build desktop apps
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            name: Windows
+          - os: ubuntu-22.04
+            name: Linux
+          - os: macos-latest
+            name: macOS
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install dependencies
+        run: python -m pip install -r requirements-build.txt lupa==2.8
+      - name: Install Linux desktop runtime libraries
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libegl1 libopengl0 libxkbcommon0
+      - name: Test save editing, progression, checkpoints and adapter lease
+        run: python -m unittest discover -s tests -v
+      - name: Build standalone application
+        run: python tools/build.py
+      - name: Smoke-test packaged application
+        shell: python
+        run: |
+          import pathlib, subprocess, sys
+          executable = pathlib.Path('dist/FFR Helper.exe' if sys.platform == 'win32' else 'dist/FFR Helper.app/Contents/MacOS/FFR Helper' if sys.platform == 'darwin' else 'dist/FFR Helper').resolve()
+          subprocess.run([str(executable), '--self-test'], check=True, timeout=30)
+      - name: Package application
+        run: python tools/package.py
+      - uses: actions/upload-artifact@v7
+        with:
+          name: FFR-Helper-${{ matrix.name }}
+          path: dist/packages/*
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 30

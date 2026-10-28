@@ -348,8 +348,34 @@ or rolls back automatically, and compares the resulting root, bytes and context.
 Uncertain application retains at most its two owned GC pins until process exit;
 pre-existing engine roots are preserved. Tests cover rejected prerequisites,
 changed recovery/target/input, callback exceptions, changed roots/bytes/context,
-pin-release failure and the one-attempt rule. A future adapter still needs exact
-function/ABI validation, one process-wide attempt and tested game-side effects.
+pin-release failure and the one-attempt rule.
+
+A Windows native-load adapter now compiles separately into the isolated test
+executable. Its exact FFR profile records the whole normal-load/validity/reader
+function bodies and both direct return callsites, rather than only their entry
+fingerprints. It verifies the disk build, loaded bodies, direct call targets and
+module bounds before creating its two detours. It pins its code module and retains
+the owner/disabled trampolines until process exit. Only its own hooks are disabled.
+The shipping no-op that receives the slot argument is also fingerprinted and
+checked again immediately before application, so a changed slot consumer cannot
+silently reinterpret the private sentinel as an ordinary index.
+
+Application requires the captured game thread, a fresh caller-supplied field
+gate, exact manager/save vtables and the expected original root at manager +0x60.
+The reader detour can write only a checked, aligned, writable out parameter on the
+current thread's stack. Unrelated calls preserve their original path and Win32
+error input. The game-owned normal-load function performs the root assignment.
+One application attempt is allowed, including rejected attempts; an uncertain
+postcondition cannot trigger another load or rollback.
+
+The new compiled tests use this actual adapter with simulated native functions
+and the pinned rebind controller. They exercise unrelated caller/manager/thread
+activity while the scope is active, build/body/callsite refusal, wrong thread/
+context/class, and context loss after native assignment with retained GC pins.
+**Neither observer nor practice DLL includes this adapter yet.** Its FFR profile
+has not been executed in the game. Runtime integration still requires verified
+target/recovery clocks and field gates; actual load delegates, caches and world
+effects remain live-test requirements.
 
 ### Live playtime basis capture, pending live verification
 

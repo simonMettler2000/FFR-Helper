@@ -1,5 +1,11 @@
 # Experimental opening-abort trial
 
+The source now includes a separate, explicitly selected
+[current-field encounter recreation experiment](ENCOUNTER_RECREATION.md).
+It requires an unchanged verified opening exit and manual activation. It is
+uninstalled and not live-verified; it restores no progression, effects or RNG.
+The existing abort-only invocation retains its previous behavior.
+
 **Detached import and the revised opening-exit path are live-verified. Battle
 restart and restoration remain unfinished.** The earlier
 first-menu check refused because the raw counter counts turn beginnings, not

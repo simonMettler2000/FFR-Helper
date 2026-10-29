@@ -80,6 +80,16 @@ def main():
     task_text+='};\n}\n'
     (output/'good_task_abort_profile.hpp').write_text(task_text,encoding='utf8')
     (output/'bad_task_abort_profile.hpp').write_text(task_text.replace(task_hashes[0],'0'*64),encoding='utf8')
+    def encounter_region(name):
+        rva=game_pe.exports[name];start=game_pe.offset(rva)
+        size=game_pe.functions.get(rva,min(value for value in game_pe.exports.values() if value>rva))-rva
+        assert 0<size<=16384
+        return '{'+str(rva)+','+str(size)+',"'+hashlib.sha256(game_pe.raw[start:start+size]).hexdigest()+'"}'
+    encounter_text='#pragma once\nnamespace ffr {\ninline NativeEncounterProfile supported_native_encounter_profile() {\n'
+    encounter_text+='return {profile::game_sha256,'+','.join(encounter_region(name) for name in
+        ['ffr_test_encounter','ffr_test_recreation_allocate','ffr_test_recreation_release'])
+    encounter_text+=',{'+encounter_region('ffr_test_recreation_dependency')+'},true};\n}\n}\n'
+    (output/'good_encounter_entry_profile.hpp').write_text(encounter_text,encoding='utf8')
     decision_rva=game_pe.exports['ffr_test_decision'];decision_offset=game_pe.offset(decision_rva)
     decision_hash=hashlib.sha256(game_pe.raw[decision_offset:decision_offset+64]).hexdigest()
     (output/'good_decision_profile.hpp').write_text('#pragma once\n#include <cstddef>\n#include <cstdint>\nnamespace ffr::decision_profile {\n'

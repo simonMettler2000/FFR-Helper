@@ -11,6 +11,7 @@
 #include <thread>
 #include <stdexcept>
 #include <cstring>
+#include <map>
 
 #define CHECK(condition) do { if (!(condition)) throw std::runtime_error("Fixture check failed at line " + std::to_string(__LINE__)); } while (false)
 namespace {
@@ -64,6 +65,9 @@ DWORD vm_end_thread{},finish_check_thread{};
 std::wstring task_fixture_mode;
 bool fake_finish_routed{};
 bool task_wrong_world{};
+bool recreation_fixture{},recreation_progression_drift{},recreation_allocate_drift{},recreation_menu_drift{};
+unsigned recreation_allocations{},recreation_frees{};
+std::map<void*,std::size_t> recreation_blocks;
 DWORD command_profile_thread{};
 bool release_managers_on_abort{};
 unsigned decision_calls{};void* decision_context{};void* decision_data{};DWORD decision_input_error{};
@@ -155,6 +159,20 @@ bool __fastcall ffr_test_command_state_a() {command_profile_thread=GetCurrentThr
 extern "C" __declspec(dllexport) __declspec(noinline)
 bool __fastcall ffr_test_command_state_b() {command_profile_thread=GetCurrentThreadId();return fake_manager[0x223]!=0 && fake_manager[0x1a9]!=0;}
 extern "C" __declspec(dllexport) __declspec(noinline)
+void* __fastcall ffr_test_recreation_allocate(std::size_t size,std::uint32_t alignment) {
+    if(alignment!=8 || !size){++fixture_errors;return nullptr;}
+    ++recreation_allocations;
+    if(recreation_allocate_drift) {const double changed=999;std::memcpy(fake_field_component.data()+0x200,&changed,8);}
+    auto* pointer=HeapAlloc(GetProcessHeap(),0,size);if(pointer)recreation_blocks[pointer]=size;return pointer;
+}
+extern "C" __declspec(dllexport) __declspec(noinline)
+void __fastcall ffr_test_recreation_release(void* pointer) {
+    if(recreation_blocks.erase(pointer)!=1){++fixture_errors;return;}
+    ++recreation_frees;if(!HeapFree(GetProcessHeap(),0,pointer))++fixture_errors;
+}
+extern "C" __declspec(dllexport) __declspec(noinline)
+void __fastcall ffr_test_recreation_dependency() {SetLastError(7654);}
+extern "C" __declspec(dllexport) __declspec(noinline)
 void* __fastcall ffr_test_task_get_world(void* task) {
     if(task!=fake_task.data() && task!=fake_other_task.data()){++fixture_errors;return nullptr;}
     return task_wrong_world?fake_other_world.data():fake_world.data();
@@ -221,6 +239,7 @@ bool __fastcall ffr_test_save_memory(void* object, ffr::RawArray* output) {
     if(engine_rng_drift)++ffr_test_engine_rng_seed; // Simulates an unrelated concurrent draw in this fixture only.
     if (object!=fake_root.data() && !((clone_fixture || normalization_fixture) && object==fake_clone.data())) { ++fixture_errors; return false; } ++serialized;
     auto bytes=clone_fixture?clone_fixture_payload():std::vector<unsigned char>{'G','V','A','S',3,0,0,0,static_cast<unsigned char>(41+serialized),7,9,0};
+    if(recreation_fixture)bytes[8]=recreation_progression_drift?43:42;
     if(recovery_fixture) {float saved{};std::memcpy(&saved,fake_root.data()+0x38,4);bytes=recovery_fixture_data::payload(saved,recovery_money+(recovery_drift?static_cast<std::int32_t>(serialized):0));}
     if(normalization_fixture) {float saved{};std::memcpy(&saved,static_cast<unsigned char*>(object)+0x38,4);bytes=recovery_fixture_data::payload(saved,object==fake_root.data()?recovery_money:101);}
     if(clone_fixture && ((clone_mismatch && object==fake_clone.data()) || (clone_mutates && clone_loads && object==fake_root.data())))bytes[8]^=1;
@@ -254,6 +273,19 @@ void __fastcall ffr_test_encounter(void* context, const void* data, bool skip) {
     last_context = context; last_data = data; last_skip = skip;
     const auto* entry = static_cast<const ffr::RawEntry*>(data);
     if (entry->friend_ids.count) last_friend = *reinterpret_cast<const std::int32_t*>(entry->friend_ids.data);
+    if(recreation_fixture && calls>1) {
+        const auto nested=reinterpret_cast<const ffr::RawArray*>(entry->passives.data);
+        for(int i=0;i<entry->passives.count;++i)if(nested[i].data)ffr_test_recreation_release(reinterpret_cast<void*>(nested[i].data));
+        for(auto input:{entry->bgm,entry->passives,entry->friend_ids,entry->friend_locations,entry->enemy_ids,entry->enemy_locations})
+            if(input.data)ffr_test_recreation_release(reinterpret_cast<void*>(input.data));
+        const auto jobs=reinterpret_cast<std::uint64_t>(fake_jobs.data()),units=reinterpret_cast<std::uint64_t>(fake_units.data());
+        const auto task=reinterpret_cast<std::uint64_t>(fake_task.data());const std::int32_t count=2;
+        std::memcpy(fake_manager.data()+0x40,&jobs,8);std::memcpy(fake_manager.data()+0x48,&units,8);
+        std::memcpy(fake_units.data()+0x30,&count,4);std::memcpy(fake_task_manager.data()+0x38,&task,8);
+        fake_manager[0x1a8]=0;fake_manager[0x1a9]=1;fake_manager[0x220]=1;fake_manager[0x221]=0;fake_manager[0x222]=0;fake_manager[0x223]=0;
+        fake_ui[0x80]=1;fake_command_vm[0x199]=1;
+        if(recreation_menu_drift)recreation_progression_drift=true;
+    }
     MemoryBarrier();
 }
 

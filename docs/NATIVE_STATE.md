@@ -39,7 +39,7 @@ Compiled dummy-process cases exercise the real candidate DLL, including derived
 registry ownership, prepared VM/task swaps, wrong World/step, incomplete turn
 events, busy talk, queued work, callback task/job/code drift, failed UI closure,
 checker refusal/wrong result, once-only game-thread calls and released managers.
-All89 native CTests pass; the162-test Python suite passes with one existing
+All89 native CTests passed for that installed build; its170-test Python suite passed with one existing
 skip. The revised candidate was then installed with explicit approval and five
 verified save backups. In a normal untouched opening, its entire task/VM/code
 guard passed. The calibrated legacy-controller shortcut triggered one commit;
@@ -57,6 +57,28 @@ retain their pre-install hashes. The controller completed and expired its lease.
 This establishes the tested opening-exit prerequisite. Full battle restart,
 progression rebinding and encounter recreation remain unfinished. Saving anywhere
 remains deferred and uninstalled.
+
+## Current-field encounter recreation
+
+The next offline implementation is the separate
+[current-field recreation experiment](../native/ENCOUNTER_RECREATION.md).
+Its practice-only Windows adapter verifies the complete consuming entry,
+allocator/copy/destructor profile and the observer's actual hook/trampoline.
+A distinct prepare/commit transaction requires the original untouched exit,
+durable unchanged progression, same live root and partial field/cache evidence.
+It transfers owned engine input once and independently verifies a fresh child
+opening/menu, including current progression at that menu. The controller retains
+both receipts and requires foreground manual activation. Nonzero current field
+effects are left to normal engine entry; no effect/cache setter is involved.
+The older restoration core's refusal of unsupported effects remains intact.
+This experiment is uninstalled and not live-verified. It is a prerequisite for
+full retry; post-action rollback and RNG/effect restoration are still missing.
+
+Offline validation: the full 111-case native regression passed. A subsequent
+uncertain-cleanup reporting correction passed all 24 affected adapter, compiled
+recreation and opening-exit checks. The 182-test Python suite passes with one
+existing skip; the final sequence-type guard also passed its eight focused tests.
+These checks use isolated fixtures and do not establish live recreation.
 
 ## Live recorder findings
 

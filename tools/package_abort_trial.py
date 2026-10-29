@@ -24,6 +24,7 @@ with zipfile.ZipFile(target,'w',zipfile.ZIP_DEFLATED) as archive:
     archive.write(root/'native/ABORT_TRIAL.md',prefix+'README.md')
     archive.write(root/'native/PARTIAL_RECOVERY.md',prefix+'PARTIAL_RECOVERY.md')
     archive.write(root/'native/DETACHED_NORMALIZATION.md',prefix+'DETACHED_NORMALIZATION.md')
+    archive.write(root/'native/ENCOUNTER_RECREATION.md',prefix+'ENCOUNTER_RECREATION.md')
     archive.write(root/'native/licenses/MinHook.txt',prefix+'licenses/MinHook.txt')
     archive.write(root/'LICENSE',prefix+'LICENSE.txt')
     archive.writestr(prefix+'connection/',b'')

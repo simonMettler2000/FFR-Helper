@@ -49,11 +49,15 @@ void setup_task_fixture(const std::wstring& mode) {
 }
 void run_abort_fixture(const std::filesystem::path& connection,const std::wstring& mode) {
     const bool deny=mode.find(L"denied")!=std::wstring::npos;
-    release_managers_on_abort=mode==L"abort-released";
+    recreation_fixture=mode.starts_with(L"abort-recreate");
+    recreation_menu_drift=mode==L"abort-recreate-menu-drift";
+    release_managers_on_abort=mode==L"abort-released" || recreation_fixture;
     object(fake_manager,reinterpret_cast<std::uint64_t>(ffr_test_btl_vtable));
     object(fake_jobs);object(fake_units);object(fake_ui,reinterpret_cast<std::uint64_t>(ffr_test_ui_vtable));object(fake_world);object(fake_map);
     object(fake_command);object(fake_ui_command,reinterpret_cast<std::uint64_t>(ffr_test_ui_command_vtable));
     setup_task_fixture(mode);
+    if(mode==L"abort-recreate-effects")put(fake_map_parameters[0],0xb8,
+        ffr::RawArray{reinterpret_cast<std::uint64_t>(fake_command_request.data()),3,3});
     put(fake_command,0x28,ffr::RawArray{});
     put(fake_manager,0xb0,reinterpret_cast<std::uint64_t>(fake_command.data()));
     put(fake_ui,0x70,reinterpret_cast<std::uint64_t>(fake_ui_command.data()));
@@ -154,6 +158,32 @@ void run_abort_fixture(const std::filesystem::path& connection,const std::wstrin
         for(unsigned i=0;i<12;++i){pump();std::this_thread::sleep_for(std::chrono::milliseconds(25));}
         CHECK(abort_calls==1 && vm_end_calls==1 && finish_check_calls==1);
         if(mode==L"abort-released")CHECK(read(connection/L"abort-status.json").find("\"managersReleased\":true")!=std::string::npos);
+        if(recreation_fixture) {
+            const auto recreate_deadline=now()+8;const auto recreate_nonce=std::string(32,'c');
+            auto recreate=[&](const std::string& phase) {
+                write(connection/L"abort-request.txt","FFR_HELPER_ABORT_OPENING_V1\n"+session+"\n"+recreate_nonce+"\n"
+                    +std::to_string(recreate_deadline)+"\n1\n"+hash+"\n"+phase+"\n");
+            };
+            recreate("commit-recreate");for(unsigned i=0;i<8;++i){pump();std::this_thread::sleep_for(std::chrono::milliseconds(25));}
+            CHECK(calls==1 && recreation_allocations==0);
+            recreate("prepare-recreate");
+            wait([&] {return read(connection/L"abort-status.json").find("\"phase\":\"armed\"")!=std::string::npos;});
+            CHECK(calls==1 && recreation_allocations==0);
+            if(mode==L"abort-recreate-root-drift")recreation_progression_drift=true;
+            if(mode==L"abort-recreate-field-drift")put(fake_field_component,0x200,999.0);
+            if(mode==L"abort-recreate-cache-drift")put(fake_map_parameters[0],0x10c,std::int32_t{999});
+            recreation_allocate_drift=mode==L"abort-recreate-allocate-drift";
+            recreate("commit-recreate");
+            const bool success=mode==L"abort-recreate" || mode==L"abort-recreate-effects";
+            const bool entered=success || recreation_menu_drift;
+            const auto expected=success?"\"phase\":\"verified\"":recreation_menu_drift?"\"phase\":\"uncertain\"":"\"phase\":\"refused\"";
+            wait([&] {return read(connection/L"abort-status.json").find(expected)!=std::string::npos;});
+            CHECK(calls==(entered?2u:1u) && recreation_blocks.empty() && recreation_allocations==recreation_frees);
+            CHECK(abort_calls==1 && vm_end_calls==1 && finish_check_calls==1 && decision_calls==0 && skill_producer_calls==0);
+            for(unsigned i=0;i<8;++i){pump();std::this_thread::sleep_for(std::chrono::milliseconds(25));}
+            CHECK(calls==(entered?2u:1u));
+            write(connection/L"recreation-final-status.json",read(connection/L"abort-status.json"));
+        }
     }
     write(connection/L"abort-final-status.json",read(connection/L"abort-status.json"));
 }

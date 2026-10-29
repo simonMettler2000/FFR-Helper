@@ -94,6 +94,13 @@ if(FFR_BUILD_NATIVE_OBSERVER)
   target_link_libraries(load_route_hook_tests PRIVATE minhook Threads::Threads)
   target_compile_options(load_route_hook_tests PRIVATE /W4 /EHsc /utf-8)
   add_test(NAME isolated_native_load_route_detours COMMAND load_route_hook_tests)
+  add_executable(native_encounter_binding_tests tests/native_encounter_binding_tests.cpp)
+  target_include_directories(native_encounter_binding_tests PRIVATE include)
+  target_link_libraries(native_encounter_binding_tests PRIVATE minhook bcrypt Threads::Threads)
+  target_compile_options(native_encounter_binding_tests PRIVATE /W4 /EHsc /utf-8)
+  foreach(mode good allocation-failed wrong-context context-drift build-mismatch ownership-unreviewed profile-mismatch wrong-thread wrong-hook entry-drift trampoline-drift dependency-drift source-mutated native-throw native-partial)
+    add_test(NAME native_encounter_binding_${mode} COMMAND native_encounter_binding_tests "${mode}")
+  endforeach()
   add_executable(native_load_binding_tests tests/native_load_binding_tests.cpp)
   target_include_directories(native_load_binding_tests PRIVATE include)
   target_link_libraries(native_load_binding_tests PRIVATE minhook bcrypt Threads::Threads)
@@ -134,6 +141,7 @@ if(FFR_BUILD_NATIVE_OBSERVER)
   list(APPEND profiles "${generated}/bad_end_abort_profile.hpp")
   list(APPEND profiles "${generated}/good_task_abort_profile.hpp")
   list(APPEND profiles "${generated}/bad_task_abort_profile.hpp")
+  list(APPEND profiles "${generated}/good_encounter_entry_profile.hpp")
   add_custom_command(OUTPUT ${profiles}
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/make_fixture_profiles.py"
       "$<TARGET_FILE:native_host_fixture>" "$<TARGET_FILE:native_mock_loader>" "${generated}"
@@ -175,6 +183,12 @@ if(FFR_BUILD_NATIVE_OBSERVER)
     target_compile_definitions(fixture_observer_abort PRIVATE "FFR_ENGINE_RNG_PROFILE_HEADER=\"good_engine_rng_profile.hpp\"")
     target_compile_definitions(fixture_observer_abort PRIVATE "FFR_DECISION_PROFILE_HEADER=\"good_decision_profile.hpp\"" "FFR_SKILL_EVENT_PROFILE_HEADER=\"good_skill_event_profile.hpp\"")
     target_compile_definitions(fixture_observer_abort PRIVATE "FFR_TASK_ABORT_PROFILE_HEADER=\"good_task_abort_profile.hpp\"")
+    target_compile_definitions(fixture_observer_abort PRIVATE "FFR_ENCOUNTER_ENTRY_PROFILE_HEADER=\"good_encounter_entry_profile.hpp\"")
+    foreach(mode abort-recreate abort-recreate-effects abort-recreate-root-drift abort-recreate-field-drift abort-recreate-cache-drift abort-recreate-allocate-drift abort-recreate-menu-drift)
+      add_test(NAME native_${mode} COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/run_native_fixture.py"
+        --exe "$<TARGET_FILE:native_host_fixture>" --loader "$<TARGET_FILE:native_mock_loader>"
+        --module "$<TARGET_FILE:fixture_observer_abort>" --mode "${mode}" --work "${CMAKE_CURRENT_BINARY_DIR}/test-work")
+    endforeach()
     foreach(mode abort abort-released abort-wrong-owner abort-wrong-task abort-queued-command-denied abort-flagged-denied abort-denied abort-skill-denied abort-foreign-denied abort-task-world-denied abort-step-denied abort-turn-event-denied abort-vm-denied abort-talk-denied abort-ui-fails abort-ui-task-drift abort-ui-job-drift abort-ui-code-drift abort-check-false abort-check-mode clone clone-after-action clone-unready clone-mismatch clone-mutates clone-denied combat combat-after-action combat-denied combat-stale combat-effects-unavailable recovery recovery-released recovery-denied recovery-stale recovery-drift recovery-write-failed recovery-map-changed normalize normalize-unready normalize-stale normalize-template normalize-write-failed)
       add_test(NAME native_${mode} COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/run_native_fixture.py"
         --exe "$<TARGET_FILE:native_host_fixture>" --loader "$<TARGET_FILE:native_mock_loader>"

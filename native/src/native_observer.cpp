@@ -60,6 +60,12 @@
 #include "abort_trial.hpp"
 #include "import_menu.hpp"
 #include "task_exit_result.hpp"
+#include "native_encounter_binding.hpp"
+#ifdef FFR_ENCOUNTER_ENTRY_PROFILE_HEADER
+#include FFR_ENCOUNTER_ENTRY_PROFILE_HEADER
+#else
+#include "encounter_entry_profile.hpp"
+#endif
 #ifdef FFR_TASK_ABORT_PROFILE_HEADER
 #include FFR_TASK_ABORT_PROFILE_HEADER
 #else
@@ -322,6 +328,15 @@ struct Observer {
     ffr::NativeTaskExitResult task_exit;
     std::optional<ffr::TaskAbortTargets> prepared_task_targets;
     std::string task_target_message="Task target has not been sampled";
+    ffr::NativeEncounterBinding recreation_binding;
+    std::shared_ptr<const Opening> recreation_source;
+    ffr::NativeEncounterResult recreation_result;
+    std::string recreation_phase="idle",recreation_message="No current-field encounter recreation requested";
+    std::string recreation_session,recreation_nonce,recreation_hash;
+    std::uint64_t recreation_root{},recreation_child_sequence{};
+    std::int64_t recreation_deadline{};
+    double recreation_active_seconds{};
+    bool recreation_menu_progression_unchanged=false;
     std::string abort_message="Abort trial has not initialized", opening_hash, recovery_hash;
     std::int64_t probe_time{};
     std::vector<unsigned char> after_progression;
@@ -624,6 +639,14 @@ bool install_entry_hook() {
         set_message("Unsupported game build; native hook was not installed"); return false;
     }
     auto base = reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr));
+#ifdef FFR_PRACTICE_BUILD
+    // This optional adapter must see the unmodified complete entry before the
+    // observer's own detour. Failure leaves capture and the exit prerequisite
+    // independent; it cannot authorize recreation through a weaker profile.
+    observer->recreation_binding.initialize(ffr::supported_native_encounter_profile(),
+        [](std::span<const unsigned char> bytes){Sha256 hash;hash.add(bytes.data(),bytes.size());return hash.finish();},
+        []{return file_hash(module_path(nullptr));});
+#endif
     initialize_field_profile();
     initialize_playtime_profile();
     try {initialize_crt_profile();}catch(...) {crt_profile_ready=false;}
@@ -668,6 +691,9 @@ bool install_entry_hook() {
         MH_RemoveHook(hook_address);
         set_message("Native detour could not be enabled; hook was not installed"); return false;
     }
+#ifdef FFR_PRACTICE_BUILD
+    observer->recreation_binding.bind_observer_hook(reinterpret_cast<void*>(&encounter_hook),trampoline);
+#endif
     observer->ready.store(true);
     set_message("Experimental native encounter entry observer connected; restoration is unavailable");
     return true;

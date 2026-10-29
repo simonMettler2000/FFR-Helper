@@ -30,7 +30,8 @@ std::optional<ffr::AbortRequest> read_abort_request(const std::filesystem::path&
         ||expiry.empty()||expiry.size()>12||expiry.find_first_not_of("0123456789")!=std::string::npos
         ||sequence.empty()||sequence.size()>18||sequence.find_first_not_of("0123456789")!=std::string::npos
         ||hash.size()!=64||hash.find_first_not_of("0123456789abcdef")!=std::string::npos
-        ||(phase!="prepare"&&phase!="commit"&&phase!="probe-import"&&phase!="probe-normalize"))return {};
+        ||(phase!="prepare"&&phase!="commit"&&phase!="probe-import"&&phase!="probe-normalize"
+            &&phase!="prepare-recreate"&&phase!="commit-recreate"))return {};
     const auto deadline=std::stoll(expiry);const auto number=std::stoull(sequence);
     if(deadline<seconds()||deadline>seconds()+8||number==0)return {};
     return ffr::AbortRequest{session,nonce,hash,phase,deadline,number};
@@ -107,6 +108,7 @@ ffr::AbortGuard probe_abort(void* tick_context,const std::shared_ptr<const Obser
 #include "combat_runtime.inl"
 #include "recovery_runtime.inl"
 #include "normalization_runtime.inl"
+#include "recreation_runtime.inl"
 
 void abort_tick(void* context,float delta) {
     auto* current=published_observer.load(std::memory_order_acquire);
@@ -175,6 +177,7 @@ void abort_tick(void* context,float delta) {
         if(after) {std::lock_guard lock(current->mutex);current->after_progression=std::move(*after);
             current->task_exit.result_mode_observed=force_end_mode;}
     }
+    run_recreation_trial(current,context,opening,guard,request,now,delta);
 }
 
 void __fastcall abort_tick_hook(void* context,float delta) {
@@ -254,7 +257,8 @@ void Observer::publish_abort(const Lease& lease) {
             {"nonce",ffr::quote(action.nonce)},{"trialSession",ffr::quote(action.session)},
             {"sequence",std::to_string(action.sequence)},{"phase",ffr::quote(ffr::phase_name(trial.phase()))},
             {"message",ffr::quote(abort_available?trial.message():abort_message)},{"probeTime",std::to_string(probe_time)},
-            {"guard",guard},{"recovery",recovery},{"after",after_metadata},{"importProbe",imported},{"normalizationProbe",normalization_status(*this,lease)}});
+            {"guard",guard},{"recovery",recovery},{"after",after_metadata},{"importProbe",imported},
+            {"recreationTrial",recreation_status(*this)},{"normalizationProbe",normalization_status(*this,lease)}});
     }
     write_atomic(connection/L"abort-status.json",status);
 }

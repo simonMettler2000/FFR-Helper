@@ -16,6 +16,58 @@ Loader/recorder installation is opt-in, with the game closed. The read-only
 recorder has now been verified through an overworld–battle–overworld cycle on
 the target build. Restoration has not been tested or implemented.
 
+## Resume handoff — 29 October 2026
+
+Work is paused at the user's request before shutting down the computer. Resume
+battle-restart development when the user returns; do not start gameplay or a
+mutation controller merely because the helper is installed. Read the private
+`local/practice-next-test-plan.json` first for exact installed hashes, evidence
+paths and remaining test boundaries. The source installed for the last test is
+`2c116d7f8030eba892830851bd35504b7be9925b`; subsequent handoff edits are documentation
+only. The private draft remains PR #1 on `codex/native-runtime-state`.
+
+**A same-setup encounter was recreated successfully once.** The supervised
+keyboard-triggered trial exited an untouched normal opening, verified identical
+466,065-byte progression, invoked one consuming map entry, independently captured
+the matching child, and verified its fresh command menu and unchanged current
+progression/root. The user confirmed the encounter restarted and its menu
+responded. All five original save hashes matched their backups at the test
+boundary. This establishes current-field recreation, not post-action rollback.
+
+Two issues remain immediately actionable:
+
+- The recreated fight placed party portraits below the timeline alongside enemy
+  portraits. A naturally entered **normal** encounter was then inspected and
+  showed party portraits above and enemies below. An earlier preemptive sample
+  was insufficient by itself; the normal sample now confirms the discrepancy.
+  Its effect on combat behavior is unknown. Trace team-side/icon view-model
+  state and battle-end/start cleanup before calling this merely cosmetic.
+- The test controller deliberately completed and disconnected after one verified
+  recreation; its native binding is also one-shot. The user's later controller
+  and keyboard presses therefore did nothing. Repeatable manual restart is not
+  implemented. Add an explicitly verified new transaction per deliberate press;
+  never reset an uncertain operation or replay an old request.
+
+The read-only comparison recorder finished with 367 private reports, disconnected
+and expired its lease. No helper mutation controller is armed. The game process
+was absent at the shutdown handoff check. Keep the approved installed components
+unchanged until a tested update is ready and the game is confirmed closed.
+
+Next work: investigate the timeline discrepancy; implement and test verified
+transaction rearming and repeated manual activation; then implement rollback
+after commands/items/resources change. Existing opening-only guards must remain
+honest: do not report acted history as untouched. Boss/scripted support and full
+mid-battle states still require separate work. Full cache/effect/clock/RNG restore
+is unfinished. The normal-load external-effects gate remains closed; the native
+gameover retry route consumes an item and must not be invoked as a free retry.
+Saving anywhere stays last and uninstalled. Revisit `REDISTRIBUTION.md` before
+bundling UE4SS or shipping automatic install/uninstall support.
+
+Local validation remains 112 passing native cases and 185 Python tests run
+(184 passed, one existing skip). No code changed during this handoff. CI runners
+remain blocked by the account billing/spending limit. Private captures, saves,
+process pointers and game data must stay outside Git.
+
 ## Current command-menu exit candidate
 
 The latest supervised native EndBattle + UI-manager AbortCommand pair set both
@@ -54,13 +106,14 @@ untouched. A separate query/read-only post-exit check matched the captured field
 position/direction and raw map-unit cache components. Complete effect graphs
 and overall cache coherence remain unverified. All five original save files
 retain their pre-install hashes. The controller completed and expired its lease.
-This establishes the tested opening-exit prerequisite. Full battle restart,
-progression rebinding and encounter recreation remain unfinished. Saving anywhere
-remains deferred and uninstalled.
+This establishes the tested opening-exit prerequisite. Full battle restart and
+progression rebinding remain unfinished. Same-setup recreation subsequently
+succeeded in the separate experiment below. Saving anywhere remains deferred and
+uninstalled.
 
 ## Current-field encounter recreation
 
-The next offline implementation is the separate
+The separate
 [current-field recreation experiment](../native/ENCOUNTER_RECREATION.md).
 Its practice-only Windows adapter verifies the complete consuming entry,
 allocator/copy/destructor profile and the observer's actual hook/trampoline.
@@ -75,9 +128,10 @@ The first installed test loaded normally and verified another unchanged exit,
 then refused recreation preparation before any entry call. Raw cache, map and
 direction matched; position differed by about 47 native units. The user confirmed
 released inputs and no movement. All five original save hashes stayed unchanged.
-The controller is stopped. Actual recreation remains unverified.
+That controller stopped without an entry call; this describes an earlier failed
+preparation, not the later successful pose-corrected trial.
 
-The uninstalled correction retains the original pre-entry anchor, verifies a
+The subsequently installed correction retains the original pre-entry anchor, verifies a
 separate post-exit anchor over three game ticks, then requires that exact target
 through commit/allocation/entry and in the independent child capture. It keeps
 the original map and all existing progression/cache/ownership checks. Both
@@ -92,7 +146,10 @@ and RNG/effect restoration are still missing.
 Offline validation for the position/direction correction: all 112 native tests
 passed, including an exit-pose shift and post-preparation drift refusal with
 specific error messages. The 185-test Python suite passes with one existing skip.
-These checks use isolated fixtures and do not establish live recreation.
+These checks use isolated fixtures. A later approved supervised trial then
+verified actual entry, the matching independent child and its first menu, with
+user confirmation. The timeline discrepancy and one-use limit are recorded in
+the resume handoff above; full battle restart remains incomplete.
 
 ## Live recorder findings
 

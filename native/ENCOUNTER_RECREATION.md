@@ -1,12 +1,14 @@
 # Current-field encounter recreation experiment
 
-This is a prerequisite for battle restart. Its first supervised preparation in
-FFR refused before calling entry: the exit preserved progression/cache, but the
-live position differed from the original pre-entry sample. The user confirmed
-released inputs and no movement. **Actual recreation remains unverified.**
-An installed position-only correction also refused before entry: the direction
-sample differed too. The subsequent position/direction correction is uninstalled.
-It does not restore progression, resources,
+This is a prerequisite for battle restart. The installed position/direction
+correction successfully recreated one untouched normal encounter: the native
+entry, matching independent child, fresh menu and unchanged progression were
+verified, and the user confirmed the restarted encounter and responsive menu.
+The user also reported incorrectly positioned party timeline portraits; a
+natural normal-encounter comparison confirmed that discrepancy. Repeat shortcut
+use is deliberately inactive after this one-shot test and remains unimplemented.
+See the [resume handoff](../docs/NATIVE_STATE.md#resume-handoff--29-october-2026).
+This experiment does not restore progression, resources,
 effects, clock or RNG, and does not implement retry after an action.
 
 The separate practice DLL can request the same ordinary encounter setup once

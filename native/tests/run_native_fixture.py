@@ -15,7 +15,7 @@ def main():
     parser.add_argument('--exe', required=True, type=Path)
     parser.add_argument('--loader', required=True, type=Path)
     parser.add_argument('--module', required=True, type=Path)
-    parser.add_argument('--mode', required=True, choices=['good', 'bad-game', 'bad-loader','bad-function','boundary-unreviewed','abort','abort-denied',
+    parser.add_argument('--mode', required=True, choices=['good', 'bad-game', 'bad-loader','bad-function','boundary-unreviewed','decision-history','decision-unavailable','abort','abort-denied',
                                                        'clone','clone-unready','clone-mismatch','clone-mutates','clone-denied',
                                                        'combat','combat-after-action','combat-denied','combat-stale','combat-effects-unavailable',
                                                        'normalize','normalize-unready','normalize-stale','normalize-template','normalize-write-failed',
@@ -31,6 +31,15 @@ def main():
         shutil.copy2(args.module, module)
         subprocess.run([str(args.exe.resolve()), str(module), str(args.loader.resolve()), str(root/'connection'), args.mode], check=True, timeout=30)
         if args.mode=='boundary-unreviewed':return
+        if args.mode.startswith('decision-'):
+            if args.mode=='decision-history':
+                sys.path.insert(0,str(Path(__file__).resolve().parents[2]))
+                from ffr_helper.decision_history import validate_decision_history
+                first=validate_decision_history(json.loads((root/'connection/decision-first.json').read_text())['decisionHistory'])
+                foreign=validate_decision_history(json.loads((root/'connection/decision-foreign.json').read_text())['decisionHistory'])
+                assert first['handlerEntries']==1 and first['foreignThreadObserved'] is False
+                assert foreign['handlerEntries']==2 and foreign['foreignThreadObserved'] is True
+            return
         if args.mode.startswith('normalize'):
             sys.path.insert(0,str(Path(__file__).resolve().parents[2]))
             from ffr_helper import opening, crt_rng

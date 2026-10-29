@@ -106,6 +106,17 @@ python tools/observe_runtime.py <FFRHelperRuntimeNative-folder> --native --outpu
 
 This module does not enable or depend on Saving anywhere.
 
+The next uninstalled source update also provides optional decision-handler entry
+history in `observer-status.json`. An exact full-function fingerprint gates a
+read-only detour of the native `OnExecuteDecideCommand` target. Counts start at
+native encounter entry and remain separate from the immutable opening. Lease
+gaps/session changes invalidate history; foreign-thread calls and overflow are
+flagged. The collector preserves validated changes in `.ffrdecision.json` files.
+These count handler invocations, including rejected/null calls, rather than
+completed commands. Coverage and fresh game-thread verification remain false;
+this telemetry cannot authorize a retry or practice operation. It has not been
+installed or tested in FFR.
+
 A separate [opening-abort trial](ABORT_TRIAL.md) is compiled only when explicitly
 requested. Its game-thread command path is excluded from the ordinary observer.
 It is a mutation-capable experiment. Its first-menu import guard refused before

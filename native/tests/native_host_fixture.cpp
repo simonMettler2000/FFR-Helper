@@ -44,6 +44,7 @@ std::array<std::array<unsigned char,0x880>,2> fake_actors{};
 std::array<std::array<unsigned char,0x560>,2> fake_parameters{};
 std::array<unsigned char,0x40> fake_scheduler{};
 unsigned abort_calls{},tick_calls{};
+unsigned decision_calls{};void* decision_context{};void* decision_data{};DWORD decision_input_error{};
 std::array<unsigned char,0x790> fake_rng_data{};
 unsigned rand_calls{},rng_helper_calls{};
 unsigned engine_rng_draw_calls{},engine_rng_initialize_calls{};
@@ -63,6 +64,11 @@ extern "C" __declspec(dllexport) __declspec(noinline) unsigned ffr_test_crt_rand
 extern "C" __declspec(dllexport) __declspec(noinline) void* ffr_test_crt_helper(){++rng_helper_calls;return nullptr;}
 extern "C" __declspec(dllexport) __declspec(noinline) unsigned ffr_test_engine_rng_draw(){++engine_rng_draw_calls;return ffr_test_engine_rng_seed;}
 extern "C" __declspec(dllexport) __declspec(noinline) void ffr_test_engine_rng_initialize(){++engine_rng_initialize_calls;}
+extern "C" __declspec(dllexport) __declspec(noinline)
+void __fastcall ffr_test_decision(void* context,void* data) {
+    ++decision_calls;decision_context=context;decision_data=data;decision_input_error=GetLastError();
+    SetLastError(2468);
+}
 extern "C" __declspec(dllexport) __declspec(noinline)
 void* __fastcall ffr_test_field_get_world(void* map) {
     if(map!=fake_map.data()){++fixture_errors;return nullptr;}return fake_world.data();
@@ -216,6 +222,13 @@ int wmain(int argc, wchar_t** argv) {
         auto loader = LoadLibraryW(loader_path.c_str()); CHECK(loader);
         auto host_count = reinterpret_cast<int(*)()>(GetProcAddress(loader, "ffr_test_hosts_alive")); CHECK(host_count);
         auto host_errors = reinterpret_cast<int(*)()>(GetProcAddress(loader, "ffr_test_host_errors")); CHECK(host_errors);
+        auto* decision_code=reinterpret_cast<unsigned char*>(&ffr_test_decision);
+        std::array<unsigned char,64> initial_decision{};std::memcpy(initial_decision.data(),decision_code,64);
+        if(mode==L"decision-unavailable") {
+            DWORD protection{},unused{};CHECK(VirtualProtect(decision_code,1,PAGE_EXECUTE_READWRITE,&protection));
+            *decision_code^=1;CHECK(VirtualProtect(decision_code,1,protection,&unused));
+            FlushInstructionCache(GetCurrentProcess(),decision_code,1);
+        }
         auto native = LoadLibraryW(module_path.c_str()); CHECK(native);
         auto start = reinterpret_cast<void*(*)()>(GetProcAddress(native, "start_mod")); CHECK(start);
         auto stop = reinterpret_cast<void(*)(void*)>(GetProcAddress(native, "uninstall_mod")); CHECK(stop);
@@ -234,6 +247,51 @@ int wmain(int argc, wchar_t** argv) {
         }
         CHECK(object != nullptr && host_count() == 1);
         CHECK(start() == nullptr); // Restart is required; no duplicate detour/worker.
+        if(mode.starts_with(L"decision-")) {
+            const auto active=mode==L"decision-history";
+            auto lease=[&](char session,std::int64_t expiry) {
+                write(connection/L"observe.txt","FFR_HELPER_OBSERVER_V1\n"+std::string(32,session)+"\n"+std::to_string(expiry)+"\n"+std::string(32,'0')+"\n");
+            };
+            lease('a',now()+8);
+            wait_for([&]{return read(connection/L"observer-status.json").find(std::string(32,'a'))!=std::string::npos;});
+            CHECK(read(connection/L"observer-status.json").find("\"decisionHistory\":null")!=std::string::npos);
+            std::vector<std::int32_t> friends{1001};ffr::RawEntry entry{};entry.friend_ids=array(friends);
+            entry_function(fake_map.data(),&entry,false);CHECK(serialized==1 && calls==1);
+            if(active) {
+                wait_for([&]{return read(connection/L"observer-status.json").find("\"handlerEntries\":0")!=std::string::npos;});
+                const auto source=read(connection/L"opening-progression.gvas");
+                CHECK(std::memcmp(initial_decision.data(),decision_code,64)!=0);
+                SetLastError(1357);ffr_test_decision(fake_manager.data(),fake_ui.data());
+                CHECK(GetLastError()==2468 && decision_calls==1 && decision_input_error==1357);
+                CHECK(decision_context==fake_manager.data() && decision_data==fake_ui.data());
+                wait_for([&]{return read(connection/L"observer-status.json").find("\"handlerEntries\":1")!=std::string::npos;});
+                write(connection/L"decision-first.json",read(connection/L"observer-status.json"));
+                CHECK(read(connection/L"opening-progression.gvas")==source && serialized==1);
+                std::thread other([]{ffr_test_decision(nullptr,nullptr);});other.join();
+                wait_for([&]{return read(connection/L"observer-status.json").find("\"foreignThreadObserved\":true")!=std::string::npos;});
+                write(connection/L"decision-foreign.json",read(connection/L"observer-status.json"));
+                lease('a',0);std::this_thread::sleep_for(std::chrono::milliseconds(800));
+                lease('a',now()+8);
+                wait_for([&]{return read(connection/L"observer-status.json").find("\"decisionHistory\":null")!=std::string::npos;});
+                // Reconnecting to the same encounter cannot invent missed history.
+                ffr_test_decision(nullptr,nullptr);std::this_thread::sleep_for(std::chrono::milliseconds(300));
+                CHECK(read(connection/L"observer-status.json").find("\"decisionHistory\":null")!=std::string::npos);
+                entry_function(fake_map.data(),&entry,false);
+                wait_for([&]{return read(connection/L"observer-status.json").find("\"handlerEntries\":0")!=std::string::npos;});
+                lease('b',now()+8);
+                wait_for([&]{const auto s=read(connection/L"observer-status.json");return s.find(std::string(32,'b'))!=std::string::npos && s.find("\"decisionHistory\":null")!=std::string::npos;});
+            }else {
+                wait_for([&]{return !read(connection/L"opening-progression.gvas").empty();});
+                CHECK(read(connection/L"observer-status.json").find("\"decisionHistory\":null")!=std::string::npos);
+                DWORD protection{},unused{};CHECK(VirtualProtect(decision_code,1,PAGE_EXECUTE_READWRITE,&protection));
+                *decision_code=initial_decision[0];CHECK(VirtualProtect(decision_code,1,protection,&unused));
+                FlushInstructionCache(GetCurrentProcess(),decision_code,1);
+            }
+            stop(object);CHECK(host_count()==0 && host_errors()==0 && fixture_errors==0);
+            CHECK(abort_calls==0 && clone_loads==0);
+            CHECK(std::memcmp(initial_decision.data(),decision_code,64)==0);
+            std::cout<<"Read-only decision history fixture passed; no practice commands enabled.\n";return 0;
+        }
         if(mode==L"boundary-unreviewed") {
             write(connection/L"observe.txt","FFR_HELPER_OBSERVER_V1\n"+std::string(32,'a')+"\n"+std::to_string(now()+8)+"\n"+std::string(32,'b')+"\n");
             wait_for([&]{return read(connection/L"abort-status.json").find("Opening command boundary is unreviewed")!=std::string::npos;});

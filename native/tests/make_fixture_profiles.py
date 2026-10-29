@@ -46,6 +46,11 @@ def main():
     offset = game_pe.offset(entry)
     code_hash = hashlib.sha256(game_pe.raw[offset:offset+64]).hexdigest()
     output.mkdir(parents=True, exist_ok=True)
+    decision_rva=game_pe.exports['ffr_test_decision'];decision_offset=game_pe.offset(decision_rva)
+    decision_hash=hashlib.sha256(game_pe.raw[decision_offset:decision_offset+64]).hexdigest()
+    (output/'good_decision_profile.hpp').write_text('#pragma once\n#include <cstddef>\n#include <cstdint>\nnamespace ffr::decision_profile {\n'
+        +f'inline constexpr std::uintptr_t handler_rva={decision_rva};\ninline constexpr std::size_t handler_size=64;\n'
+        +f'inline constexpr char handler_sha256[]="{decision_hash}";\n}}\n',encoding='utf8')
     abort_text='#pragma once\n#include <cstdint>\nnamespace ffr::abort_profile {\ninline constexpr bool opening_boundary_reviewed=true;\n'
     for function in ['tick','get_world','get_map','get_ui','end_battle']:
         rva=game_pe.exports['ffr_test_abort_'+function];start=game_pe.offset(rva)

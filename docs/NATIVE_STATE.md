@@ -138,6 +138,40 @@ boundary is corrected and reviewed. Controlled fixture profiles alone retain
 the test path. Do not substitute a threshold of one or waive freshness to make
 this test pass. The read-only entry observer is independent of that gate.
 
+### Decision-handler history prepared offline
+
+Further inspection located the native target of the reflected
+`CPP_BtlDelEventCmd::OnExecuteDecideCommand` handler. A new read-only detour counts
+entries into that handler, before forwarding the original arguments/call exactly
+once. The complete chained-unwind function envelope is fingerprinted after the
+game identity check. No decision data, object pointer or gameplay value is copied
+or changed. Null/rejected handler invocations also count; these are deliberately
+called **handler entries**, not completed commands.
+
+The journal starts before serialization at native encounter entry and is bound
+to that opening sequence and native thread. Its bounded counter is separate from
+the immutable opening. Calls from another thread set an explicit coverage flag;
+overflow is flagged rather than wrapped. A lease gap, new session, failed entry
+or reconnect without a new encounter leaves history unavailable. A mismatched
+handler fingerprint disables only this optional journal, preserving progression
+capture. Shutdown disables the detour and retains its pinned trampoline.
+
+`observer-status.json` exposes this optional `decisionHistory`. The native
+collector validates and saves changes as private `.ffrdecision.json` evidence.
+Its timestamp is explicitly the observer worker's publication time, **not a
+fresh game-thread sample**. Every record declares coverage, command-boundary and
+game-thread freshness verification false. Zero entries cannot authorize import,
+abort, retry or restoration. The supported practice gate remains false.
+
+Compiled-DLL fixtures verify original arguments/Win32 error/once-only forwarding,
+zero then one handler entry, foreign-thread flags, unchanged source progression,
+lease-gap/new-session invalidation, new-encounter reset, code restoration and
+optional profile mismatch. This update is prepared locally, **not installed or
+verified in FFR**. The next supervised test should establish whether the handler
+stays at zero through the first menu and menu cancellation, then advances after
+a user command, while separately verifying the menu's fresh game-thread state.
+Alternative native/Blueprint/automatic action paths still need coverage review.
+
 ## In-memory progression and teardown findings
 
 On this exact binary, the ordinary encrypted save writer calls the engine's

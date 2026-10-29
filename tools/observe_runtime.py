@@ -1,6 +1,7 @@
 """Collect private read-only observations while a user operates the game."""
 import argparse
 from datetime import datetime, timezone
+import json
 from pathlib import Path
 import sys
 import time
@@ -9,6 +10,8 @@ import uuid
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from ffr_helper.runtime import RuntimeRecorder, NativeEntryRecorder, export_report
 from ffr_helper.opening import export_opening
+from ffr_helper.decision_history import validate_decision_history
+from ffr_helper.storage import atomic_write
 
 
 def main():
@@ -30,6 +33,7 @@ def main():
     samples = 0
     first_io_error = None
     last_opening = None
+    last_decision = False
     try:
         print('Read-only observation session started; waiting for the game recorder.', flush=True)
         while time.monotonic() < deadline and not (args.stop_file and args.stop_file.exists()):
@@ -45,6 +49,20 @@ def main():
                 continue
             first_io_error = None
             status = recorder.status()
+            if args.native and status and 'decisionHistory' in status:
+                try:
+                    history=validate_decision_history(status['decisionHistory'])
+                    if history!=last_decision:
+                        stamp=datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S-%f')
+                        evidence=dict(format='ffr-helper-decision-history-observation',readOnly=True,restorable=False,
+                            session=recorder.session,time=status['time'],timeSource='observer-worker-not-game-tick',decisionHistory=history)
+                        atomic_write(args.output/(stamp+'.ffrdecision.json'),json.dumps(evidence,indent=2).encode('utf8'))
+                        last_decision=history
+                        if history is not None:
+                            print(f"Decision-handler entries observed: {history['handlerEntries']}; command-boundary coverage remains unverified.",flush=True)
+                except (OSError,ValueError,TypeError,KeyError):
+                    # An optional malformed diagnostic never suppresses capture.
+                    pass
             now = time.monotonic()
             if status and pending is None and now >= next_capture:
                 # heartbeat() above already published the previous request.

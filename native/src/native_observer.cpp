@@ -19,6 +19,11 @@
 #include "map_unit_cache.hpp"
 #include "crt_rand_capture.hpp"
 #include "engine_rng_capture.hpp"
+#ifdef FFR_DECISION_PROFILE_HEADER
+#include FFR_DECISION_PROFILE_HEADER
+#else
+#include "decision_profile.hpp"
+#endif
 #ifdef FFR_ENGINE_RNG_PROFILE_HEADER
 #include FFR_ENGINE_RNG_PROFILE_HEADER
 #else
@@ -256,6 +261,19 @@ struct Observer {
     std::atomic<unsigned> crt_rand_failures{0};
     std::atomic<unsigned> engine_rng_failures{0};
     std::shared_ptr<const Opening> opening;
+    std::uint64_t decision_sequence{};
+    DWORD decision_thread{};
+    unsigned decision_entries{};
+    bool decision_foreign_thread=false,decision_overflow=false,decision_tracked_from_entry=false;
+    std::string decision_status() {
+        std::lock_guard lock(mutex);
+        if(!opening || opening->sequence!=decision_sequence || !decision_tracked_from_entry)return "null";
+        return "{\"kind\":\"decision-handler-entry-history\",\"readOnly\":true,\"restorable\":false,"
+            "\"coverageReviewed\":false,\"commandBoundaryVerified\":false,\"gameThreadFreshnessVerified\":false,"
+            "\"sequence\":"+std::to_string(decision_sequence)+",\"trackedFromNativeEntry\":true,"
+            "\"handlerEntries\":"+std::to_string(decision_entries)+",\"foreignThreadObserved\":"
+            +(decision_foreign_thread?"true":"false")+",\"overflow\":"+(decision_overflow?"true":"false")+'}';
+    }
 #ifdef FFR_PRACTICE_BUILD
     ffr::AbortTrial trial;
     ffr::AbortGuard last_guard;
@@ -297,7 +315,11 @@ struct Observer {
         while (!quit.load()) {
             try {
                 auto lease = read_lease(connection/L"observe.txt");
-                if (!lease) { expires.store(0); Sleep(250); continue; }
+                if (!lease) {
+                    expires.store(0);
+                    {std::lock_guard lock(mutex);decision_sequence=0;decision_tracked_from_entry=false;}
+                    Sleep(250);continue;
+                }
                 std::deque<std::string> copied;
                 std::string note;
                 std::shared_ptr<const Opening> current_opening;
@@ -307,6 +329,7 @@ struct Observer {
                     if (session != lease->session) {
                         events.clear(); event_bytes = 0; sequence = 0; request.clear(); session = lease->session;
                         opening.reset(); published.reset(); opening_metadata="null";
+                        decision_sequence=0;decision_thread=0;decision_tracked_from_entry=false;
 #ifdef FFR_PRACTICE_BUILD
                         combat_request.reset();combat_controller.clear_latest();
                         recovery_request.reset();recovery_controller.clear_latest();recovery_boundary_ready=false;
@@ -346,7 +369,8 @@ struct Observer {
                 }
                 const auto base = envelope(*lease);
                 auto status = "{" + base + ",\"hooks\":{\"native-encounter-entry\":"
-                    + ffr::quote(ready.load() ? "observing" : "unavailable") + "},\"message\":" + ffr::quote(note) + '}';
+                    + ffr::quote(ready.load() ? "observing" : "unavailable") + "},\"message\":" + ffr::quote(note)
+                    +",\"decisionHistory\":"+decision_status()+'}';
                 write_atomic(connection/L"observer-status.json", status);
                 if (requested) {
                     // Keep room for bounded opening metadata even when earlier
@@ -391,6 +415,7 @@ struct Observer {
 // until process exit so an in-flight callback cannot return into unloaded code.
 std::unique_ptr<Observer> observer;
 std::atomic<Observer*> published_observer{nullptr};
+#include "decision_runtime.inl"
 std::optional<ffr::FieldAnchor> capture_live_field(void* context);
 std::optional<ffr::PlaytimeBasis> capture_live_playtime(void* root);
 #ifdef FFR_PRACTICE_BUILD
@@ -458,10 +483,14 @@ void __fastcall encounter_hook(void* context, const void* entry, bool skip_intro
         if (current->expires.load() < seconds()) {
             // An encounter entered while observation is off cannot inherit a
             // previous encounter's opening when the same session reconnects.
-            std::lock_guard lock(current->mutex); current->opening.reset(); return;
+            std::lock_guard lock(current->mutex); current->opening.reset();
+            current->decision_sequence=0;current->decision_tracked_from_entry=false;return;
         }
         std::string capture_session;
-        { std::lock_guard lock(current->mutex); capture_session=current->session; current->opening.reset(); }
+        { std::lock_guard lock(current->mutex); capture_session=current->session; current->opening.reset();
+            current->decision_sequence=current->sequence+1;current->decision_thread=GetCurrentThreadId();
+            current->decision_entries=0;current->decision_foreign_thread=false;current->decision_overflow=false;
+            current->decision_tracked_from_entry=decision_installed.load(std::memory_order_acquire); }
         auto copied = ffr::capture_entry(read_memory, reinterpret_cast<std::uint64_t>(entry), skip_intro);
         if (!copied) { current->failures.fetch_add(1); return; }
         auto json = ffr::to_json(*copied);
@@ -620,6 +649,9 @@ extern "C" __declspec(dllexport) void* start_mod() noexcept {
         auto* state = observer.get();
         observer->worker = std::thread([state] { state->run(); });
         const auto installed=install_entry_hook();
+        if(installed) {
+            try {install_decision_hook();}catch(...) {shutdown_decision_hook();}
+        }
 #ifdef FFR_PRACTICE_BUILD
         if(installed)install_abort_tick_hook();
 #else
@@ -629,6 +661,7 @@ extern "C" __declspec(dllexport) void* start_mod() noexcept {
     } catch (...) {
         if (observer) {
             observer->expires.store(0); observer->quit.store(true);
+            shutdown_decision_hook();
 #ifdef FFR_PRACTICE_BUILD
             shutdown_abort_tick_hook();
 #endif
@@ -649,6 +682,7 @@ extern "C" __declspec(dllexport) void uninstall_mod(void* object) noexcept {
     try {
         if (observer) {
             observer->expires.store(0); observer->quit.store(true);
+            shutdown_decision_hook();
 #ifdef FFR_PRACTICE_BUILD
             shutdown_abort_tick_hook();
 #endif

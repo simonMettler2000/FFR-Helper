@@ -435,6 +435,33 @@ creating hooks. Controlled fixture profiles alone mark their dummy effects
 reviewed. Future runtime integration requires a concrete review/containment of
 these paths as well as the existing root, field, clock and recovery gates.
 
+Static inspection also identifies a separate map-unit parameter cache owned by
+the map manager. Its native lookup searches existing parameter objects rather
+than deriving fresh values from the current save root. The verified constructor,
+reflected owner/list fields and teardown path establish its layout; teardown
+marks/releases cached objects and must not be treated as a generic refresh API.
+This is another reason why matching root bytes or retaining both roots does not
+prove gameplay cache consistency. Indirect delegate/Blueprint refresh behavior
+remains unverified.
+
+New opening metadata can include an optional read-only `mapUnitCache`: bounded
+raw inherited parameter components, equipment/passives and effect counts from
+that profiled storage vtable. Distinct objects with duplicate unit IDs retain
+separate indices. Storage/list identity is rechecked; invalid data or exhausted
+bounds yields null metadata and a separate failure counter while preserving the
+opening/progression. This is explicitly `coherentWithProgression: false` and
+non-restorable: it is an independent diagnostic read, not proof that serialized
+progression contains every current field resource. Old archives remain valid.
+The offline comparator can report cache-component equality independently.
+
+Portable and compiled-DLL/production-consumer tests verify detached raw values,
+duplicate IDs, changed storage refusal, budgets and optional failure without
+suppressing progression. Large retained encounter histories now omit oldest
+events from a report when necessary to reserve room for opening metadata; the
+report states `eventsOmittedForSize` and remains within its size limit. No cache
+refresh/clear, root mutation or extra game function is invoked by this copy.
+The addition is uninstalled and awaits live comparison with field resources.
+
 ### Live playtime basis capture, pending live verification
 
 The saved `Player.PlayTime` value was unchanged across the three live opening

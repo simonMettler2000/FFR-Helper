@@ -61,6 +61,7 @@ def main():
         import_text+=f'inline constexpr char {key}_name[]="{name}";\ninline constexpr std::uintptr_t {key}_rva={loader_pe.exports[name]};\n'
     (output/'good_import_profile.hpp').write_text(import_text+'}\n',encoding='utf8')
     field_text='#pragma once\n#include <cstdint>\nnamespace ffr::field_profile {\n'
+    field_text+=f'inline constexpr std::uintptr_t map_storage_vtable_rva={game_pe.exports["ffr_test_map_storage_vtable"]};\n'
     for function,export in [('get_world','ffr_test_field_get_world'),('get_map','ffr_test_abort_get_map'),('get_player','ffr_test_field_get_player'),('get_map_id','ffr_test_field_get_map_id')]:
         rva=game_pe.exports[export];start=game_pe.offset(rva)
         field_text+=f'inline constexpr std::uintptr_t {function}_rva={rva};\ninline constexpr char {function}_sha256[]="{hashlib.sha256(game_pe.raw[start:start+64]).hexdigest()}";\n'

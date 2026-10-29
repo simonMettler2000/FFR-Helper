@@ -181,16 +181,28 @@ def main():
                 assert basis['roundingMode']=='nearest-even'
                 assert report['objects']['nativeEntry']['playtimeBasisReady'] is True
                 assert report['objects']['nativeEntry']['playtimeBasisFailures']==0
+                from ffr_helper.map_cache import validate_map_unit_cache
+                cache=validate_map_unit_cache(metadata['mapUnitCache'])
+                assert cache['units'][0]['raw']['hpBase']==150 and cache['units'][0]['raw']['mp']==-20
+                assert len(cache['units'])==2 and cache['units'][0]['raw']['unitId']==cache['units'][1]['raw']['unitId']
+                assert cache['coherentWithProgression'] is False and report['objects']['nativeEntry']['mapUnitCacheFailures']==0
                 replacement=json.loads((root/'connection/replacement-report.json').read_text(encoding='utf8'))
                 second=replacement['objects']['nativeEntry']['opening']
                 second_raw=(root/'connection/replacement-progression.gvas').read_bytes()
                 assert second['sequence']==2 and second['entry']['friendliesUnitIdList']==[9999,1002]
                 assert second['sha256']==hashlib.sha256(second_raw).hexdigest() and second_raw[8]==43
                 assert second['playtimeBasis'] is None and replacement['objects']['nativeEntry']['playtimeBasisFailures']==1
+                assert second['mapUnitCache'] is None and replacement['objects']['nativeEntry']['mapUnitCacheFailures']==1
                 assert progression[8]==42 and metadata['entry']['friendliesUnitIdList']==[1001,1002]
                 after=json.loads((root/'connection/after-expiry-report.json').read_text(encoding='utf8'))
                 assert len(after['events'])==2 and after['objects']['nativeEntry']['captureFailures']==1
                 assert after['objects']['nativeEntry']['opening'] is None
+                large=json.loads((root/'connection/large-history-report.json').read_text(encoding='utf8'))
+                from ffr_helper.runtime import validate_report
+                validate_report(large)
+                assert large['objects']['nativeEntry']['eventsOmittedForSize']>0 and len(large['events'])<5
+                latest_cache=validate_map_unit_cache(large['objects']['nativeEntry']['opening']['mapUnitCache'])
+                assert latest_cache['units'][0]['raw']['hpBase']==7 and cache['units'][0]['raw']['hpBase']==150
             else:
                 assert report['events']==[] and report['objects']['nativeEntry']['ready'] is False
 

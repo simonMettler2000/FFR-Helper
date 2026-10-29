@@ -75,6 +75,7 @@ def compare_openings(source:OpeningCapture,observed:OpeningCapture):
     a=source.metadata.get('fieldAnchor');b=observed.metadata.get('fieldAnchor');field=None
     if a is not None and b is not None:
         field=dict(mapIdEqual=a['mapId']==b['mapId'],positionEqual=a['position']==b['position'],directionEqual=a['direction']==b['direction'])
+    a_cache=source.metadata.get('mapUnitCache');b_cache=observed.metadata.get('mapUnitCache')
     return dict(format='ffr-helper-opening-comparison',version=1,kind='offline-component-comparison',restorable=False,
         restartVerified=False,independentCaptureVerified=False,gameSha256=source.metadata['gameSha256'],
         sourceSha256=source.metadata['sha256'],observedSha256=observed.metadata['sha256'],
@@ -84,6 +85,7 @@ def compare_openings(source:OpeningCapture,observed:OpeningCapture):
         rawProgressionEqual=source.progression==observed.progression,
         sourceNormalizationSupported=expected_hash is not None,expectedNormalizedSha256=expected_hash,
         normalizedProgressionEqual=normalized_equal,fieldAnchorComparison=field,
+        mapUnitCacheEqual=(a_cache==b_cache if a_cache is not None and b_cache is not None else None),
         missingState=['Evidence that a native restart actually executed','Independent capture provenance',
                       'Complete live resources, scheduler, AI, effects and RNG','World/lifecycle restoration and external effects'])
 

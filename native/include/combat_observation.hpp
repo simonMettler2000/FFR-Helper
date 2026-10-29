@@ -3,6 +3,7 @@
 #include "encounter_capture.hpp"
 #include "combat_relations.hpp"
 #include "continuous_effects.hpp"
+#include "unit_components.hpp"
 #include <map>
 #include <set>
 
@@ -84,11 +85,8 @@ inline std::optional<CombatObservation> capture_combat_observation(const Reader&
         // UNIT_PARAMETER begins at +0xc8. These scalar offsets are corroborated
         // by its reflected struct and native getter thunks. No FText, maps or
         // UObject references are shallow-copied from that structure.
+        for(const auto& [name,offset]:basic_unit_fields)if(!value(parameter+offset,unit.raw[name]))return {};
         const std::pair<const char*,std::uint32_t> fields[]{
-            {"unitId",0xd0},{"baseLevel",0x100},{"hpBase",0x10c},{"mp",0x110},{"stagger",0x114},{"limitBurst",0x118},
-            {"maxHp",0x120},{"maxMp",0x124},{"maxStagger",0x128},{"attack",0x12c},{"defence",0x130},
-            {"intelligence",0x134},{"mind",0x138},{"divine",0x13c},{"agility",0x140},
-            {"weaponId",0x1e8},{"armorId",0x1ec},{"visionId",0x200},{"temporaryHp",0x268},
             {"actionCount",0x4dc},{"thinkCount",0x4fc},{"receivedDamageCount",0x500},{"breakCount",0x504},{"duplicationId",0x550}};
         for(const auto& [name,offset]:fields)if(!value(parameter+offset,unit.raw[name]))return {};
         if(unit.raw.at("unitId")<0)return {};

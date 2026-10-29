@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 namespace ffr::field_profile {
+inline constexpr std::uintptr_t map_storage_vtable_rva=0x8619bf8;
 inline constexpr std::uintptr_t get_world_rva=0x42fb240;
 inline constexpr char get_world_sha256[]="50e2417c926282a47258ec07a5b76cc46b81d361d3bf51c4a3ecd56c5e869051";
 inline constexpr std::uintptr_t get_map_rva=0x4fd0210;

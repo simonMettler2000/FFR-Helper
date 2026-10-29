@@ -8,11 +8,10 @@ import time
 import uuid
 
 from .game_build import GAME_SHA256
+from .unit_components import UNIT_FIELDS
 
 MAX_COMBAT_REPORT = 512*1024
-RAW_FIELDS = {'unitId', 'baseLevel', 'hpBase', 'mp', 'stagger', 'limitBurst', 'maxHp', 'maxMp', 'maxStagger',
-              'attack', 'defence', 'intelligence', 'mind', 'divine', 'agility', 'weaponId', 'armorId', 'visionId',
-              'temporaryHp', 'actionCount', 'thinkCount', 'receivedDamageCount', 'breakCount', 'duplicationId'}
+RAW_FIELDS = UNIT_FIELDS|{'actionCount','thinkCount','receivedDamageCount','breakCount','duplicationId'}
 EFFECT_FIELDS={'effectId','endActionCount','addProbability','activationProbability','conditionParam1','conditionParam2',
                'conditionParam3','lifeTurn','effectType','applyTiming','proceedTiming','unremovable','conditionType','statusCondition','executingReaction'}
 EFFECT_BYTES={'effectType','applyTiming','proceedTiming','conditionType','statusCondition'}

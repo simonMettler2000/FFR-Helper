@@ -113,6 +113,16 @@ contains the detached encounter setup, serialized progression and explicit
 missing-state metadata. It cannot be loaded as a game save or ordinary checkpoint.
 It is not a battle restart or a restorable save state.
 
+Optional opening `mapUnitCache` metadata copies bounded raw components from the
+map manager's separately cached unit parameters. Storage/list identities and a
+profiled storage vtable are checked; failure leaves null metadata without
+suppressing progression. It preserves duplicate IDs as distinct indices and is
+explicitly not coherent with serialized progression or restorable. This helps
+investigate cache/resource coverage before any root rebinding. No cache setter,
+refresh or clear function is called. The addition is not installed/live-verified.
+When a large retained event history needs truncation for a bounded report,
+`eventsOmittedForSize` states how many oldest events were omitted from that report.
+
 ## Verification and packaging
 
 The native tests cover the bounded copying/UTF-16/JSON core and run the real DLL

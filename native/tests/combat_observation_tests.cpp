@@ -1,4 +1,5 @@
 #include "combat_observation.hpp"
+#include "map_unit_cache.hpp"
 #include <cstring>
 #include <iostream>
 #include <stdexcept>
@@ -166,6 +167,30 @@ int main() {
                 return f.m.read(address,output,count);
             },f.manager);
             CHECK(result && !result->continuous_effects && result->units[0].continuous_effect_count==1);
+        }
+        {
+            Fixture f;const auto map=f.m.object(0x210),storage=f.m.object(0x38);
+            f.m.put(map+0x208,storage);f.m.put(storage+0x28,f.m.array<std::uint64_t>({f.parameters[0],f.parameters[1]}));
+            auto capture=[&]{return ffr::capture_map_unit_cache([&](auto a,auto b,auto c){return f.m.read(a,b,c);},map,1);};
+            auto result=capture();CHECK(result && result->units.size()==2 && result->units[0].raw.at("unitId")==result->units[1].raw.at("unitId"));
+            CHECK(result->units[0].raw.at("mp")==-20 && result->units[0].raw.at("temporaryHp")==25);
+            const auto encoded=ffr::to_json(*result);CHECK(encoded.find("\"coherentWithProgression\":false")!=std::string::npos);
+            f.m.put(f.parameters[0]+0x10c,std::int32_t{7});CHECK(ffr::to_json(*result)==encoded);
+            f.m.put(storage+0x28,f.m.array<std::uint64_t>({f.parameters[0],f.parameters[0]}));CHECK(!capture());
+            f.m.put(storage+0x28,ffr::RawArray{});CHECK(capture()->units.empty());
+            f.m.put(storage,std::uint64_t{2});CHECK(!capture());f.m.put(storage,std::uint64_t{1});
+            f.m.put(storage+0x28,f.m.array<std::uint64_t>({f.parameters[0]}));unsigned reads{};
+            auto drift=ffr::capture_map_unit_cache([&](auto address,auto output,auto count){
+                if(address==storage+0x28 && ++reads==2)f.m.put(map+0x208,std::uint64_t{1});
+                return f.m.read(address,output,count);
+            },map,1);CHECK(!drift);
+        }
+        {
+            Fixture f;const auto map=f.m.object(0x210),storage=f.m.object(0x38);f.m.put(map+0x208,storage);
+            std::vector<std::uint64_t> parameters;
+            for(unsigned i=0;i<17;++i){const auto p=f.m.object(0x2b0);f.m.put(p+0xd0,std::int32_t{1001});
+                f.m.put(p+0x208,f.m.array<std::int32_t>(std::vector<std::int32_t>(128,1)));parameters.push_back(p);}
+            f.m.put(storage+0x28,f.m.array(parameters));CHECK(!ffr::capture_map_unit_cache([&](auto a,auto b,auto c){return f.m.read(a,b,c);},map,1));
         }
         CHECK(!ffr::capture_combat_observation([](auto,auto,auto){return false;},0x10000));
         std::cout<<"Detached combat components, duplicate-unit identities and deep AI-reference checks passed.\n";

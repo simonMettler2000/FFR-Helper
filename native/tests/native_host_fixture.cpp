@@ -33,7 +33,10 @@ std::int32_t recovery_money=101,fixture_map_id=1000;
 std::array<unsigned char,0x280> fake_manager{};
 std::array<unsigned char,0x80> fake_jobs{},fake_units{};
 std::array<unsigned char,0x90> fake_ui{};
-std::array<unsigned char,32> fake_world{},fake_map{};
+std::array<unsigned char,32> fake_world{};
+std::array<unsigned char,0x210> fake_map{};
+std::array<unsigned char,0x38> fake_map_storage{};
+std::array<std::array<unsigned char,0x2b0>,2> fake_map_parameters{};
 std::array<unsigned char,0x800> fake_field_player{};
 std::array<unsigned char,0x230> fake_field_component{};
 std::array<unsigned char,0xd0> fake_field_operation{};
@@ -45,6 +48,7 @@ float last_delta{};
 }
 extern "C" {__declspec(dllexport) std::uint64_t ffr_test_btl_vtable[1]={0};}
 extern "C" {__declspec(dllexport) std::uint64_t ffr_test_save_vtable[1]={0};}
+extern "C" {__declspec(dllexport) std::uint64_t ffr_test_map_storage_vtable[1]={0};}
 extern "C" __declspec(dllexport) __declspec(noinline)
 void* __fastcall ffr_test_field_get_world(void* map) {
     if(map!=fake_map.data()){++fixture_errors;return nullptr;}return fake_world.data();
@@ -175,6 +179,15 @@ int wmain(int argc, wchar_t** argv) {
         const std::uint64_t klass=1; std::memcpy(fake_root.data()+16,&klass,sizeof(klass));
         object(fake_world);object(fake_map);object(fake_field_player);object(fake_field_component);object(fake_field_operation);
         object(fake_root);object(fake_playtime);
+        object(fake_map_storage,reinterpret_cast<std::uint64_t>(ffr_test_map_storage_vtable));
+        put(fake_map,0x208,reinterpret_cast<std::uint64_t>(fake_map_storage.data()));
+        std::vector<std::uint64_t> map_parameters;
+        for(unsigned i=0;i<2;++i) {
+            object(fake_map_parameters[i]);put(fake_map_parameters[i],0xd0,std::int32_t{1001}); // Distinct objects may share an ID.
+            put(fake_map_parameters[i],0x100,std::int32_t{12});put(fake_map_parameters[i],0x10c,std::int32_t{150});
+            put(fake_map_parameters[i],0x110,std::int32_t{-20});map_parameters.push_back(reinterpret_cast<std::uint64_t>(fake_map_parameters[i].data()));
+        }
+        put(fake_map_storage,0x28,array(map_parameters));
         put(fake_root,0x38,1000.25f);
         put(fake_playtime,0x30,std::array<std::int64_t,3>{9000,0,30});
         put(fake_field_player,0x1b8,reinterpret_cast<std::uint64_t>(fake_field_component.data()));
@@ -259,6 +272,7 @@ int wmain(int argc, wchar_t** argv) {
         // Later live changes must not alter the already detached opening basis.
         put(fake_root,0x38,2000.5f);
         put(fake_playtime,0x30,std::array<std::int64_t,3>{9500,0,40});
+        put(fake_map_parameters[0],0x10c,std::int32_t{7});
         friends[0] = 9999; enemies[0] = 999; skills[0] = 999; bgm[0] = u'X';
         lease(std::string(32,'b'), now()+8);
         wait_for([&] { return read(connection/L"runtime-report.json").find(std::string(32,'b')) != std::string::npos; });
@@ -282,6 +296,7 @@ int wmain(int argc, wchar_t** argv) {
             // Unavailable/incoherent clock evidence must not suppress a valid
             // progression/encounter capture or invent a restorable timer.
             put(fake_playtime,0x30,std::int64_t{20000});
+            put(fake_map_storage,0,std::uint64_t{1}); // Unsupported optional cache must not suppress progression.
             entry_function(context,&entry,false); CHECK(calls==4 && serialized==2 && released==2);
             lease(std::string(32,'d'),now()+8);
             wait_for([&] { return read(connection/L"runtime-report.json").find(std::string(32,'d')) != std::string::npos; });
@@ -295,6 +310,15 @@ int wmain(int argc, wchar_t** argv) {
             wait_for([&] { return read(connection/L"runtime-report.json").find(std::string(32,'e')) != std::string::npos; });
             write(connection/L"after-expiry-report.json", read(connection/L"runtime-report.json"));
             CHECK(abort_calls==0 && clone_loads==0 && serialized==2 && released==2);
+            put(fake_map_storage,0,reinterpret_cast<std::uint64_t>(ffr_test_map_storage_vtable));
+            std::vector<std::int32_t> many_skills(128,2147483647);std::vector<ffr::RawArray> many_passives(64,array(many_skills));
+            auto large_entry=entry;large_entry.passives=array(many_passives);
+            for(unsigned i=0;i<3;++i)entry_function(context,&large_entry,false);
+            lease(std::string(32,'f'),now()+8);
+            wait_for([&]{return read(connection/L"runtime-report.json").find(std::string(32,'f'))!=std::string::npos;});
+            const auto large_report=read(connection/L"runtime-report.json");
+            CHECK(large_report.size()<=512*1024 && large_report.find("\"eventsOmittedForSize\":0")==std::string::npos);
+            write(connection/L"large-history-report.json",large_report);
         } else CHECK(snapshot.find("encounter-opening-native") == std::string::npos);
         stop(object);
         CHECK(host_count() == 0 && host_errors() == 0);

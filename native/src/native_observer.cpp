@@ -16,6 +16,7 @@
 #include "progression_capture.hpp"
 #include "field_anchor.hpp"
 #include "playtime_capture.hpp"
+#include "map_unit_cache.hpp"
 #ifdef FFR_PLAYTIME_PROFILE_HEADER
 #include FFR_PLAYTIME_PROFILE_HEADER
 #else
@@ -210,6 +211,7 @@ struct Observer {
         std::string session, entry;
         std::string field_anchor="null";
         std::string playtime_basis="null";
+        std::string map_unit_cache="null";
         std::optional<ffr::FieldAnchor> field_value;
         std::optional<ffr::PlaytimeBasis> clock_value;
         std::vector<unsigned char> progression;
@@ -231,6 +233,7 @@ struct Observer {
     std::atomic<unsigned> progression_failures{0};
     std::atomic<unsigned> field_failures{0};
     std::atomic<unsigned> playtime_failures{0};
+    std::atomic<unsigned> map_cache_failures{0};
     std::shared_ptr<const Opening> opening;
 #ifdef FFR_PRACTICE_BUILD
     ffr::AbortTrial trial;
@@ -309,6 +312,7 @@ struct Observer {
                                 +",\"file\":\"opening-progression.gvas\",\"byteLength\":"+std::to_string(payload.size())
                                 +",\"sha256\":"+ffr::quote(digest)+",\"entry\":"+current_opening->entry
                                 +",\"fieldAnchor\":"+current_opening->field_anchor
+                                +",\"mapUnitCache\":"+current_opening->map_unit_cache
                                 +",\"playtimeBasis\":"+current_opening->playtime_basis+'}';
                             published=current_opening;
 #ifdef FFR_PRACTICE_BUILD
@@ -322,6 +326,11 @@ struct Observer {
                     + ffr::quote(ready.load() ? "observing" : "unavailable") + "},\"message\":" + ffr::quote(note) + '}';
                 write_atomic(connection/L"observer-status.json", status);
                 if (requested) {
+                    // Keep room for bounded opening metadata even when earlier
+                    // large entries fill the retained internal event history.
+                    std::size_t copied_bytes{};for(const auto& event:copied)copied_bytes+=event.size()+1;
+                    unsigned omitted{};
+                    while(!copied.empty() && copied_bytes>256*1024) {copied_bytes-=copied.front().size()+1;copied.pop_front();++omitted;}
                     std::string report = "{" + base + ",\"request\":" + ffr::quote(lease->request)
                         + ",\"format\":\"ffr-helper-runtime-report\",\"version\":1,\"kind\":\"diagnostic-observation\",\"restorable\":false"
                         + ",\"objects\":{\"nativeEntry\":{\"ready\":" + (ready.load() ? "true" : "false")
@@ -331,6 +340,8 @@ struct Observer {
                         + ",\"fieldAnchorFailures\":"+std::to_string(field_failures.load())
                         + ",\"playtimeBasisReady\":"+(playtime_profile_ready.load()?"true":"false")
                         + ",\"playtimeBasisFailures\":"+std::to_string(playtime_failures.load())
+                        + ",\"mapUnitCacheFailures\":"+std::to_string(map_cache_failures.load())
+                        + ",\"eventsOmittedForSize\":"+std::to_string(omitted)
                         + ",\"opening\":"+opening_metadata+"}},\"events\":[";
                     for (std::size_t i=0; i<copied.size(); ++i) { if (i) report += ','; report += copied[i]; }
                     report += "],\"missingState\":[\"Live verification of serialized progression/resource coverage\",\"Full combat and RNG state\",\"Verified restore path\"]}";
@@ -435,6 +446,13 @@ void __fastcall encounter_hook(void* context, const void* entry, bool skip_intro
             if(anchor){opening->field_anchor=ffr::to_json(*anchor);opening->field_value=*anchor;}
             else current->field_failures.fetch_add(1);
         }catch(...) {current->field_failures.fetch_add(1);}
+        try {
+            const auto base=reinterpret_cast<std::uint64_t>(GetModuleHandleW(nullptr));
+            auto cache=ffr::capture_map_unit_cache(read_memory,reinterpret_cast<std::uint64_t>(context),base+ffr::field_profile::map_storage_vtable_rva);
+            const auto encoded=cache?ffr::to_json(*cache):"null";
+            if(cache && encoded.size()<=48*1024)opening->map_unit_cache=encoded;
+            else current->map_cache_failures.fetch_add(1);
+        }catch(...) {current->map_cache_failures.fetch_add(1);}
 #ifdef FFR_PRACTICE_BUILD
         opening->encounter=std::move(*copied); opening->context_identity=reinterpret_cast<std::uint64_t>(context);
         opening->thread=GetCurrentThreadId();

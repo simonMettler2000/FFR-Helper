@@ -45,7 +45,11 @@ def main():
                 print(f'Available={summary[0]}; loader initialized={summary[1]}; phase={summary[2]}. {summary[3]}', flush=True)
                 last = summary
             guard = status['guard']
-            if args.probe_import and not sent and probe['phase'] == 'idle' and probe['loaderReady']:
+            # Preemptive/setup frames can already count party turn beginnings.
+            # Select only a supported command menu; never blame those excluded
+            # frames on a user action or bind the probe to their encounter.
+            if (args.probe_import and not sent and probe['phase'] == 'idle' and probe['loaderReady']
+                    and guard.get('ordinaryEncounter') is True and guard.get('commandMenu') is True):
                 sequence, digest = guard.get('sequence'), guard.get('openingHash')
                 if type(sequence) is int and sequence > 0 and isinstance(digest, str) and len(digest) == 64:
                     if target is None:
@@ -53,7 +57,7 @@ def main():
                     if sequence != target:
                         raise RuntimeError('The selected encounter changed; no import will be requested.')
                     if type(guard.get('friendlyActions')) is int and guard['friendlyActions'] > 0:
-                        raise RuntimeError('A party action occurred; this probe requires the opening command menu.')
+                        raise RuntimeError('Opening-boundary counter is not eligible; no import request was sent.')
                     if bridge.bridge.safe_guard(status, sequence, digest):
                         if not pending:
                             recorder.request = uuid.uuid4().hex

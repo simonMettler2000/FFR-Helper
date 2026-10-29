@@ -1,7 +1,18 @@
 # Experimental opening-abort trial
 
+**Current FFR dispatch is disabled.** The 29 October live import-only test sent
+no import or abort request: a first-command menu already counted one turn start.
+The counter increment follows `Delegate.Battle.Unit.Turn.Begin`, so it cannot
+stand in for completed player commands. The supported FFR profile now sets
+`opening_boundary_reviewed=false` and installs no practice tick hook. Import,
+abort, normalization and command-state dispatch remain unavailable until the
+boundary and fresh idle-menu sampling are corrected and reviewed. Controlled
+dummy profiles alone enable the fixture tests. The installed practice component
+is disabled; the read-only recorder and loader lookup fix were restored.
+
 This is a separate, mutation-capable development component. It has passed
-isolated dummy-process tests but has **not been installed or tested in FFR**.
+isolated dummy-process tests. Its dispatch/import availability was observed in
+FFR, but no engine import, abort or restoration operation has been executed.
 It does not restart a battle, replace live progression or restore a save state.
 It now also has a separate, explicit **detached import comparison** described
 below. Creating a comparison UObject does not apply it to the running game.
@@ -23,10 +34,11 @@ a separately approved test with backed-up practice data.
   unique nonce, with an expiry of at most eight seconds.
 - The game-thread guard requires a matching current world/map manager, ordinary
   escapable encounter flags, battle UI command phase, selected party unit,
-  all captured friendly units present, zero friendly actions and idle job queues.
+  all captured friendly units present, a zero raw turn-begin counter and idle job queues.
   Non-default battle-event IDs, bounty/test/preemptive/result-skipping flags and
   disabled escape cause refusal. This does not identify every possible script context.
-  These guards remain to be verified in FFR; they are not a completeness claim.
+  The live first menu already had a counter of one, so these guards are
+  insufficient and the supported profile disables dispatch pending correction.
 - Preparation serializes progression into a separate recovery buffer. The worker
   commits and reads back a private recovery file before reporting the trial armed.
   The client also checks its hash, GVAS class, engine, footer and required fields.
@@ -65,7 +77,9 @@ The exact-build signature preparer stages that fix from the user's own executabl
 It verifies the full executable hash, PE architecture, executable-section bounds,
 function hash and unique match before generating a symbol-lookup script. It never
 overwrites a different existing override. It does not install the staged file or
-establish live compatibility; installation/relaunch testing remains pending.
+establish live compatibility by itself. The generated constructor lookup was
+separately installed and verified on 29 October; it resolved the scan timeout and
+the same save loaded with the loader alone and with the read-only native module.
 
 ## Test controller
 
@@ -159,7 +173,8 @@ source, target or object makes the whole graph null; other partial diagnostics
 can remain available. Known empty lists are preserved. Object/parameter budgets
 and the shared reference limit are checked by native and Python code. Subclass
 state, actual application timing and restoration remain unverified; this is not
-complete status coverage. The addition is fixture-tested and uninstalled.
+complete status coverage. The graph is fixture-tested but has not been captured
+in FFR; the practice module is disabled.
 
 Start the controller before entering the encounter so its opening is observed
 in the same session. Observe readiness without requesting a frame:

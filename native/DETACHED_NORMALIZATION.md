@@ -1,8 +1,10 @@
 # Detached playtime normalization prerequisite
 
 The optional `FFRHelperBattlePractice` component can explicitly compare one
-detached normalized progression object. It is **uninstalled and not tested in
-FFR**. This prerequisite does not restore a save state or restart a battle.
+detached normalized progression object. **No normalization operation has been
+tested in FFR.** The installed practice module is disabled and the FFR source
+profile blocks dispatch pending boundary and fresh idle-menu review.
+This prerequisite does not restore a save state or restart a battle.
 The ordinary read-only observer excludes its request and writer paths.
 
 Normal loading resets the live playtime subsystem. The saved float alone does

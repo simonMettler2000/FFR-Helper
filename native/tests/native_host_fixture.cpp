@@ -223,6 +223,8 @@ int wmain(int argc, wchar_t** argv) {
             GetProcAddress(GetModuleHandleW(nullptr), "ffr_test_encounter")); CHECK(entry_function);
         unsigned char initial_code[64]{};
         std::memcpy(initial_code, reinterpret_cast<const void*>(entry_function), sizeof(initial_code));
+        auto* fixture_tick=reinterpret_cast<const void*>(GetProcAddress(GetModuleHandleW(nullptr),"ffr_test_abort_tick"));CHECK(fixture_tick);
+        std::array<unsigned char,64> initial_tick{};std::memcpy(initial_tick.data(),fixture_tick,initial_tick.size());
         auto object = start();
         if (mode == L"bad-loader") {
             CHECK(object == nullptr && host_count() == 0);
@@ -232,6 +234,17 @@ int wmain(int argc, wchar_t** argv) {
         }
         CHECK(object != nullptr && host_count() == 1);
         CHECK(start() == nullptr); // Restart is required; no duplicate detour/worker.
+        if(mode==L"boundary-unreviewed") {
+            write(connection/L"observe.txt","FFR_HELPER_OBSERVER_V1\n"+std::string(32,'a')+"\n"+std::to_string(now()+8)+"\n"+std::string(32,'b')+"\n");
+            wait_for([&]{return read(connection/L"abort-status.json").find("Opening command boundary is unreviewed")!=std::string::npos;});
+            const auto status=read(connection/L"abort-status.json");
+            CHECK(status.find("\"available\":false")!=std::string::npos);
+            CHECK(std::memcmp(initial_tick.data(),fixture_tick,initial_tick.size())==0);
+            CHECK(abort_calls==0 && clone_loads==0 && serialized==0);
+            stop(object);CHECK(host_count()==0 && host_errors()==0 && fixture_errors==0);
+            CHECK(std::memcmp(initial_code,reinterpret_cast<const void*>(entry_function),sizeof(initial_code))==0);
+            std::cout<<"Unreviewed boundary refused before practice tick hook or import initialization.\n";return 0;
+        }
         if(mode.starts_with(L"normalize")) {
             run_normalization_fixture(connection,mode,loader);stop(object);
             CHECK(host_count()==0 && host_errors()==0 && fixture_errors==0);

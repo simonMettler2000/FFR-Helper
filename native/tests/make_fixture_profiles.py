@@ -46,13 +46,14 @@ def main():
     offset = game_pe.offset(entry)
     code_hash = hashlib.sha256(game_pe.raw[offset:offset+64]).hexdigest()
     output.mkdir(parents=True, exist_ok=True)
-    abort_text='#pragma once\n#include <cstdint>\nnamespace ffr::abort_profile {\n'
+    abort_text='#pragma once\n#include <cstdint>\nnamespace ffr::abort_profile {\ninline constexpr bool opening_boundary_reviewed=true;\n'
     for function in ['tick','get_world','get_map','get_ui','end_battle']:
         rva=game_pe.exports['ffr_test_abort_'+function];start=game_pe.offset(rva)
         digest=hashlib.sha256(game_pe.raw[start:start+64]).hexdigest()
         abort_text+=f'inline constexpr std::uintptr_t {function}_rva={rva};\ninline constexpr char {function}_sha256[]="{digest}";\n'
     abort_text+=f'inline constexpr std::uintptr_t manager_vtable_rva={game_pe.exports["ffr_test_btl_vtable"]};\n}}\n'
     (output/'good_abort_profile.hpp').write_text(abort_text,encoding='utf8')
+    (output/'unreviewed_abort_profile.hpp').write_text(abort_text.replace('opening_boundary_reviewed=true','opening_boundary_reviewed=false'),encoding='utf8')
     clone_rva=game_pe.exports['ffr_test_load_memory'];clone_start=game_pe.offset(clone_rva)
     import_text='#pragma once\n#include <cstdint>\nnamespace ffr::import_profile {\n'
     import_text+=f'inline constexpr std::uintptr_t load_memory_rva={clone_rva};\ninline constexpr char load_memory_sha256[]="{hashlib.sha256(game_pe.raw[clone_start:clone_start+64]).hexdigest()}";\n'

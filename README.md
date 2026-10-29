@@ -80,6 +80,14 @@ without operating the game; equal files cannot verify a restart or a full state.
 The ordinary native-load path has unreviewed delegate/platform effects and
 remains deliberately unavailable to runtime commands.
 
+The 29 October supervised test fixed the loader's missing constructor lookup and
+verified two updated read-only opening captures, including rewards and detached
+field/clock/cache/RNG metadata. A separate import-only test refused before any
+import: the first-menu counter counts turn beginnings, not completed commands.
+The supported FFR practice dispatch is now disabled pending correction/review.
+The installed practice module is disabled and the working read-only setup was
+restored. Battle restart and save-state restoration remain unfinished.
+
 ## Use
 
 1. Open **FFR Helper** and choose a detected `GameSaveData` slot, or browse for it.
@@ -128,6 +136,10 @@ bonuses/participation rules. The tool does not assume identical EXP/MRP rewards
 for every character or vision. Mastery forecasts display native tier indices.
 
 ## Development
+
+Before installer, UE4SS bundling or release work, revisit the
+[redistribution review and requested reminder](docs/REDISTRIBUTION.md).
+The complete UE4SS binary package has not been cleared for redistribution here.
 
 Python 3.11+ is required. The packaged app does not require a Python installation.
 

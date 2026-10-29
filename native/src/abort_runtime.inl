@@ -220,6 +220,11 @@ void Observer::publish_abort(const Lease& lease) {
 }
 
 void install_abort_tick_hook() {
+    if(!ffr::abort_profile::opening_boundary_reviewed) {
+        std::lock_guard lock(observer->mutex);
+        observer->abort_message="Opening command boundary is unreviewed; practice tick dispatch disabled";
+        return;
+    }
     const auto base=reinterpret_cast<std::uint64_t>(GetModuleHandleW(nullptr));
     for(const auto& profile:{std::pair{ffr::abort_profile::tick_rva,ffr::abort_profile::tick_sha256},
             std::pair{ffr::abort_profile::get_world_rva,ffr::abort_profile::get_world_sha256},

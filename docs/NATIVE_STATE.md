@@ -84,8 +84,59 @@ The auxiliary Lua recorder did not initialize on this launch: UE4SS's engine
 pattern scan timed out locating `StaticConstructObject_Internal`. It produced no
 fresh reports. The native observer initialized independently and remained active,
 so this run does not provide a simultaneous Lua comparison of battle-only fields.
-That loader-initialization issue remains to be addressed separately. No signature
-override or additional hook was installed during this live test.
+That loader-initialization issue was addressed in the separate 29 October test
+below. No signature override or additional hook was installed during the earlier
+three-encounter test.
+
+## Loader recovery and updated capture test, 29 October 2026
+
+A later launch repeatedly failed to resolve `StaticConstructObject_Internal` and
+ended with a fatal pattern-scan timeout after 201 attempts. The user reported a
+loading loop. With the added proxy loader temporarily renamed, the same save
+loaded normally. After exact executable/function fingerprint checks, the
+prepared custom signature was installed using UE4SS's documented lookup API.
+The log then resolved the constructor at the expected RVA, completed engine
+initialization and entered its event loop. The same save also loaded with UE4SS
+alone and both helper modules disabled.
+
+With the game closed and current saves backed up, the user approved installing
+the read-only native observer from source revision `85e888f`. The Lua recorder
+remained disabled; the practice component and Saving anywhere remained absent.
+The user again reached exploration normally. The first ordinary encounter
+produced a validated opening with partial field/clock/cache/CRT/engine-global
+metadata and zero capture failure counters. After one user-issued command, its
+progression bytes and every metadata field remained unchanged. Cached HP-base
+and MP values matched corresponding saved fields in that opening; this is a
+component-level observation, not proof of complete cache coherence.
+
+This verifies the constructor lookup and the tested capture transport, not
+restoration or complete RNG/world coverage. Independent displayed-clock,
+position, concurrency and broader lifecycle checks remain outstanding. The
+private records are under `local/load-loop-20261029-1146/`; they contain no
+helper-triggered save writes, abort, live-root assignment or restore command.
+The reward/next-encounter check produced a second validated opening containing
+positive EXP and vision-MRP changes. Both captures retained every optional
+component and all capture failure counters stayed zero. The CRT state changed
+between these openings; the engine-global seed did not. This does not establish
+which gameplay actions use the latter generator.
+
+The separate practice module was then installed with explicit import-only
+approval. The first preemptive encounter was excluded. A normal first-command
+menu also reported a party counter of one before any user command, so the client
+refused without writing an import/abort request. Static instruction analysis
+located the increment immediately after `Delegate.Battle.Unit.Turn.Begin`:
+this counter cannot be treated as a count of completed user commands. No engine
+import, abort, normalization or live-state restore was performed. Fresh idle-menu
+sampling also remains to be verified; the subsequent read-only frame request
+timed out rather than accepting a stale boundary.
+
+The practice component was disabled with the game closed and the tested
+read-only native setup restored. All observation leases were expired. The FFR
+source profile now sets `opening_boundary_reviewed=false` and refuses practice
+tick-hook installation, including import/abort/normalization dispatch, until the
+boundary is corrected and reviewed. Controlled fixture profiles alone retain
+the test path. Do not substitute a threshold of one or waive freshness to make
+this test pass. The read-only entry observer is independent of that gate.
 
 ## In-memory progression and teardown findings
 
@@ -125,15 +176,17 @@ integration with actual native encounter recreation remains pending.
 The separately compiled [abort trial](../native/ABORT_TRIAL.md) adds a profiled
 battle-tick dispatcher and one EndBattle request, with session/revision/hash/nonce
 binding, expiry, a durable progression-only recovery gate and a second explicit
-commit. It checks the native command-menu boundary and rejects prior friendly
-actions, queued jobs and unsupported encounter flags. Cleanup observation includes
+commit. It checks a command-menu boundary, a raw turn-begin counter, queued jobs
+and unsupported encounter flags. The supported FFR profile now disables dispatch
+because that counter does not establish completion of user commands. Cleanup observation includes
 the matching context and cleared battle UI/unit/job state. Isolated DLL fixtures
 verify the complete file/dispatcher path and exactly-once behavior, including
-rejection after a prior action. It has not been installed or tested in FFR.
+rejection after a prior synthetic action. The live import-only guard refused
+before any request; no FFR abort or import operation ran.
 
 Profiled layout evidence includes the manager's secondary tick interface at
 offset 0x30, active flag at 0x1a9, unit/job managers at 0x48/0x40, unit parameter
-pointer at 0x838, unit ID at 0xd0 and action counter at 0x4dc. The UI phase is at
+pointer at 0x838, unit ID at 0xd0 and turn-begin counter at 0x4dc. The UI phase is at
 0x50; the generated bDuringBattle setter writes the byte at 0x80. These reads
 are constrained to the exact binary and game thread. Empty queues alone are
 not accepted as sufficient evidence of a command menu or field return.
@@ -161,11 +214,12 @@ Roots already owned by the engine are preserved. No live-root assignment, load
 delegate, EndBattle, encounter reconstruction or disk-slot write is invoked.
 
 This probe refuses an uninitialized UE4SS engine, including the symbol-scan
-failure observed on the last native capture launch. Export names/RVAs and full
+failure observed on the earlier native capture launch. Export names/RVAs and full
 module hashes bind its primitive rooting calls; no SDK containers cross the DLL
 boundary. One attempt is supported per process, with no automatic command retry.
 Isolated real-DLL fixtures cover success, loader refusal, mismatched clones,
-changed live bytes and prior friendly actions. Live import remains unverified.
+changed live bytes and prior synthetic actions. Live import has not run; the
+supported FFR practice dispatch is disabled pending boundary/freshness review.
 
 ## Remaining restore-state evidence gaps
 
@@ -207,7 +261,8 @@ game hash, x64 PE layout, executable section, function fingerprint and unique
 64-byte match before generating the supported UE4SS symbol-lookup override.
 The function bytes are extracted from the user's own executable and are not
 distributed in the repository. The generated lookup has no game calls or writes.
-It is staged locally and has not been installed or verified in a fresh launch.
+It was installed and verified in the separate 29 October loader-only and
+read-only recorder launches described above.
 
 The generator follows the official UE4SS Register/OnMatchFound interface:
 [compatibility guide](https://github.com/UE4SS/UE4SS/blob/master/Guides/FixingBrokenAOBs.md).
@@ -252,8 +307,10 @@ reflected UFunction hook.
 
 A portable read-only capture core now copies verified native combat components
 into owned values. The separate practice build exposes it through an explicit
-read-only request channel on the profiled game-thread dispatcher. This addition
-has **not been installed or tested in FFR**. The dispatcher requires the matching
+read-only request channel on the profiled game-thread dispatcher. No successful
+live command-state capture has been obtained. The installed practice module is
+disabled and the source profile blocks dispatch pending boundary/freshness review.
+The dispatcher requires the matching
 world and actual ordinary player-command boundary; empty queues and an active
 flag alone are insufficient. Unlike the abort experiment, observation supports
 command menus after prior party actions.
@@ -277,7 +334,7 @@ not imply that those relationships are empty. Old diagnostics remain accepted.
 Mimic command payloads and complete ownership/lifecycle reconstruction remain
 uncovered. Portable and compiled-DLL tests verify domain translation, duplicate
 identity, replay/deep-copy preservation, optional failure and combined bounds.
-This addition has not been installed or live-verified.
+This graph has not been captured or verified in FFR; the practice module is disabled.
 
 These are raw stored components, **not displayed or fully calculated stats**.
 The native HP getter adds base HP at +0x10c to temporary HP at +0x268. MP and
@@ -287,7 +344,8 @@ those values during capture would lose state. Raw maxima and base stats come fro
 the reflected UNIT_PARAMETER embedded at +0xc8 and do not include every runtime
 modifier.
 
-Static evidence also establishes duplication ID +0x550, action count +0x4dc,
+Static evidence also establishes duplication ID +0x550, turn-begin count +0x4dc
+(retained under the legacy raw `actionCount` field),
 think count +0x4fc, received-damage count +0x500 and break count +0x504. Reflected
 AI skill-stack entries are 24 bytes, with skill ID at 0 and a nested actor array
 at 8. The additional timeline array also contains battle actors. Per-array and
@@ -313,8 +371,8 @@ duplicate-ID identity mapping, nested targets, preserved raw values outside UI
 clamps, deep copying, ownership checks, dangling targets and aggregate bounds.
 Additional portable and compiled-DLL tests verify effect identity pools, raw
 negative durations, source/target domains, replay preservation and optional
-coverage failure. Legacy diagnostics remain accepted. The new effect graph is
-uninstalled and has not been tested in FFR.
+coverage failure. Legacy diagnostics remain accepted. The effect graph has not
+been captured in FFR; the practice module is disabled.
 
 The transport binds a fresh session, nonce, opening sequence/hash and an
 eight-second deadline. A nonce is consumed before copying, and replay cannot move
@@ -360,7 +418,8 @@ samples and repeated root/readiness checks. Its explicit read-only practice
 request, worker readback/hash gate, strict Python consumer and `.ffrrecovery`
 archive now pass compiled-DLL/consumer tests. Pending jobs, stale sources, changed
 maps, sampling drift, publication races and write failures cause refusal. The
-channel is uninstalled and awaits live field/clock verification. It is component
+channel has not been exercised live and remains disabled with practice dispatch.
+It is component
 evidence, not an atomic world snapshot, rollback or restorable battle state.
 
 ### Native load prerequisites verified offline
@@ -460,9 +519,11 @@ suppressing progression. Large retained encounter histories now omit oldest
 events from a report when necessary to reserve room for opening metadata; the
 report states `eventsOmittedForSize` and remains within its size limit. No cache
 refresh/clear, root mutation or extra game function is invoked by this copy.
-The addition is uninstalled and awaits live comparison with field resources.
+The 29 October test captured this metadata, preserved it after one command and
+matched saved HP-base/MP fields. Broader comparison with live field resources and
+full cache coherence remains outstanding.
 
-### Live playtime basis capture, pending live verification
+### Live playtime basis capture, limited live verification
 
 The saved `Player.PlayTime` value was unchanged across the three live opening
 captures, despite elapsed wall time. Static inspection identifies a separate
@@ -488,8 +549,10 @@ the same GVAS payload. Old archives without this optional metadata still load.
 
 Portable and compiled-DLL fixtures verify detached values, ongoing suspension,
 changed-root/clock refusal, malformed clocks, production-consumer parsing and
-non-suppression of progression when the clock is unavailable. This addition is
-not installed or live-verified. The partial recovery channel also captures a
+non-suppression of progression when the clock is unavailable. The 29 October
+openings verified detached clock/rounding metadata and saved-float correspondence;
+displayed-clock and suspension lifecycle comparisons remain outstanding.
+The partial recovery channel also captures a
 fresh clock basis. Playtime restoration remains outstanding, alongside live
 field/world restoration. The absence of
 a property from a serialized object is not evidence that every possible non-default
@@ -513,7 +576,8 @@ tie cases, 2,000 native two-stage comparisons, source/unknown-field preservation
 and format separation. A separate experimental detached-object probe now applies
 the plan to an owned clone and rechecks current rounding. A fresh recovery basis
 is captured by the read-only recovery channel. Actual clock reset/restoration
-remains outstanding, and none of these additions is live-verified.
+remains outstanding. The detached-clone probe and recovery capture have not been
+exercised in FFR; optional opening-clock capture has the limited verification above.
 
 For a new opening with supported clock metadata:
 
@@ -546,7 +610,7 @@ files; the production Python consumer compares their complete bytes with an
 independent source-preserving plan and checks receipt races. Compiled-DLL fixtures
 cover success with different source/current progression, uninitialized loader,
 stale source, template refusal, evidence write failure and replay/exclusion.
-This path is uninstalled and awaits actual engine verification. See
+This path awaits actual engine verification and is disabled with practice dispatch. See
 [detached normalization](../native/DETACHED_NORMALIZATION.md). It performs no live
 load, clock reset or battle recreation; the ordinary observer excludes the path.
 
@@ -575,8 +639,10 @@ reads this same profiled system CRT in its own executable and checks the
 observed state against controlled draws; unsupported system versions skip that
 test. A separate private helper-process audit checked 4,128 transitions and
 distinct concurrent-thread state. These are isolated-process tests, not live FFR
-verification. No CRT binary is distributed. The new reader remains uninstalled,
-and seed restoration or complete gameplay RNG coverage is not implemented.
+verification. The 29 October openings separately verified seed availability,
+detachment after a command and a changed CRT seed in the next encounter. Actual
+thread/draw-order coverage remains unverified. No CRT binary is distributed;
+seed restoration or complete gameplay RNG coverage is not implemented.
 
 ### Partial engine-global RNG capture
 
@@ -602,8 +668,9 @@ Independent Python checks enforce the coverage limits and preserve old archives.
 
 Direct engine callers are present; actual combat/thread use, indirect or inlined
 callers and per-instance generators remain unverified. No runtime draw,
-initializer, setter, game suspension or seed restore is added. This reader is
-uninstalled and not live-verified. Even matching CRT and engine-global samples
+initializer, setter, game suspension or seed restore is added. The 29 October
+openings captured this optional seed; it was unchanged between those encounters,
+so that test does not establish actual combat use. Even matching CRT and engine-global samples
 cannot establish complete or atomic RNG restoration.
 
 ### Remaining restart acceptance requirements

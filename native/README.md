@@ -1,7 +1,8 @@
 # Experimental native encounter-entry observer
 
 **Development component, not installed by the desktop app.** This module has
-been verified across three ordinary FFR encounters on the exact target build.
+been verified across ordinary FFR encounters on the exact target build, including
+two updated captures on 29 October after correcting the loader constructor lookup.
 It does not restart battles or restore save states.
 
 The tested ordinary encounter bypassed reflected opening hooks. This prototype
@@ -10,14 +11,15 @@ known `BATTLE_ENTRY_DATA` fields before forwarding the original call exactly onc
 At that same boundary it calls the verified engine in-memory serializer on the
 current progression object, copies the resulting GVAS bytes into its own storage,
 and frees the temporary buffer through the game's allocator. Resource/progression
-coverage remains incomplete; RNG and full combat state are not captured. The live
+coverage remains incomplete; partial RNG seeds do not represent full combat state. The live
 test verified serialized progression changes after fleeing and collecting victory
 rewards, with independent archives and no capture failures.
 
 The newer development source also captures an optional **partial field anchor**:
 current map ID, live player-root position and map-operation direction. Exact
-getter profiles and same-map checks gate the reads. This addition passes isolated
-tests but has not been installed or live-verified. It does not capture camera,
+getter profiles and same-map checks gate the reads. Its detached metadata was
+captured in the 29 October test; independent position comparison remains pending.
+It does not capture camera,
 streaming, actors, events or a complete world state, and cannot restore a position.
 
 New openings can also include an optional **partial playtime basis**: the saved
@@ -26,8 +28,10 @@ a sample from the game's seconds source. Profiled read-only getters and coherent
 same-root/clock checks gate capture. The elapsed definition subtracts completed
 suspension only; an ongoing suspension is recorded separately. The consumer also
 checks the saved float against the serialized progression. Invalid clock evidence
-becomes null without suppressing the opening. This addition is fixture-tested,
-not installed or live-verified; it does not reset, restore or advance playtime.
+becomes null without suppressing the opening. The 29 October captures verified
+typed metadata and saved-float correspondence; comparison with the displayed
+clock and suspension lifecycle remains pending. It does not reset, restore or
+advance playtime.
 Stable native-thread MXCSR rounding control is included when available. The
 offline normalization planner requires known nearest-even rounding and refuses
 ongoing suspension; it never applies a clock change or overwrites the opening.
@@ -104,8 +108,11 @@ This module does not enable or depend on Saving anywhere.
 
 A separate [opening-abort trial](ABORT_TRIAL.md) is compiled only when explicitly
 requested. Its game-thread command path is excluded from the ordinary observer.
-It is a mutation-capable experiment, has not been tested inside FFR, and does
-not yet perform restart or save-state restoration.
+It is a mutation-capable experiment. Its first-menu import guard refused before
+any request in FFR; no import, abort or restoration operation ran. The FFR source
+profile disables practice dispatch pending boundary/freshness review, and the
+installed practice module is disabled. It does not yet perform restart or
+save-state restoration.
 
 The desktop or CLI verifies the sidecar against the matched report, parses its
 GVAS class/engine/property layout and exports a `.ffropening` archive. The archive
@@ -119,15 +126,19 @@ profiled storage vtable are checked; failure leaves null metadata without
 suppressing progression. It preserves duplicate IDs as distinct indices and is
 explicitly not coherent with serialized progression or restorable. This helps
 investigate cache/resource coverage before any root rebinding. No cache setter,
-refresh or clear function is called. The addition is not installed/live-verified.
+refresh or clear function is called. The 29 October test verified detached cache
+metadata and matching saved HP-base/MP fields; full resource coherence remains
+unverified.
 Optional `crtRandState` reads only the existing encounter thread's Windows CRT
 seed through exact DLL/code/import and FLS-layout checks. It never advances or
 sets that RNG, calls its allocating PTD getter or exports addresses. Stable
 samples around progression copying are required; unavailable/changed state
 becomes null independently. Other threads and RNG sources are uncovered, and
 restoration is not implemented. Portable, compiled-fixture and supported-system
-helper-process tests do not establish live FFR coverage; this reader remains
-uninstalled. No Windows system DLL is included in packages.
+helper-process tests alone do not establish live FFR coverage. The 29 October
+test captured this seed and preserved the opening after a command; actual stream
+use and complete coverage remain unverified. No Windows system DLL is included
+in packages.
 Independent optional `engineGlobalRngState` copies one separate engine-global
 seed after exact loaded draw/initializer code checks. Neither function is
 called; no setter or thread suspension is used. Two reads per sample and
@@ -135,7 +146,9 @@ matching samples around progression copying reject observed drift. The metadata
 explicitly declines atomic/concurrent/full RNG coverage, and unknown or changed
 code leaves null metadata while retaining progression. The real DLL's dummy
 process tests serialization-time seed drift and a late code mismatch without
-invoking its draw/initializer. The new reader is uninstalled and not live-verified.
+invoking its draw/initializer. The 29 October test captured this seed alongside
+the CRT state. Actual combat/thread use and concurrent-draw exclusion remain
+unverified; matching endpoints are not an atomic snapshot.
 When a large retained event history needs truncation for a bounded report,
 `eventsOmittedForSize` states how many oldest events were omitted from that report.
 

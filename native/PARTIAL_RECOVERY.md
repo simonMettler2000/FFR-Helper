@@ -2,8 +2,10 @@
 
 The copying core, explicit read-only practice-runtime channel, durable file
 publication, strict Python consumer and `.ffrrecovery` archive are implemented
-and fixture-tested. **They are not installed or live-verified. No restore command
-or GUI control is connected.** This complements the abort experiment's separate
+and fixture-tested. **They have not been exercised in FFR. The installed practice
+module is disabled, and its FFR source profile blocks dispatch pending boundary
+and fresh idle-menu review. No restore command or GUI control is connected.**
+This complements the abort experiment's separate
 durable progression-only file; neither format can resume a battle.
 
 `partial_recovery.hpp` requires a supported field boundary and the expected map

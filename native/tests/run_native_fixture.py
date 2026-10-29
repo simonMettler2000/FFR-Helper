@@ -15,7 +15,7 @@ def main():
     parser.add_argument('--exe', required=True, type=Path)
     parser.add_argument('--loader', required=True, type=Path)
     parser.add_argument('--module', required=True, type=Path)
-    parser.add_argument('--mode', required=True, choices=['good', 'bad-game', 'bad-loader','bad-function','abort','abort-denied',
+    parser.add_argument('--mode', required=True, choices=['good', 'bad-game', 'bad-loader','bad-function','boundary-unreviewed','abort','abort-denied',
                                                        'clone','clone-unready','clone-mismatch','clone-mutates','clone-denied',
                                                        'combat','combat-after-action','combat-denied','combat-stale','combat-effects-unavailable',
                                                        'normalize','normalize-unready','normalize-stale','normalize-template','normalize-write-failed',
@@ -24,12 +24,13 @@ def main():
     args = parser.parse_args()
     args.work.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=args.work.resolve()) as folder:
-        root = Path(folder)/('FFRHelperBattlePractice' if args.mode.startswith(('abort','clone','combat','recovery','normalize')) else 'FFRHelperRuntimeNative')
+        root = Path(folder)/('FFRHelperBattlePractice' if args.mode.startswith(('abort','clone','combat','recovery','normalize','boundary-')) else 'FFRHelperRuntimeNative')
         (root/'dlls').mkdir(parents=True)
         (root/'connection').mkdir()
         module = root/'dlls/main.dll'
         shutil.copy2(args.module, module)
         subprocess.run([str(args.exe.resolve()), str(module), str(args.loader.resolve()), str(root/'connection'), args.mode], check=True, timeout=30)
+        if args.mode=='boundary-unreviewed':return
         if args.mode.startswith('normalize'):
             sys.path.insert(0,str(Path(__file__).resolve().parents[2]))
             from ffr_helper import opening, crt_rng

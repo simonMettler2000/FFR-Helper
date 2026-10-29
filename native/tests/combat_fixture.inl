@@ -26,6 +26,17 @@ void run_combat_fixture(const std::filesystem::path& connection,const std::wstri
     std::vector<std::uint64_t> damage_sources{actors[1],actors[1],0},skill_targets{reinterpret_cast<std::uint64_t>(fake_parameters[1].data()),0};
     put(fake_parameters[0],0x368,actors[1]);put(fake_parameters[1],0x370,actors[0]);put(fake_parameters[0],0x380,actors[1]);
     put(fake_parameters[0],0x388,array(damage_sources));put(fake_parameters[0],0x270,array(skill_targets));
+    std::array<unsigned char,0xa0> effect_a{},effect_b{};object(effect_a);object(effect_b);
+    std::vector<std::int32_t> effect_values{11,-22,33};
+    for(auto* effect:{&effect_a,&effect_b}) {
+        put(*effect,0x28,reinterpret_cast<std::uint64_t>(fake_parameters[1].data()));put(*effect,0x30,reinterpret_cast<std::uint64_t>(fake_parameters[0].data()));
+        put(*effect,0x50,std::int32_t{77});put(*effect,0x78,std::uint8_t{5});
+    }
+    put(effect_a,0x80,array(effect_values));put(effect_a,0x98,std::int32_t{3});put(effect_b,0x98,std::int32_t{-1});
+    if(mode==L"combat-effects-unavailable")put(effect_a,0x28,std::uint64_t{0x99999999});
+    std::vector<std::uint64_t> effects_a{reinterpret_cast<std::uint64_t>(effect_a.data()),reinterpret_cast<std::uint64_t>(effect_a.data())},
+        effects_b{reinterpret_cast<std::uint64_t>(effect_b.data())};
+    put(fake_parameters[0],0xb8,array(effects_a));put(fake_parameters[1],0xb8,array(effects_b));
     std::vector<std::uint64_t> queued{actors[0]};if(denied)put(fake_jobs,0x28,array(queued));
     const auto tick=reinterpret_cast<void(__fastcall*)(void*,float)>(GetProcAddress(GetModuleHandleW(nullptr),"ffr_test_abort_tick"));
     auto pump=[&]{const auto count=tick_calls;tick(fake_manager.data()+0x30,0.5f);CHECK(tick_calls==count+1 && last_delta==0.5f && GetLastError()==9876);};
@@ -50,7 +61,8 @@ void run_combat_fixture(const std::filesystem::path& connection,const std::wstri
     if(!denied && !stale) {
         CHECK(first.find("\"hpBase\":150")!=std::string::npos && first.find("\"temporaryHp\":25")!=std::string::npos);
         write(connection/L"combat-first-report.json",first);
-        put(fake_parameters[0],0x10c,std::int32_t{7});put(fake_parameters[0],0x368,actors[0]);send('c');
+        put(fake_parameters[0],0x10c,std::int32_t{7});put(fake_parameters[0],0x368,actors[0]);
+        put(effect_a,0x98,std::int32_t{2});effect_values[0]=99;send('c');
         for(unsigned i=0;i<8;++i){pump();std::this_thread::sleep_for(std::chrono::milliseconds(50));}
         CHECK(read(connection/L"combat-report.json").find("\"hpBase\":7")==std::string::npos);
         lease();send('d');wait([&]{return read(connection/L"combat-report.json").find("\"request\":\""+std::string(32,'d')+'"')!=std::string::npos;});

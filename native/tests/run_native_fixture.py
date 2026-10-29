@@ -17,7 +17,7 @@ def main():
     parser.add_argument('--module', required=True, type=Path)
     parser.add_argument('--mode', required=True, choices=['good', 'bad-game', 'bad-loader','bad-function','abort','abort-denied',
                                                        'clone','clone-unready','clone-mismatch','clone-mutates','clone-denied',
-                                                       'combat','combat-after-action','combat-denied','combat-stale',
+                                                       'combat','combat-after-action','combat-denied','combat-stale','combat-effects-unavailable',
                                                        'normalize','normalize-unready','normalize-stale','normalize-template','normalize-write-failed',
                                                        'recovery','recovery-denied','recovery-stale','recovery-drift','recovery-write-failed','recovery-map-changed'])
     parser.add_argument('--work', required=True, type=Path)
@@ -120,6 +120,15 @@ def main():
                 assert original_links[0]['vision']==1 and links[0]['vision']==0 and links[1]['visionOwner']==0
                 assert links[0]['lastDamageDealer']==1 and links[0]['damageSources']==[1,1,-1]
                 assert links[0]['activeSkillTargets']==[1,-1]
+                if args.mode=='combat-effects-unavailable':
+                    assert first['observation']['continuousEffects'] is None and report['observation']['continuousEffects'] is None
+                else:
+                    old=first['observation']['continuousEffects'];new=report['observation']['continuousEffects']
+                    assert old['unitEffects']==new['unitEffects']==[[0,0],[1]] and len(new['effects'])==2
+                    assert old['effects'][0]['raw']['lifeTurn']==3 and new['effects'][0]['raw']['lifeTurn']==2
+                    assert new['effects'][1]['raw']['lifeTurn']==-1 and old['effects'][0]['parameters']==[11,-22,33]
+                    assert new['effects'][0]['parameters']==[99,-22,33] and new['effects'][0]['sourceUnit']==1
+                    assert new['effects'][0]['targetUnit']==0
         elif args.mode.startswith('clone'):
             status=json.loads((root/'connection/clone-final-status.json').read_text(encoding='utf8'))
             assert status['readOnly'] is False and status['restorable'] is False and status['phase']=='idle'

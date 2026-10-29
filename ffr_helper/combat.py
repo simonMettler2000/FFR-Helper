@@ -13,6 +13,9 @@ MAX_COMBAT_REPORT = 512*1024
 RAW_FIELDS = {'unitId', 'baseLevel', 'hpBase', 'mp', 'stagger', 'limitBurst', 'maxHp', 'maxMp', 'maxStagger',
               'attack', 'defence', 'intelligence', 'mind', 'divine', 'agility', 'weaponId', 'armorId', 'visionId',
               'temporaryHp', 'actionCount', 'thinkCount', 'receivedDamageCount', 'breakCount', 'duplicationId'}
+EFFECT_FIELDS={'effectId','endActionCount','addProbability','activationProbability','conditionParam1','conditionParam2',
+               'conditionParam3','lifeTurn','effectType','applyTiming','proceedTiming','unremovable','conditionType','statusCondition','executingReaction'}
+EFFECT_BYTES={'effectType','applyTiming','proceedTiming','conditionType','statusCondition'}
 MISSING = ['Complete scheduler state and native callbacks', 'Continuous effects and status durations',
            'Resistance maps and calculated modifiers', 'Shared AI state, phases and other native counters',
            'Native RNG state and draw order', 'Actor lifecycle and world restoration', 'Verified restoration path']
@@ -29,7 +32,7 @@ def _hex(value, size):
 def validate_observation(data):
     keys = {'kind', 'restorable', 'readOnly', 'referenceEncoding', 'battleTurn', 'selectedUnit',
             'targetUnits', 'additionalTimeline', 'units', 'missingState'}
-    if (not isinstance(data, dict) or set(data) not in (keys,keys|{'unitRelations'}) or data.get('kind') != 'partial-combat-observation'
+    if (not isinstance(data, dict) or set(data)-{'unitRelations','continuousEffects'} != keys or data.get('kind') != 'partial-combat-observation'
             or data.get('restorable') is not False or data.get('readOnly') is not True
             or data.get('referenceEncoding') != 'capture-local-unit-index; -1 is null'
             or data.get('missingState') != MISSING or not isinstance(data.get('units'), list)
@@ -89,6 +92,33 @@ def validate_observation(data):
             targets([unit['vision'],unit['visionOwner'],unit['lastDamageDealer']],3)
             targets(unit['damageSources'],64)
             targets(unit['activeSkillTargets'],64)
+    continuous=data.get('continuousEffects')
+    if continuous is not None:
+        if (not isinstance(continuous,dict) or set(continuous)!={'coverage','unitEffects','effects'}
+                or continuous.get('coverage')!='base-continuous-effect-components-only' or not isinstance(continuous.get('effects'),list)
+                or len(continuous['effects'])>256 or not isinstance(continuous.get('unitEffects'),list) or len(continuous['unitEffects'])!=count):
+            raise ValueError('Invalid optional continuous-effect base-component graph.')
+        pool_count=len(continuous['effects']);seen=set();parameter_count=0
+        for index,values in enumerate(continuous['unitEffects']):
+            if (not isinstance(values,list) or len(values)!=data['units'][index]['continuousEffectCount'] or len(values)>1024
+                    or any(not _integer(v,0,pool_count-1) for v in values)):
+                raise ValueError('Continuous-effect pool indices or per-unit counts do not match.')
+            references+=len(values);seen.update(values)
+        if seen!=set(range(pool_count)):
+            raise ValueError('Continuous-effect pool has an unreferenced object.')
+        for index,effect in enumerate(continuous['effects']):
+            if (not isinstance(effect,dict) or set(effect)!={'index','sourceUnit','targetUnit','raw','parameters'}
+                    or type(effect.get('index')) is not int or effect['index']!=index or not isinstance(effect.get('raw'),dict)
+                    or set(effect['raw'])!=EFFECT_FIELDS or any(not _integer(v) for v in effect['raw'].values())
+                    or any(not _integer(effect['raw'][k],0,255) for k in EFFECT_BYTES)
+                    or any(not _integer(effect['raw'][k],0,1) for k in ['unremovable','executingReaction'])
+                    or not isinstance(effect.get('parameters'),list) or len(effect['parameters'])>128
+                    or any(not _integer(v) for v in effect['parameters'])):
+                raise ValueError('Invalid continuous-effect base scalar or parameter data.')
+            parameter_count+=len(effect['parameters'])
+            if parameter_count>4096:raise ValueError('Continuous effects exceed their parameter budget.')
+            targets([effect['sourceUnit'],effect['targetUnit']],2)
+        if references>4096:raise ValueError('Combat observation exceeds its reference budget.')
     return data
 
 

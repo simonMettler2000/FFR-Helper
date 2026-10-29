@@ -293,11 +293,28 @@ AI skill-stack entries are 24 bytes, with skill ID at 0 and a nested actor array
 at 8. The additional timeline array also contains battle actors. Per-array and
 aggregate reference/stack limits bound detached output.
 
-Continuous-effect count is recorded, but effect objects/durations, the main native
-scheduler, callbacks, additional AI state, RNG and lifecycle reconstruction are
+Continuous-effect counts remain available independently. A newer optional base
+effect graph copies raw life-turn counters, effect IDs/types, timing bytes,
+probabilities, activation conditions, status IDs, flags and integer parameter
+lists. Native getter thunks corroborate the embedded effect-data layout and
+life-turn/status offsets; reflected fields establish source/target parameter
+links. A capture-local effect pool preserves distinct objects with identical
+effect IDs, shared identities, repeated entries and ordered per-unit lists.
+Null source/target parameters use -1. Unsupported references, unreadable objects,
+invalid flags or exceeded bounds make the whole optional graph null while
+retaining other partial components. Known empty lists are distinct from null
+coverage. Shared reference limits and aggregate object/parameter budgets apply.
+
+These are base components and raw counters, not a complete status snapshot or
+verified application timing. Effect subclass/unreflected state, the main native
+scheduler, callbacks, additional AI state, RNG and lifecycle reconstruction remain
 explicitly missing. The JSON is read-only, partial and non-restorable. Tests cover
 duplicate-ID identity mapping, nested targets, preserved raw values outside UI
 clamps, deep copying, ownership checks, dangling targets and aggregate bounds.
+Additional portable and compiled-DLL tests verify effect identity pools, raw
+negative durations, source/target domains, replay preservation and optional
+coverage failure. Legacy diagnostics remain accepted. The new effect graph is
+uninstalled and has not been tested in FFR.
 
 The transport binds a fresh session, nonce, opening sequence/hash and an
 eight-second deadline. A nonce is consumed before copying, and replay cannot move

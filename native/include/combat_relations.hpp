@@ -59,4 +59,7 @@ inline std::string relations_json(const std::optional<std::vector<ObservedUnitRe
     }
     return out+"]}";
 }
+inline std::size_t relation_reference_count(const std::vector<ObservedUnitRelations>& relations) {
+    std::size_t count{};for(const auto& unit:relations)count+=3+unit.damage_sources.size()+unit.active_skill_targets.size();return count;
+}
 } // namespace ffr

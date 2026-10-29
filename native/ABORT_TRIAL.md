@@ -150,6 +150,17 @@ with no graph remain valid partial diagnostics. Shared reference limits apply
 across AI, timeline, targets and relations; mimic payloads and complete lifecycle
 state are still missing.
 
+Optional `continuousEffects` adds a base-component pool and ordered per-unit
+effect-index lists. It retains raw life-turn counters (including negative
+sentinels), data IDs/types/timing/condition/probability/flag fields, integer
+parameters and local source/target unit links. Shared objects and distinct
+objects with the same data ID remain distinct concepts. A foreign/unreadable
+source, target or object makes the whole graph null; other partial diagnostics
+can remain available. Known empty lists are preserved. Object/parameter budgets
+and the shared reference limit are checked by native and Python code. Subclass
+state, actual application timing and restoration remain unverified; this is not
+complete status coverage. The addition is fixture-tested and uninstalled.
+
 Start the controller before entering the encounter so its opening is observed
 in the same session. Observe readiness without requesting a frame:
 

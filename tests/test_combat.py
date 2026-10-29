@@ -6,7 +6,7 @@ import time
 import unittest
 from unittest.mock import patch
 
-from ffr_helper.combat import (CombatObservationBridge, MISSING, RAW_FIELDS, export_combat, load_combat,
+from ffr_helper.combat import (CombatObservationBridge, MISSING, RAW_FIELDS, EFFECT_FIELDS, export_combat, load_combat,
                                validate_combat_report, validate_observation)
 from ffr_helper.opening import GAME_SHA256
 import test_abort_trial
@@ -31,6 +31,15 @@ def sample_status(session):
                 kind='diagnostic-observation', readOnly=True, restorable=False, gameSha256=GAME_SHA256,
                 session=session, time=int(time.time()), available=True, request='', sequence=0, openingHash='',
                 captureNumber=0, captureTime=0, phase='idle', message='Fixture', observation=None)
+
+
+def sample_effects():
+    effects=[]
+    for index in range(2):
+        raw=dict.fromkeys(EFFECT_FIELDS,0);raw.update(effectId=77,lifeTurn=-1 if index else 3,statusCondition=5,unremovable=1,
+            addProbability=100,activationProbability=75,conditionParam1=-3)
+        effects.append(dict(index=index,sourceUnit=1,targetUnit=0,raw=raw,parameters=[11,-22,33]))
+    return dict(coverage='base-continuous-effect-components-only',unitEffects=[[0,0],[0,1]],effects=effects)
 
 
 class CombatTransportTests(unittest.TestCase):
@@ -196,4 +205,45 @@ class CombatTransportTests(unittest.TestCase):
         with self.assertRaises(ValueError):validate_observation(data)
         data=copy.deepcopy(original);data['units'][1]['ai']['stack']=[dict(skillId=1,targets=[0]*64) for _ in range(63)]
         data['unitRelations']['units'][0]['activeSkillTargets']=[0]*64
+        with self.assertRaisesRegex(ValueError,'reference budget'):validate_observation(data)
+
+    def test_optional_continuous_effect_pool_preserves_identity_raw_duration_and_legacy_files(self):
+        data=sample_observation();validate_observation(data)
+        data['continuousEffects']=None;validate_observation(data)
+        data['continuousEffects']=sample_effects();validate_observation(data)
+        self.assertEqual(data['continuousEffects']['unitEffects'],[[0,0],[0,1]])
+        self.assertEqual(data['continuousEffects']['effects'][1]['raw']['lifeTurn'],-1)
+        self.assertEqual(data['continuousEffects']['effects'][0]['raw']['effectId'],data['continuousEffects']['effects'][1]['raw']['effectId'])
+        self.receive_frame();self.combat['observation']=data
+        with tempfile.TemporaryDirectory() as folder:
+            path=Path(folder)/'effects.ffrcombat.json';export_combat(path,self.combat)
+            self.assertEqual(load_combat(path)['observation'],data)
+
+    def test_effect_pool_rejects_bad_identity_references_counts_and_scalar_types(self):
+        original=sample_observation();original['continuousEffects']=sample_effects()
+        for key,value in [('index',True),('sourceUnit',2),('targetUnit',-2),('parameters',[True]),('parameters',[0]*129),('nativeAddress',1234)]:
+            data=copy.deepcopy(original);data['continuousEffects']['effects'][0][key]=value
+            with self.subTest(key=key),self.assertRaises(ValueError):validate_observation(data)
+        for key,value in [('lifeTurn',2**31),('effectType',256),('statusCondition',-1),('unremovable',2),('executingReaction',True)]:
+            data=copy.deepcopy(original);data['continuousEffects']['effects'][0]['raw'][key]=value
+            with self.subTest(key=key),self.assertRaises(ValueError):validate_observation(data)
+        for values in [[0],[0,True],[0,2],[0,-1]]:
+            data=copy.deepcopy(original);data['continuousEffects']['unitEffects'][0]=values
+            with self.assertRaises(ValueError):validate_observation(data)
+        data=copy.deepcopy(original);data['continuousEffects']['unitEffects']=[[0,0],[0,0]]
+        with self.assertRaisesRegex(ValueError,'unreferenced'):validate_observation(data)
+        data=copy.deepcopy(original);data['continuousEffects']['coverage']='complete-restorable-effects'
+        with self.assertRaises(ValueError):validate_observation(data)
+
+    def test_effect_params_and_shared_reference_budgets_are_aggregate(self):
+        data=sample_observation();data['continuousEffects']=sample_effects();base=data['continuousEffects']['effects'][0]
+        data['continuousEffects']['effects']=[dict(copy.deepcopy(base),index=i,parameters=[1]*128) for i in range(33)]
+        data['continuousEffects']['unitEffects']=[list(range(33)),[]]
+        data['units'][0]['continuousEffectCount']=33;data['units'][1]['continuousEffectCount']=0
+        with self.assertRaisesRegex(ValueError,'parameter budget'):validate_observation(data)
+        data=sample_observation();data['continuousEffects']=sample_effects()
+        data['continuousEffects']['effects']=data['continuousEffects']['effects'][:1]
+        data['continuousEffects']['unitEffects']=[[0]*64,[0]*64]
+        for unit in data['units']:unit['continuousEffectCount']=64
+        data['units'][1]['ai']['stack']=[dict(skillId=1,targets=[0]*64) for _ in range(63)]
         with self.assertRaisesRegex(ValueError,'reference budget'):validate_observation(data)

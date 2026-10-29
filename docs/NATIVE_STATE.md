@@ -420,8 +420,9 @@ the same GVAS payload. Old archives without this optional metadata still load.
 Portable and compiled-DLL fixtures verify detached values, ongoing suspension,
 changed-root/clock refusal, malformed clocks, production-consumer parsing and
 non-suppression of progression when the clock is unavailable. This addition is
-not installed or live-verified. Playtime restoration and a fresh recovery clock
-basis remain outstanding, alongside live field/world restoration. The absence of
+not installed or live-verified. The partial recovery channel also captures a
+fresh clock basis. Playtime restoration remains outstanding, alongside live
+field/world restoration. The absence of
 a property from a serialized object is not evidence that every possible non-default
 value is omitted; no broader serialization-loss claim is made here.
 
@@ -440,9 +441,10 @@ small non-restorable receipt with source/target hashes and values, never a game
 slot or target GVAS file. No native command accepts these bytes. Unknown rounding,
 ongoing suspension, subnormal values and overflow are refused. Tests cover exact
 tie cases, 2,000 native two-stage comparisons, source/unknown-field preservation
-and format separation. Applying the plan to an owned clone, rechecking current
-rounding, capturing a fresh recovery basis and verifying the actual clock reset
-remain outstanding.
+and format separation. A separate experimental detached-object probe now applies
+the plan to an owned clone and rechecks current rounding. A fresh recovery basis
+is captured by the read-only recovery channel. Actual clock reset/restoration
+remains outstanding, and none of these additions is live-verified.
 
 For a new opening with supported clock metadata:
 
@@ -464,9 +466,20 @@ payload, and checks unchanged input and live progression. It permits one attempt
 and retains owned roots if live identity changes or becomes uncertain. Tests use
 separate current/source values, a fixed native-layout member, wrong clones,
 incorrect writes, original corruption, exceptions and cleanup failures.
-**This probe is not connected to either game DLL or a runtime request.** Its
-profiled detached writer and actual engine behavior still need integration and
-live verification; it performs no live load, clock reset or battle recreation.
+The separately named practice build now connects this core to a distinct explicit
+`probe-normalize` request and `normalizationProbe` receipt. Its fixed-member writer
+requires a separate rooted matching clone, the original scalar bits, a writable
+page, supported template/destruction flags, initialized loader, strict cleared
+field boundary and source/current nearest-even clocks without ongoing suspension.
+The process-wide attempt excludes later import/abort actions, including after a
+refusal. Worker publication commits and reads back fixed expected/clone GVAS
+files; the production Python consumer compares their complete bytes with an
+independent source-preserving plan and checks receipt races. Compiled-DLL fixtures
+cover success with different source/current progression, uninitialized loader,
+stale source, template refusal, evidence write failure and replay/exclusion.
+This path is uninstalled and awaits actual engine verification. See
+[detached normalization](../native/DETACHED_NORMALIZATION.md). It performs no live
+load, clock reset or battle recreation; the ordinary observer excludes the path.
 
 Before enabling a restart button, an implementation must demonstrate:
 

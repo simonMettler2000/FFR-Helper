@@ -5,7 +5,7 @@
 namespace ffr {
 struct NormalizedCloneAPI {
     CloneProbeAPI objects;
-    // Future profiled adapter: fixed native Player.PlayTime member of the
+    // Profiled adapter: fixed native Player.PlayTime member of the
     // verified detached object only. Never accept a member address from IPC.
     std::function<bool(void*,float)> write_owned_time;
 };
@@ -18,7 +18,7 @@ struct NormalizedCloneResult {
     std::string message="Detached normalization has not run";
 };
 
-// Prerequisite only, not connected to a game command. No live-root assignment,
+// Detached prerequisite only. No live-root assignment,
 // normal load, reset, abort, encounter or slot writer exists in this controller.
 class NormalizedCloneProbe {
     bool attempted=false;
@@ -71,6 +71,8 @@ public:
             if(!result.root_changed && before) {
                 auto after=api.objects.save_memory(original);
                 result.live_unchanged=after && *after==*before && api.objects.ready();
+                result.root_changed=api.objects.current_root()!=original;
+                if(result.root_changed)result.live_unchanged=false;
             }
         }catch(...){result.identity_uncertain=true;result.live_unchanged=false;}
         if(result.root_changed || result.identity_uncertain) {

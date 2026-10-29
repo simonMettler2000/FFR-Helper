@@ -64,7 +64,8 @@ class AbortTrialBridge:
         capture = self.recorder.opening(report)
         status = self.status()
         if (capture is None or status is None or not status['available'] or status['phase'] != 'idle'
-                or status.get('importProbe', {}).get('phase', 'idle') != 'idle'):
+                or status.get('importProbe', {}).get('phase', 'idle') != 'idle'
+                or status.get('normalizationProbe', {}).get('attempted', False)):
             raise ValueError('The separate experimental abort runtime is not ready.')
         sequence, digest = capture.metadata['sequence'], capture.metadata['sha256']
         if not self.safe_guard(status, sequence, digest):

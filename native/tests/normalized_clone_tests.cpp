@@ -89,6 +89,11 @@ int main() {
             auto result=f.run();CHECK(!result.passed && result.root_changed && result.retained_owned_pins==2 && f.roots.size()==2 && f.writes==0 && f.releases==0);
         }
         {
+            Fixture f;auto save=f.api.objects.save_memory;unsigned reads=0;
+            f.api.objects.save_memory=[&](void* p){auto value=save(p);if(p==f.original.data() && ++reads==3)f.current=f.clone.data();return value;};
+            auto result=f.run();CHECK(!result.passed && result.root_changed && !result.live_unchanged && result.retained_owned_pins==2 && f.releases==0);
+        }
+        {
             Fixture f;auto write=f.api.write_owned_time;f.api.write_owned_time=[&](void* p,float value){write(p,value);throw std::runtime_error("write exception");return false;};
             auto result=f.run();CHECK(!result.passed && result.live_unchanged && f.roots.empty() && f.writes==1);
         }

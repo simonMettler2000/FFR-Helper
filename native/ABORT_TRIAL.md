@@ -189,3 +189,14 @@ Start before entering the encounter and use a fresh output directory:
 The collector never operates the game. It expires its lease on exit and sends
 at most one explicit request. Compiled-DLL/production-consumer tests pass; actual
 FFR verification remains pending. This adds no restore or automatic rollback.
+
+## Detached normalization comparison
+
+The distinct [detached normalization probe](DETACHED_NORMALIZATION.md) imports
+the observer's own opening into a separate rooted save object, changes only its
+fixed playtime member under profile/field/clock gates, and compares the full
+serialization with independently prepared bytes. It preserves current live
+progression, performs no live load/reset/abort/recreation/slot write, and shares
+the process-wide one-attempt exclusion with ordinary import and abort testing.
+It has a separate explicit CLI mode and receipt. Compiled-DLL/production-consumer
+tests pass; installation and actual FFR verification remain pending.

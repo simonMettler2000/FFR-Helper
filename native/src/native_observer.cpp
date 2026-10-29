@@ -31,6 +31,7 @@
 #include "progression_clone.hpp"
 #include "combat_transport.hpp"
 #include "recovery_transport.hpp"
+#include "normalized_clone.hpp"
 #ifdef FFR_IMPORT_PROFILE_HEADER
 #include FFR_IMPORT_PROFILE_HEADER
 #else
@@ -244,6 +245,13 @@ struct Observer {
     std::string import_nonce, import_session, import_hash, import_phase="idle";
     std::uint64_t import_sequence{};
     ffr::CloneProbeResult import_result;
+    bool normalization_attempted=false,normalization_loader_ready=false,normalization_field_ready=false;
+    bool normalization_files_done=false,normalization_files_ok=false;
+    std::string normalization_phase="idle",normalization_nonce,normalization_session,normalization_hash;
+    std::string normalization_expected_hash,normalization_clone_hash;
+    std::uint64_t normalization_sequence{};
+    std::int64_t normalization_time{};
+    ffr::NormalizedCloneResult normalization_result;
     std::optional<ffr::CombatReadRequest> combat_request;
     ffr::CombatReadController combat_controller;
     std::optional<ffr::RecoveryReadRequest> recovery_request;

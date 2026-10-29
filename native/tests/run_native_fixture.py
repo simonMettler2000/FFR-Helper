@@ -18,18 +18,50 @@ def main():
     parser.add_argument('--mode', required=True, choices=['good', 'bad-game', 'bad-loader','bad-function','abort','abort-denied',
                                                        'clone','clone-unready','clone-mismatch','clone-mutates','clone-denied',
                                                        'combat','combat-after-action','combat-denied','combat-stale',
+                                                       'normalize','normalize-unready','normalize-stale','normalize-template','normalize-write-failed',
                                                        'recovery','recovery-denied','recovery-stale','recovery-drift','recovery-write-failed','recovery-map-changed'])
     parser.add_argument('--work', required=True, type=Path)
     args = parser.parse_args()
     args.work.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=args.work.resolve()) as folder:
-        root = Path(folder)/('FFRHelperBattlePractice' if args.mode.startswith(('abort','clone','combat','recovery')) else 'FFRHelperRuntimeNative')
+        root = Path(folder)/('FFRHelperBattlePractice' if args.mode.startswith(('abort','clone','combat','recovery','normalize')) else 'FFRHelperRuntimeNative')
         (root/'dlls').mkdir(parents=True)
         (root/'connection').mkdir()
         module = root/'dlls/main.dll'
         shutil.copy2(args.module, module)
         subprocess.run([str(args.exe.resolve()), str(module), str(args.loader.resolve()), str(root/'connection'), args.mode], check=True, timeout=30)
-        if args.mode.startswith('recovery'):
+        if args.mode.startswith('normalize'):
+            sys.path.insert(0,str(Path(__file__).resolve().parents[2]))
+            from ffr_helper import opening
+            from ffr_helper.normalization_probe import NormalizationProbeBridge, validate_normalization_probe
+            from ffr_helper.playtime_plan import plan_opening_playtime
+            from ffr_helper.runtime import NativeEntryRecorder
+            status=json.loads((root/'connection/normalization-final-status.json').read_text(encoding='utf8'))
+            probe=validate_normalization_probe(status['normalizationProbe'])
+            fixture_hash=hashlib.sha256(args.exe.read_bytes()).hexdigest()
+            source_report=json.loads((root/'connection/normalization-source-report.json').read_text(encoding='utf8'))
+            assert source_report['objects']['nativeEntry']['opening']['gameSha256']==fixture_hash
+            with patch.object(opening,'GAME_SHA256',fixture_hash):
+                source=opening.OpeningCapture(source_report['objects']['nativeEntry']['opening'],(root/'connection/normalization-source-progression.gvas').read_bytes()).validate()
+                assert source.metadata['playtimeBasis']['savedSeconds']==1000.25
+                expected_phase=('rejected' if args.mode in ['normalize-unready','normalize-stale'] else 'passed' if args.mode=='normalize' else 'failed')
+                assert probe['phase']==expected_phase and probe['passed']==(args.mode=='normalize')
+                assert status['phase']=='idle' and status['importProbe']['available'] is False
+                assert probe['attempted'] and probe['pinsReleased'] and probe['retainedOwnedPins']==0
+                if args.mode=='normalize':
+                    # Exercise the same production consumer that an explicit live
+                    # test uses, including independent Python byte preparation.
+                    recorder=NativeEntryRecorder(root);recorder.session='a'*32
+                    bridge=NormalizationProbeBridge(recorder);bridge.source=source;bridge.plan=plan_opening_playtime(source)
+                    bridge.request=dict(nonce=probe['nonce'],deadline=probe['captureTime']+8,sequence=probe['sequence'],sha256=probe['openingHash'])
+                    evidence=bridge.evidence(probe)
+                    assert evidence['expected']==evidence['clone']==bridge.plan.normalized_progression
+                    assert probe['normalizedSeconds']==1970.25 and source.progression!=evidence['clone']
+                elif args.mode=='normalize-template':
+                    assert probe['writeAttempted'] and not probe['writeReturned'] and not probe['cloneAfterMatches'] and probe['liveUnchanged']
+                elif args.mode=='normalize-write-failed':
+                    assert probe['enginePassed'] and not probe['filesCommitted']
+        elif args.mode.startswith('recovery'):
             sys.path.insert(0,str(Path(__file__).resolve().parents[2]))
             from ffr_helper import recovery, opening
             from ffr_helper.codec import SaveDocument

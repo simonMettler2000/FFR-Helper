@@ -24,8 +24,9 @@ unsigned serialized{}, released{}, last_serialized{};
 unsigned fixture_errors{};
 std::array<unsigned char,0x40> fake_root{};
 std::array<unsigned char,0x48> fake_playtime{};
-std::array<unsigned char,32> fake_clone{};
+std::array<unsigned char,0x40> fake_clone{};
 bool clone_fixture{},clone_mismatch{},clone_mutates{};
+bool normalization_fixture{},normalization_template{};
 unsigned clone_loads{};
 bool recovery_fixture{},recovery_drift{};
 std::int32_t recovery_money=101,fixture_map_id=1000;
@@ -88,9 +89,10 @@ extern "C" __declspec(dllexport) __declspec(noinline)
 std::int64_t __fastcall ffr_test_playtime_get_seconds() {return 10000;}
 extern "C" __declspec(dllexport) __declspec(noinline)
 bool __fastcall ffr_test_save_memory(void* object, ffr::RawArray* output) {
-    if (object!=fake_root.data() && !(clone_fixture && object==fake_clone.data())) { ++fixture_errors; return false; } ++serialized;
+    if (object!=fake_root.data() && !((clone_fixture || normalization_fixture) && object==fake_clone.data())) { ++fixture_errors; return false; } ++serialized;
     auto bytes=clone_fixture?clone_fixture_payload():std::vector<unsigned char>{'G','V','A','S',3,0,0,0,static_cast<unsigned char>(41+serialized),7,9,0};
     if(recovery_fixture) {float saved{};std::memcpy(&saved,fake_root.data()+0x38,4);bytes=recovery_fixture_data::payload(saved,recovery_money+(recovery_drift?static_cast<std::int32_t>(serialized):0));}
+    if(normalization_fixture) {float saved{};std::memcpy(&saved,static_cast<unsigned char*>(object)+0x38,4);bytes=recovery_fixture_data::payload(saved,object==fake_root.data()?recovery_money:101);}
     if(clone_fixture && ((clone_mismatch && object==fake_clone.data()) || (clone_mutates && clone_loads && object==fake_root.data())))bytes[8]^=1;
     auto* data=HeapAlloc(GetProcessHeap(),0,bytes.size()); if (!data) return false;
     std::memcpy(data,bytes.data(),bytes.size());
@@ -99,10 +101,14 @@ bool __fastcall ffr_test_save_memory(void* object, ffr::RawArray* output) {
 }
 extern "C" __declspec(dllexport) __declspec(noinline)
 void* __fastcall ffr_test_load_memory(const ffr::RawArray* input) {
-    ++clone_loads;const auto expected=clone_fixture_payload();
-    if(!clone_fixture || input->count!=static_cast<int>(expected.size())
+    ++clone_loads;const auto expected=normalization_fixture?recovery_fixture_data::payload(1000.25f,101):clone_fixture_payload();
+    if((!clone_fixture && !normalization_fixture) || input->count!=static_cast<int>(expected.size())
         || input->capacity!=input->count || std::memcmp(reinterpret_cast<void*>(input->data),expected.data(),expected.size())) {
         ++fixture_errors;return nullptr;
+    }
+    if(normalization_fixture) {
+        const float saved=1000.25f;std::memcpy(fake_clone.data()+0x38,&saved,4);
+        if(normalization_template){const std::uint32_t flags=0x10;std::memcpy(fake_clone.data()+8,&flags,4);}
     }
     return fake_clone.data();
 }
@@ -149,12 +155,14 @@ void run_abort_fixture(const std::filesystem::path& connection,bool deny);
 void run_clone_fixture(const std::filesystem::path& connection,const std::wstring& mode,HMODULE loader);
 void run_combat_fixture(const std::filesystem::path& connection,const std::wstring& mode);
 void run_recovery_fixture(const std::filesystem::path& connection,const std::wstring& mode);
+void run_normalization_fixture(const std::filesystem::path& connection,const std::wstring& mode,HMODULE loader);
 }
 
 #include "abort_fixture.inl"
 #include "clone_fixture.inl"
 #include "combat_fixture.inl"
 #include "recovery_fixture.inl"
+#include "normalization_fixture.inl"
 int wmain(int argc, wchar_t** argv) {
     try {
         CHECK(argc == 5);
@@ -163,6 +171,7 @@ int wmain(int argc, wchar_t** argv) {
         const std::filesystem::path connection = argv[3];
         const std::wstring mode = argv[4];
         recovery_fixture=mode.starts_with(L"recovery");recovery_drift=mode==L"recovery-drift";
+        normalization_fixture=mode.starts_with(L"normalize");normalization_template=mode==L"normalize-template";
         const std::uint64_t klass=1; std::memcpy(fake_root.data()+16,&klass,sizeof(klass));
         object(fake_world);object(fake_map);object(fake_field_player);object(fake_field_component);object(fake_field_operation);
         object(fake_root);object(fake_playtime);
@@ -190,6 +199,12 @@ int wmain(int argc, wchar_t** argv) {
         }
         CHECK(object != nullptr && host_count() == 1);
         CHECK(start() == nullptr); // Restart is required; no duplicate detour/worker.
+        if(mode.starts_with(L"normalize")) {
+            run_normalization_fixture(connection,mode,loader);stop(object);
+            CHECK(host_count()==0 && host_errors()==0 && fixture_errors==0);
+            CHECK(std::memcmp(initial_code,reinterpret_cast<const void*>(entry_function),sizeof(initial_code))==0);
+            std::cout<<"Detached normalization DLL fixture passed without FFR.\n";return 0;
+        }
         if(mode.starts_with(L"recovery")) {
             run_recovery_fixture(connection,mode);stop(object);
             CHECK(host_count()==0 && host_errors()==0 && fixture_errors==0);

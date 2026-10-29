@@ -37,6 +37,26 @@ void initialize_import_probe() {
     std::lock_guard lock(observer->mutex);observer->import_available=true;
 }
 
+ffr::CloneProbeAPI make_import_api(const std::function<bool()>& readiness) {
+    ffr::CloneProbeAPI api;
+    api.ready=readiness;
+    api.current_root=[] {return root_getter();};
+    api.same_save_class=[](void* a,void* b) {
+        const auto aa=reinterpret_cast<std::uint64_t>(a),bb=reinterpret_cast<std::uint64_t>(b);
+        const auto base=reinterpret_cast<std::uint64_t>(GetModuleHandleW(nullptr));
+        std::uint64_t av{},bv{},ac{},bc{};
+        return valid_object(aa)&&valid_object(bb)&&read_value(aa,av)&&read_value(bb,bv)
+            && av==base+ffr::import_profile::save_vtable_rva && bv==av
+            && read_value(aa+16,ac)&&read_value(bb+16,bc)&&ac==bc;
+    };
+    api.is_rooted=[](void* value){return object_rooted(value);};
+    api.add_root=[](void* value){object_add_root(value);};
+    api.remove_root=[](void* value){object_remove_root(value);};
+    api.load_memory=[](const ffr::RawArray* value){return load_memory(value);};
+    api.save_memory=[](void* object){return ffr::capture_progression(read_memory,[&]{return object;},save_memory,memory_free);};
+    return api;
+}
+
 void run_import_probe(Observer* current,const std::shared_ptr<const Observer::Opening>& opening,
                       const ffr::AbortGuard& guard,const std::optional<ffr::AbortRequest>& request,std::int64_t now) {
     bool available=false;
@@ -61,22 +81,7 @@ void run_import_probe(Observer* current,const std::shared_ptr<const Observer::Op
     if(!permitted)return;
     // No observer lock across UObject/allocator calls. All calls below are on the
     // encounter's recorded game thread and use only exact-profile primitive ABIs.
-    ffr::CloneProbeAPI api;
-    api.ready=[&] {return !current->quit.load() && current->expires.load()>=seconds() && import_loader_initialized();};
-    api.current_root=[] {return root_getter();};
-    api.same_save_class=[](void* a,void* b) {
-        const auto aa=reinterpret_cast<std::uint64_t>(a),bb=reinterpret_cast<std::uint64_t>(b);
-        const auto base=reinterpret_cast<std::uint64_t>(GetModuleHandleW(nullptr));
-        std::uint64_t av{},bv{},ac{},bc{};
-        return valid_object(aa)&&valid_object(bb)&&read_value(aa,av)&&read_value(bb,bv)
-            && av==base+ffr::import_profile::save_vtable_rva && bv==av
-            && read_value(aa+16,ac)&&read_value(bb+16,bc)&&ac==bc;
-    };
-    api.is_rooted=[](void* value){return object_rooted(value);};
-    api.add_root=[](void* value){object_add_root(value);};
-    api.remove_root=[](void* value){object_remove_root(value);};
-    api.load_memory=[](const ffr::RawArray* value){return load_memory(value);};
-    api.save_memory=[](void* object){return ffr::capture_progression(read_memory,[&]{return object;},save_memory,memory_free);};
+    auto api=make_import_api([&] {return !current->quit.load() && current->expires.load()>=seconds() && import_loader_initialized();});
     auto result=ffr::probe_progression_clone(opening->progression,api);
     std::lock_guard lock(current->mutex);
     current->import_phase=result.passed?"passed":"failed";current->import_result=std::move(result);

@@ -149,6 +149,7 @@ class CombatObservationBridge:
     def safe_boundary(status, sequence, digest):
         if (status is None or not status.get('available') or status.get('phase') != 'idle'
                 or status.get('importProbe', {}).get('phase', 'idle') != 'idle'
+                or status.get('normalizationProbe', {}).get('attempted', False)
                 or not _integer(sequence, 1, 10**18-1) or not _hex(digest, 64)):
             return False
         guard = status.get('guard', {})

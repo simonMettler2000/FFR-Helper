@@ -77,6 +77,7 @@ def compare_openings(source:OpeningCapture,observed:OpeningCapture):
         field=dict(mapIdEqual=a['mapId']==b['mapId'],positionEqual=a['position']==b['position'],directionEqual=a['direction']==b['direction'])
     a_cache=source.metadata.get('mapUnitCache');b_cache=observed.metadata.get('mapUnitCache')
     a_rng=source.metadata.get('crtRandState');b_rng=observed.metadata.get('crtRandState')
+    a_engine_rng=source.metadata.get('engineGlobalRngState');b_engine_rng=observed.metadata.get('engineGlobalRngState')
     return dict(format='ffr-helper-opening-comparison',version=1,kind='offline-component-comparison',restorable=False,
         restartVerified=False,independentCaptureVerified=False,gameSha256=source.metadata['gameSha256'],
         sourceSha256=source.metadata['sha256'],observedSha256=observed.metadata['sha256'],
@@ -88,6 +89,7 @@ def compare_openings(source:OpeningCapture,observed:OpeningCapture):
         normalizedProgressionEqual=normalized_equal,fieldAnchorComparison=field,
         mapUnitCacheEqual=(a_cache==b_cache if a_cache is not None and b_cache is not None else None),
         crtRandStateEqual=(a_rng==b_rng if a_rng is not None and b_rng is not None else None),
+        engineGlobalRngStateEqual=(a_engine_rng==b_engine_rng if a_engine_rng is not None and b_engine_rng is not None else None),
         missingState=['Evidence that a native restart actually executed','Independent capture provenance',
                       'Complete live resources, scheduler, AI, effects and RNG','World/lifecycle restoration and external effects'])
 

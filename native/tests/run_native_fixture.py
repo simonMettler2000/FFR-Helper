@@ -191,6 +191,10 @@ def main():
                 with patch.object(crt_rng,'SUPPORTED_CRT_SHA256',fixture_hash):rng=crt_rng.validate_crt_rand_state(metadata['crtRandState'])
                 assert rng['seed']==1234567 and rng['stateIndex']==0 and report['objects']['nativeEntry']['crtRandReady'] is True
                 assert report['objects']['nativeEntry']['crtRandFailures']==0
+                from ffr_helper.engine_rng import validate_engine_global_rng
+                engine_rng=validate_engine_global_rng(metadata['engineGlobalRngState'])
+                assert engine_rng['seed']==0xffffffff and engine_rng['atomicSnapshot'] is False
+                assert report['objects']['nativeEntry']['engineGlobalRngReady'] is True and report['objects']['nativeEntry']['engineGlobalRngFailures']==0
                 replacement=json.loads((root/'connection/replacement-report.json').read_text(encoding='utf8'))
                 second=replacement['objects']['nativeEntry']['opening']
                 second_raw=(root/'connection/replacement-progression.gvas').read_bytes()
@@ -199,6 +203,7 @@ def main():
                 assert second['playtimeBasis'] is None and replacement['objects']['nativeEntry']['playtimeBasisFailures']==1
                 assert second['mapUnitCache'] is None and replacement['objects']['nativeEntry']['mapUnitCacheFailures']==1
                 assert second['crtRandState'] is None and replacement['objects']['nativeEntry']['crtRandFailures']==1
+                assert second['engineGlobalRngState'] is None and replacement['objects']['nativeEntry']['engineGlobalRngFailures']==1
                 assert progression[8]==42 and metadata['entry']['friendliesUnitIdList']==[1001,1002]
                 after=json.loads((root/'connection/after-expiry-report.json').read_text(encoding='utf8'))
                 assert len(after['events'])==2 and after['objects']['nativeEntry']['captureFailures']==1
@@ -211,6 +216,13 @@ def main():
                 assert latest_cache['units'][0]['raw']['hpBase']==7 and cache['units'][0]['raw']['hpBase']==150
                 with patch.object(crt_rng,'SUPPORTED_CRT_SHA256',fixture_hash):latest_rng=crt_rng.validate_crt_rand_state(large['objects']['nativeEntry']['opening']['crtRandState'])
                 assert latest_rng['seed']==99 and rng['seed']==1234567
+                latest_engine=validate_engine_global_rng(large['objects']['nativeEntry']['opening']['engineGlobalRngState'])
+                assert latest_engine['seed']==18 and engine_rng['seed']==0xffffffff
+                bad_code=json.loads((root/'connection/bad-rng-code-report.json').read_text(encoding='utf8'))
+                assert bad_code['objects']['nativeEntry']['opening']['engineGlobalRngState'] is None
+                assert bad_code['objects']['nativeEntry']['engineGlobalRngFailures']==2
+                assert bad_code['objects']['nativeEntry']['progressionCaptureFailures']==0
+                assert bad_code['objects']['nativeEntry']['opening']['byteLength']==12
             else:
                 assert report['events']==[] and report['objects']['nativeEntry']['ready'] is False
 

@@ -16,6 +16,7 @@ from .field_anchor import validate_field_anchor
 from .playtime import validate_playtime_basis
 from .map_cache import validate_map_unit_cache
 from .crt_rng import validate_crt_rand_state
+from .engine_rng import validate_engine_global_rng
 from .storage import atomic_write
 
 MAX_PROGRESSION = 16 * 1024 * 1024
@@ -44,6 +45,8 @@ def _metadata(value):
         validate_map_unit_cache(value['mapUnitCache'])
     if value.get('crtRandState') is not None:
         validate_crt_rand_state(value['crtRandState'])
+    if value.get('engineGlobalRngState') is not None:
+        validate_engine_global_rng(value['engineGlobalRngState'])
     raw = json.dumps(value, ensure_ascii=False, allow_nan=False).encode('utf8')
     if len(raw) > MAX_METADATA:
         raise ValueError('Encounter-opening metadata exceeds its limit.')
@@ -148,6 +151,7 @@ def summarize_opening(capture: OpeningCapture):
         'Live clock: '+(f'present (partial; rounding: {clock.get("roundingMode", "unknown")}).' if clock is not None else 'unavailable.'),
         'Map-unit cache: '+(f'present ({len(cache["units"])} entries; progression coherence unverified).' if cache is not None else 'unavailable.'),
         'CRT RNG: '+('present (one current-thread stream; other RNG missing).' if metadata.get('crtRandState') is not None else 'unavailable.'),
+        'Engine RNG: '+('present (one global seed; concurrent draws unverified).' if metadata.get('engineGlobalRngState') is not None else 'unavailable.'),
         '',
         'Availability does not establish complete coverage or live verification.',
         'Restoration is not implemented. This capture is not a save state.',

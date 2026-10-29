@@ -80,6 +80,12 @@ def main():
     for key,name in [('ready','ffr_test_rng_ready'),('fast','ffr_test_rng_fast'),('data_slot','ffr_test_rng_data_slot'),('state_slot','ffr_test_rng_state_slot'),('getter','ffr_test_rng_getter')]:
         rng_text+=f'inline constexpr std::uintptr_t {key}_rva={game_pe.exports[name]};\n'
     (output/'good_crt_profile.hpp').write_text(rng_text+'}\n',encoding='utf8')
+    engine_text='#pragma once\n#include <cstdint>\n#include <cstddef>\nnamespace ffr::engine_rng_profile {\n'
+    engine_text+=f'inline constexpr std::uintptr_t seed_rva={game_pe.exports["ffr_test_engine_rng_seed"]};\n'
+    for key,name in [('draw','ffr_test_engine_rng_draw'),('initialize','ffr_test_engine_rng_initialize')]:
+        rva=game_pe.exports[name];start=game_pe.offset(rva)
+        engine_text+=f'inline constexpr std::uintptr_t {key}_rva={rva};\ninline constexpr std::size_t {key}_size=64;\ninline constexpr char {key}_sha256[]="{hashlib.sha256(game_pe.raw[start:start+64]).hexdigest()}";\n'
+    (output/'good_engine_rng_profile.hpp').write_text(engine_text+'}\n',encoding='utf8')
     extra_functions = {name: game_pe.exports['ffr_test_'+name] for name in ['root_getter','save_memory','memory_free']}
     for name in ['good', 'bad_game', 'bad_loader', 'bad_function']:
         text = f'''#pragma once

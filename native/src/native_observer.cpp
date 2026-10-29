@@ -18,6 +18,12 @@
 #include "playtime_capture.hpp"
 #include "map_unit_cache.hpp"
 #include "crt_rand_capture.hpp"
+#include "engine_rng_capture.hpp"
+#ifdef FFR_ENGINE_RNG_PROFILE_HEADER
+#include FFR_ENGINE_RNG_PROFILE_HEADER
+#else
+#include "engine_rng_profile.hpp"
+#endif
 #ifdef FFR_CRT_PROFILE_HEADER
 #include FFR_CRT_PROFILE_HEADER
 #else
@@ -163,6 +169,7 @@ bool read_memory(std::uint64_t address, void* destination, std::size_t length) {
 }
 
 #include "crt_runtime.inl"
+#include "engine_rng_runtime.inl"
 
 bool read_small(const std::filesystem::path& path, std::string& out, DWORD maximum) {
     Handle file(CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
@@ -223,6 +230,7 @@ struct Observer {
         std::string playtime_basis="null";
         std::string map_unit_cache="null";
         std::string crt_rand_state="null";
+        std::string engine_rng_state="null";
         std::optional<ffr::FieldAnchor> field_value;
         std::optional<ffr::PlaytimeBasis> clock_value;
         std::vector<unsigned char> progression;
@@ -246,6 +254,7 @@ struct Observer {
     std::atomic<unsigned> playtime_failures{0};
     std::atomic<unsigned> map_cache_failures{0};
     std::atomic<unsigned> crt_rand_failures{0};
+    std::atomic<unsigned> engine_rng_failures{0};
     std::shared_ptr<const Opening> opening;
 #ifdef FFR_PRACTICE_BUILD
     ffr::AbortTrial trial;
@@ -326,6 +335,7 @@ struct Observer {
                                 +",\"fieldAnchor\":"+current_opening->field_anchor
                                 +",\"mapUnitCache\":"+current_opening->map_unit_cache
                                 +",\"crtRandState\":"+current_opening->crt_rand_state
+                                +",\"engineGlobalRngState\":"+current_opening->engine_rng_state
                                 +",\"playtimeBasis\":"+current_opening->playtime_basis+'}';
                             published=current_opening;
 #ifdef FFR_PRACTICE_BUILD
@@ -357,6 +367,8 @@ struct Observer {
                         + ",\"eventsOmittedForSize\":"+std::to_string(omitted)
                         + ",\"crtRandReady\":"+(crt_profile_ready.load()?"true":"false")
                         + ",\"crtRandFailures\":"+std::to_string(crt_rand_failures.load())
+                        + ",\"engineGlobalRngReady\":"+(engine_rng_profile_ready.load()?"true":"false")
+                        + ",\"engineGlobalRngFailures\":"+std::to_string(engine_rng_failures.load())
                         + ",\"opening\":"+opening_metadata+"}},\"events\":[";
                     for (std::size_t i=0; i<copied.size(); ++i) { if (i) report += ','; report += copied[i]; }
                     report += "],\"missingState\":[\"Live verification of serialized progression/resource coverage\",\"Full combat and RNG state\",\"Verified restore path\"]}";
@@ -474,6 +486,8 @@ void __fastcall encounter_hook(void* context, const void* entry, bool skip_intro
 #endif
         const auto rng_thread=GetCurrentThreadId();std::optional<ffr::CrtRandSample> rng_before;
         try {rng_before=capture_live_crt_rand(rng_thread);}catch(...){}
+        std::optional<std::uint32_t> engine_rng_before;
+        try {engine_rng_before=capture_live_engine_rng();}catch(...){}
         try {
             void* captured_root=nullptr;
             auto progression=ffr::capture_progression(read_memory,[&] {captured_root=root_getter();return captured_root;},save_memory,memory_free);
@@ -489,6 +503,11 @@ void __fastcall encounter_hook(void* context, const void* entry, bool skip_intro
                     if(rng_before && rng_after && *rng_before==*rng_after)opening->crt_rand_state=ffr::crt_rand_json(*rng_before,ffr::crt_profile::module_sha256);
                     else current->crt_rand_failures.fetch_add(1);
                 }catch(...) {current->crt_rand_failures.fetch_add(1);}
+                try {
+                    auto after=capture_live_engine_rng();
+                    if(engine_rng_before && after && *engine_rng_before==*after)opening->engine_rng_state=ffr::engine_global_rng_json(*after);
+                    else current->engine_rng_failures.fetch_add(1);
+                }catch(...) {current->engine_rng_failures.fetch_add(1);}
             }
             else current->progression_failures.fetch_add(1);
         } catch (...) { current->progression_failures.fetch_add(1); }
@@ -525,6 +544,7 @@ bool install_entry_hook() {
     initialize_field_profile();
     initialize_playtime_profile();
     try {initialize_crt_profile();}catch(...) {crt_profile_ready=false;}
+    try {initialize_engine_rng_profile();}catch(...) {engine_rng_profile_ready=false;}
     for (const auto& profile : {std::pair{ffr::profile::root_getter_rva,ffr::profile::root_getter_sha256},
                                std::pair{ffr::profile::save_memory_rva,ffr::profile::save_memory_sha256},
                                std::pair{ffr::profile::memory_free_rva,ffr::profile::memory_free_sha256}}) {

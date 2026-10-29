@@ -47,6 +47,9 @@ add_test(NAME detached_normalized_clone_preparation COMMAND normalized_clone_tes
 add_executable(crt_rand_capture_tests tests/crt_rand_capture_tests.cpp)
 target_include_directories(crt_rand_capture_tests PRIVATE include)
 add_test(NAME partial_current_thread_crt_rng COMMAND crt_rand_capture_tests)
+add_executable(engine_rng_capture_tests tests/engine_rng_capture_tests.cpp)
+target_include_directories(engine_rng_capture_tests PRIVATE include)
+add_test(NAME partial_engine_global_rng COMMAND engine_rng_capture_tests)
 add_executable(combat_observation_tests tests/combat_observation_tests.cpp)
 target_include_directories(combat_observation_tests PRIVATE include)
 add_test(NAME detached_partial_combat_observation COMMAND combat_observation_tests)
@@ -120,7 +123,7 @@ if(FFR_BUILD_NATIVE_OBSERVER)
   target_include_directories(native_host_fixture PRIVATE include)
   target_compile_options(native_host_fixture PRIVATE /W4 /EHsc /utf-8)
   set(generated "${CMAKE_CURRENT_BINARY_DIR}/fixture_profiles")
-  set(profiles "${generated}/good_profile.hpp" "${generated}/bad_game_profile.hpp" "${generated}/bad_loader_profile.hpp" "${generated}/bad_function_profile.hpp" "${generated}/good_abort_profile.hpp" "${generated}/good_import_profile.hpp" "${generated}/good_field_profile.hpp" "${generated}/good_playtime_profile.hpp" "${generated}/good_crt_profile.hpp")
+  set(profiles "${generated}/good_profile.hpp" "${generated}/bad_game_profile.hpp" "${generated}/bad_loader_profile.hpp" "${generated}/bad_function_profile.hpp" "${generated}/good_abort_profile.hpp" "${generated}/good_import_profile.hpp" "${generated}/good_field_profile.hpp" "${generated}/good_playtime_profile.hpp" "${generated}/good_crt_profile.hpp" "${generated}/good_engine_rng_profile.hpp")
   add_custom_command(OUTPUT ${profiles}
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/make_fixture_profiles.py"
       "$<TARGET_FILE:native_host_fixture>" "$<TARGET_FILE:native_mock_loader>" "${generated}"
@@ -134,6 +137,7 @@ if(FFR_BUILD_NATIVE_OBSERVER)
     target_link_libraries(fixture_observer_${mode} PRIVATE minhook bcrypt)
     target_compile_options(fixture_observer_${mode} PRIVATE /W4 /EHsc /utf-8)
     target_compile_definitions(fixture_observer_${mode} PRIVATE UNICODE _UNICODE "FFR_CAPTURE_PROFILE_HEADER=\"${mode}_profile.hpp\"" "FFR_FIELD_PROFILE_HEADER=\"good_field_profile.hpp\"" "FFR_PLAYTIME_PROFILE_HEADER=\"good_playtime_profile.hpp\"" "FFR_CRT_PROFILE_HEADER=\"good_crt_profile.hpp\"")
+    target_compile_definitions(fixture_observer_${mode} PRIVATE "FFR_ENGINE_RNG_PROFILE_HEADER=\"good_engine_rng_profile.hpp\"")
     set_property(TARGET fixture_observer_${mode} PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
     set_target_properties(fixture_observer_${mode} PROPERTIES OUTPUT_NAME "fixture_observer_${mode}")
     string(REPLACE "_" "-" case "${mode}")
@@ -150,6 +154,7 @@ if(FFR_BUILD_NATIVE_OBSERVER)
     target_compile_options(fixture_observer_abort PRIVATE /W4 /EHsc /utf-8)
     target_compile_definitions(fixture_observer_abort PRIVATE UNICODE _UNICODE FFR_PRACTICE_BUILD=1
       "FFR_CAPTURE_PROFILE_HEADER=\"good_profile.hpp\"" "FFR_ABORT_PROFILE_HEADER=\"good_abort_profile.hpp\"" "FFR_IMPORT_PROFILE_HEADER=\"good_import_profile.hpp\"" "FFR_FIELD_PROFILE_HEADER=\"good_field_profile.hpp\"" "FFR_PLAYTIME_PROFILE_HEADER=\"good_playtime_profile.hpp\"" "FFR_CRT_PROFILE_HEADER=\"good_crt_profile.hpp\"")
+    target_compile_definitions(fixture_observer_abort PRIVATE "FFR_ENGINE_RNG_PROFILE_HEADER=\"good_engine_rng_profile.hpp\"")
     foreach(mode abort abort-denied clone clone-unready clone-mismatch clone-mutates clone-denied combat combat-after-action combat-denied combat-stale combat-effects-unavailable recovery recovery-denied recovery-stale recovery-drift recovery-write-failed recovery-map-changed normalize normalize-unready normalize-stale normalize-template normalize-write-failed)
       add_test(NAME native_${mode} COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/run_native_fixture.py"
         --exe "$<TARGET_FILE:native_host_fixture>" --loader "$<TARGET_FILE:native_mock_loader>"

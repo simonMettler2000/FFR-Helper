@@ -128,6 +128,14 @@ becomes null independently. Other threads and RNG sources are uncovered, and
 restoration is not implemented. Portable, compiled-fixture and supported-system
 helper-process tests do not establish live FFR coverage; this reader remains
 uninstalled. No Windows system DLL is included in packages.
+Independent optional `engineGlobalRngState` copies one separate engine-global
+seed after exact loaded draw/initializer code checks. Neither function is
+called; no setter or thread suspension is used. Two reads per sample and
+matching samples around progression copying reject observed drift. The metadata
+explicitly declines atomic/concurrent/full RNG coverage, and unknown or changed
+code leaves null metadata while retaining progression. The real DLL's dummy
+process tests serialization-time seed drift and a late code mismatch without
+invoking its draw/initializer. The new reader is uninstalled and not live-verified.
 When a large retained event history needs truncation for a bounded report,
 `eventsOmittedForSize` states how many oldest events were omitted from that report.
 

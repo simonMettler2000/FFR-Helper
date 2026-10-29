@@ -578,14 +578,33 @@ distinct concurrent-thread state. These are isolated-process tests, not live FFR
 verification. No CRT binary is distributed. The new reader remains uninstalled,
 and seed restoration or complete gameplay RNG coverage is not implemented.
 
-Further static inspection confirms a separate engine-global 32-bit generator,
+### Partial engine-global RNG capture
+
+Static inspection confirms a separate engine-global 32-bit generator,
 initialized independently beside the CRT seed initialization. Its draw updates
 that separate seed with a multiply/add recurrence and constructs a fractional
 float from its lower 23 bits. The current CRT capture does **not** cover this
-state. Direct engine callers are present; actual combat/thread use, indirect or
-inlined callers and per-instance generators remain unverified. No draw,
-initialization routine, runtime reader or setter for this source was invoked or
-added. A stable CRT seed alone cannot establish complete RNG restoration.
+state. The new independent `engineGlobalRngState` optionally copies its raw seed
+without calling the draw or initialization functions. Exact game identity and
+complete loaded fingerprints of both routines gate the fixed-member read;
+fingerprints are rechecked around each two-read sample. Address overflow,
+alignment, unreadable/changing data and changed code are refused.
+
+Samples before and after progression copying must match. This does **not** prove
+that no intervening draws occurred, or that other threads were quiescent. The
+metadata explicitly sets `atomicSnapshot: false` and leaves other RNG sources
+uncovered; it exports no address. Any optional failure leaves null metadata and
+a separate failure count while retaining progression. Portable tests preserve
+unsigned/zero seeds and refuse drift/bounds errors. The real DLL fixture changes
+its own seed during serialization and patches its never-called dummy draw code
+after initialization; both cases retain progression and refuse the RNG sample.
+Independent Python checks enforce the coverage limits and preserve old archives.
+
+Direct engine callers are present; actual combat/thread use, indirect or inlined
+callers and per-instance generators remain unverified. No runtime draw,
+initializer, setter, game suspension or seed restore is added. This reader is
+uninstalled and not live-verified. Even matching CRT and engine-global samples
+cannot establish complete or atomic RNG restoration.
 
 ### Remaining restart acceptance requirements
 
@@ -630,7 +649,7 @@ remain separate from diagnostic reports and ordinary-save checkpoints.
 
 The desktop's **Runtime research → Inspect saved capture** can review an existing
 `.ffropening` without a game connection or working-save change. It validates the
-full archive/progression, then shows partial field/clock/cache/CRT availability
+full archive/progression, then shows partial field/clock/cache/RNG availability
 without encounter IDs, coordinates, seed values or progression contents. Missing
 legacy metadata stays unavailable. Presence never establishes completeness or
 live verification. The equivalent read-only command is:

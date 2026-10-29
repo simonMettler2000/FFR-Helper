@@ -324,6 +324,12 @@ restorable output. None of this establishes live game compatibility by itself.
 
 ## Battle-opening restart: acceptance requirements
 
+The separate [partial recovery prerequisite](../native/PARTIAL_RECOVERY.md) now
+copies two matching serialized progression objects with three stable field/clock
+samples and repeated root/readiness checks. Its callback-driven core and portable
+tests are implemented; the request channel and durable bundle are still pending.
+It is read-only component evidence, not an atomic world snapshot or rollback.
+
 ### Native load prerequisites verified offline
 
 The new scoped load router and progression-rebind controller are callback-driven

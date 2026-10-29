@@ -578,6 +578,15 @@ distinct concurrent-thread state. These are isolated-process tests, not live FFR
 verification. No CRT binary is distributed. The new reader remains uninstalled,
 and seed restoration or complete gameplay RNG coverage is not implemented.
 
+Further static inspection confirms a separate engine-global 32-bit generator,
+initialized independently beside the CRT seed initialization. Its draw updates
+that separate seed with a multiply/add recurrence and constructs a fractional
+float from its lower 23 bits. The current CRT capture does **not** cover this
+state. Direct engine callers are present; actual combat/thread use, indirect or
+inlined callers and per-instance generators remain unverified. No draw,
+initialization routine, runtime reader or setter for this source was invoked or
+added. A stable CRT seed alone cannot establish complete RNG restoration.
+
 ### Remaining restart acceptance requirements
 
 Before enabling a restart button, an implementation must demonstrate:

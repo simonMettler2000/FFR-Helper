@@ -21,6 +21,9 @@ struct NativeLoadProfile {
     LoadFunctionProfile load,validity,reader;
     std::uintptr_t validity_return_rva{},reader_return_rva{},manager_vtable_rva{},save_vtable_rva{};
     std::vector<LoadFunctionProfile> unhooked_dependencies;
+    // Exact bytes establish identity, not permission to execute unknown cache,
+    // delegate or platform effects. The FFR profile deliberately remains false.
+    bool external_effects_reviewed=false;
 };
 struct NativeLoadBindingResult {
     bool native_called{},native_returned{},route_complete{},root_matches{},context_matches{},passed{};
@@ -119,6 +122,7 @@ public:
         const auto saved_error=GetLastError();
         struct Restore {DWORD error;~Restore(){SetLastError(error);}} restore{saved_error};
         try {
+            if(!requested.external_effects_reviewed)return false;
             if(file_digest()!=requested.game_sha256 || requested.game_sha256.size()!=64)return false;
             auto module=GetModuleHandleW(nullptr);MODULEINFO module_info{};
             if(!K32GetModuleInformation(GetCurrentProcess(),module,&module_info,sizeof(module_info)))return false;

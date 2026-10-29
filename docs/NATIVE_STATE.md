@@ -406,6 +406,18 @@ has not been executed in the game. Runtime integration still requires verified
 target/recovery clocks and field gates; actual load delegates, caches and world
 effects remain live-test requirements.
 
+Further static tracing identifies a concrete external effect in the ordinary
+normal-load path: after `Load.End`, it reconciles saved achievement flags with
+the online subsystem and can invoke the native achievement-unlock path. Byte
+equality of progression cannot prove that platform state stayed unchanged.
+`SaveData.Update` and `Load.End` also dispatch registered delegates whose complete
+cache/world effects remain unverified. No such path has been invoked by the
+helper in FFR. The supported load profile now explicitly marks external effects
+unreviewed; the isolated adapter refuses initialization for that profile before
+creating hooks. Controlled fixture profiles alone mark their dummy effects
+reviewed. Future runtime integration requires a concrete review/containment of
+these paths as well as the existing root, field, clock and recovery gates.
+
 ### Live playtime basis capture, pending live verification
 
 The saved `Player.PlayTime` value was unchanged across the three live opening

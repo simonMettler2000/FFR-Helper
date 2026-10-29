@@ -69,21 +69,23 @@ ffr::NativeLoadProfile fixture_profile(std::uintptr_t valid_caller,std::uintptr_
     CHECK(info && image==base && base+info->BeginAddress==reinterpret_cast<std::uintptr_t>(&native_load));
     return {file_digest(),function(&native_load,info->EndAddress-info->BeginAddress),function(&native_valid,64),function(&native_reader,64),
         valid_caller-base,read_caller-base,reinterpret_cast<std::uintptr_t>(manager_vtable)-base,reinterpret_cast<std::uintptr_t>(save_vtable)-base,
-        {function(&dependency_marker,16)}};
+        {function(&dependency_marker,16)},true}; // Controlled dummy functions have no platform/world effects.
 }
 }
 int main(int argc,char** argv) {
     try {
         const std::string mode=argc==2?argv[1]:"good";
-        CHECK(mode=="good" || mode=="build-mismatch" || mode=="profile-mismatch" || mode=="callsite-mismatch"
+        CHECK(mode=="good" || mode=="effects-unreviewed" || mode=="build-mismatch" || mode=="profile-mismatch" || mode=="callsite-mismatch"
             || mode=="dependency-mismatch" || mode=="dependency-changed"
             || mode=="wrong-thread" || mode=="wrong-context" || mode=="wrong-class" || mode=="post-context");
         CHECK(native_load(&manager,7));auto profile=fixture_profile(validity_return,reader_return);
+        CHECK(!ffr::supported_native_load_profile().external_effects_reviewed);
         std::array<unsigned char,64> initial_valid{},initial_reader{};
         std::memcpy(initial_valid.data(),reinterpret_cast<void*>(&native_valid),64);std::memcpy(initial_reader.data(),reinterpret_cast<void*>(&native_reader),64);
         CHECK(MH_Initialize()==MH_OK);auto* binding=new ffr::NativeLoadBinding;
-        if(mode=="build-mismatch" || mode=="profile-mismatch" || mode=="callsite-mismatch" || mode=="dependency-mismatch") {
-            if(mode=="build-mismatch")profile.game_sha256=std::string(64,'0');
+        if(mode=="effects-unreviewed" || mode=="build-mismatch" || mode=="profile-mismatch" || mode=="callsite-mismatch" || mode=="dependency-mismatch") {
+            if(mode=="effects-unreviewed")profile.external_effects_reviewed=false;
+            else if(mode=="build-mismatch")profile.game_sha256=std::string(64,'0');
             else if(mode=="profile-mismatch")profile.reader.sha256[0]=profile.reader.sha256[0]=='0'?'1':'0';
             else if(mode=="dependency-mismatch")profile.unhooked_dependencies[0].sha256=std::string(64,'0');
             else ++profile.reader_return_rva;

@@ -61,16 +61,25 @@ def main():
         skill_text+=f'inline constexpr std::uintptr_t {key}_rva={rva};\ninline constexpr std::size_t {key}_size={size};\ninline constexpr char {key}_sha256[]="{digest}";\n'
     skill_text+=f'inline constexpr std::uintptr_t callsite_rva={calls[0]};\n}}\n'
     (output/'good_skill_event_profile.hpp').write_text(skill_text,encoding='utf8')
-    command_text='#pragma once\n#include <cstddef>\n#include <cstdint>\nnamespace ffr::command_abort_profile {\n'
-    command_hashes={}
-    for key,name in [('abort','ffr_test_ui_command_abort'),('getter','ffr_test_ui_command_getter'),('state_a','ffr_test_command_state_a'),('state_b','ffr_test_command_state_b')]:
+    task_text='#pragma once\n#include <cstddef>\n#include <cstdint>\nnamespace ffr::task_abort_profile {\n'
+    for key,name in [('end_command','ffr_test_vm_end'),('finish_check','ffr_test_finish_check'),
+                     ('task_class_cache','ffr_test_task_class'),('talk_class_cache','ffr_test_talk_class'),
+                     ('root_vm_class_cache','ffr_test_root_vm_class'),('command_vm_class_cache','ffr_test_command_vm_class'),
+                     ('task_vtable','ffr_test_task_vtable'),('step_vtable','ffr_test_step_vtable'),
+                     ('command_vm_vtable','ffr_test_command_vm_vtable'),('result_skip_vtable','ffr_test_result_skip_vtable'),
+                     ('step_begin','ffr_test_input_begin'),('empty_update','ffr_test_empty_update')]:
+        task_text+=f'inline constexpr std::uintptr_t {key}_rva={game_pe.exports[name]};\n'
+    task_text+='struct CodeRegion {std::uintptr_t rva;std::size_t size;const char* sha256;};\ninline constexpr CodeRegion regions[]{\n'
+    task_hashes=[]
+    for name in ['ffr_test_vm_end','ffr_test_finish_check','ffr_test_task_get_world','ffr_test_input_begin','ffr_test_empty_update']:
         rva=game_pe.exports[name];start=game_pe.offset(rva)
-        size=game_pe.functions[rva]-rva
-        digest=hashlib.sha256(game_pe.raw[start:start+size]).hexdigest();command_hashes[key]=digest
-        command_text+=f'inline constexpr std::uintptr_t {key}_rva={rva};\ninline constexpr std::size_t {key}_size={size};\ninline constexpr char {key}_sha256[]="{digest}";\n'
-    command_text+=f'inline constexpr std::uintptr_t ui_vtable_rva={game_pe.exports["ffr_test_ui_vtable"]};\n}}\n'
-    (output/'good_command_abort_profile.hpp').write_text(command_text,encoding='utf8')
-    (output/'bad_command_abort_profile.hpp').write_text(command_text.replace(command_hashes['abort'],'0'*64),encoding='utf8')
+        next_export=min(value for value in game_pe.exports.values() if value>rva)
+        size=game_pe.functions.get(rva,min(rva+64,next_export))-rva
+        digest=hashlib.sha256(game_pe.raw[start:start+size]).hexdigest();task_hashes.append(digest)
+        task_text+=f'{{{rva},{size},"{digest}"}},\n'
+    task_text+='};\n}\n'
+    (output/'good_task_abort_profile.hpp').write_text(task_text,encoding='utf8')
+    (output/'bad_task_abort_profile.hpp').write_text(task_text.replace(task_hashes[0],'0'*64),encoding='utf8')
     decision_rva=game_pe.exports['ffr_test_decision'];decision_offset=game_pe.offset(decision_rva)
     decision_hash=hashlib.sha256(game_pe.raw[decision_offset:decision_offset+64]).hexdigest()
     (output/'good_decision_profile.hpp').write_text('#pragma once\n#include <cstddef>\n#include <cstdint>\nnamespace ffr::decision_profile {\n'

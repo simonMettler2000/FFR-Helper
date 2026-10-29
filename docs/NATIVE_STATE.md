@@ -16,6 +16,34 @@ Loader/recorder installation is opt-in, with the game closed. The read-only
 recorder has now been verified through an overworld–battle–overworld cycle on
 the target build. Restoration has not been tested or implemented.
 
+## Current command-menu exit candidate
+
+The latest supervised native EndBattle + UI-manager AbortCommand pair set both
+flags but did not leave the untouched command menu. No automatic retry occurred.
+Read-only inspection found the actual Turn task at input step2 with an empty
+update callback. A separate natural-flee trace recorded normal task progression
+and field return with zero read failures; that escape used result2, not the
+ForceEnd result task, and does not verify the helper exit.
+
+The new practice-only candidate requests EndBattle, closes the owned command
+view model through native EndCommand, and evaluates the existing finish checker
+once only while the identical Turn task/step and idle source/history still match.
+It requires completed turn-event processing, quiet talk, empty requests/jobs and
+exact loaded code/ownership checks. No raw step/result setter or fake command is
+used. It records native result5 and result-task selection separately from field
+cleanup and progression comparison. A changed callback context never schedules
+a later mutation. The cleanup watchdog uses capped active game-tick delta;
+request expiry still uses wall time.
+
+Compiled dummy-process cases exercise the real candidate DLL, including derived
+registry ownership, prepared VM/task swaps, wrong World/step, incomplete turn
+events, busy talk, queued work, callback task/job/code drift, failed UI closure,
+checker refusal/wrong result, once-only game-thread calls and released managers.
+All89 native CTests pass; the162-test Python suite passes with one existing
+skip. These tests do not establish live compatibility. The new candidate has not been
+installed or tested in FFR; full battle restart/rebinding/recreation remain
+unfinished. Saving anywhere remains deferred and uninstalled.
+
 ## Live recorder findings
 
 The loader registered all three requested hooks. However, none of those

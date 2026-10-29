@@ -35,7 +35,7 @@ std::array<unsigned char,0x80> fake_jobs{},fake_units{};
 std::array<unsigned char,0x40> fake_command{},fake_command_request{},fake_ui_command{},fake_other_ui_command{};
 std::array<unsigned char,32> fake_other_world{};
 std::array<unsigned char,0x90> fake_ui{};
-std::array<unsigned char,32> fake_world{};
+std::array<unsigned char,0x230> fake_world{};
 std::array<unsigned char,0x210> fake_map{};
 std::array<unsigned char,0x38> fake_map_storage{};
 std::array<std::array<unsigned char,0x2b0>,2> fake_map_parameters{};
@@ -48,6 +48,22 @@ std::array<unsigned char,0x40> fake_scheduler{};
 unsigned abort_calls{},tick_calls{};
 DWORD abort_thread{};
 unsigned ui_command_abort_calls{};DWORD ui_command_abort_thread{};
+std::array<unsigned char,0x200> fake_instance{};
+std::array<unsigned char,0x48> fake_task_manager{},fake_registry{};
+std::array<unsigned char,0x40> fake_vm_subsystem{};
+std::array<unsigned char,0x160> fake_talk{},fake_talk_player{};
+std::array<unsigned char,0x100> fake_task{},fake_result_task{},fake_other_task{};
+std::array<unsigned char,0xd0> fake_step{};
+std::array<unsigned char,0x300> fake_command_vm{},fake_other_command_vm{};
+std::array<std::array<unsigned char,0x40>,5> fake_task_classes{};
+std::array<std::array<std::uint64_t,2>,5> fake_class_chains{};
+std::array<std::array<std::uint64_t,3>,3> fake_subsystem_rows{};
+std::array<std::uint64_t,3> fake_vm_row{};
+unsigned vm_end_calls{},finish_check_calls{};
+DWORD vm_end_thread{},finish_check_thread{};
+std::wstring task_fixture_mode;
+bool fake_finish_routed{};
+bool task_wrong_world{};
 DWORD command_profile_thread{};
 bool release_managers_on_abort{};
 unsigned decision_calls{};void* decision_context{};void* decision_data{};DWORD decision_input_error{};
@@ -62,6 +78,13 @@ float last_delta{};
 extern "C" {__declspec(dllexport) std::uint64_t ffr_test_btl_vtable[1]={0};}
 extern "C" {__declspec(dllexport) std::uint64_t ffr_test_ui_vtable[1]={0};}
 extern "C" {__declspec(dllexport) std::uint64_t ffr_test_ui_command_vtable[49]={0};}
+extern "C" {
+__declspec(dllexport) std::uint64_t ffr_test_task_vtable[49]={0};
+__declspec(dllexport) std::uint64_t ffr_test_step_vtable[1]={0};
+__declspec(dllexport) std::uint64_t ffr_test_command_vm_vtable[1]={0};
+__declspec(dllexport) std::uint64_t ffr_test_result_skip_vtable[1]={0};
+__declspec(dllexport) std::uint64_t ffr_test_task_class=0,ffr_test_root_vm_class=0,ffr_test_command_vm_class=0,ffr_test_talk_class=0;
+}
 extern "C" {__declspec(dllexport) std::uint64_t ffr_test_save_vtable[1]={0};}
 extern "C" {__declspec(dllexport) std::uint64_t ffr_test_map_storage_vtable[1]={0};}
 extern "C" {
@@ -132,12 +155,51 @@ bool __fastcall ffr_test_command_state_a() {command_profile_thread=GetCurrentThr
 extern "C" __declspec(dllexport) __declspec(noinline)
 bool __fastcall ffr_test_command_state_b() {command_profile_thread=GetCurrentThreadId();return fake_manager[0x223]!=0 && fake_manager[0x1a9]!=0;}
 extern "C" __declspec(dllexport) __declspec(noinline)
+void* __fastcall ffr_test_task_get_world(void* task) {
+    if(task!=fake_task.data() && task!=fake_other_task.data()){++fixture_errors;return nullptr;}
+    return task_wrong_world?fake_other_world.data():fake_world.data();
+}
+extern "C" __declspec(dllexport) __declspec(noinline)
+void __fastcall ffr_test_input_begin() {SetLastError(1010);}
+extern "C" __declspec(dllexport) __declspec(noinline)
+int __fastcall ffr_test_empty_update() {return 0;}
+extern "C" __declspec(dllexport) __declspec(noinline) bool __fastcall ffr_test_finish_check(void* task);
+extern "C" __declspec(dllexport) __declspec(noinline)
+void __fastcall ffr_test_vm_end(void* vm) {
+    ++vm_end_calls;vm_end_thread=GetCurrentThreadId();
+    if(vm!=fake_command_vm.data()){++fixture_errors;return;}
+    if(task_fixture_mode!=L"abort-ui-fails")fake_command_vm[0x199]=0;
+    if(task_fixture_mode==L"abort-ui-task-drift") {
+        auto task=reinterpret_cast<std::uint64_t>(fake_other_task.data());std::memcpy(fake_task_manager.data()+0x38,&task,8);
+    }
+    if(task_fixture_mode==L"abort-ui-job-drift") {
+        const ffr::RawArray job{reinterpret_cast<std::uint64_t>(fake_command_request.data()),1,1};std::memcpy(fake_jobs.data()+0x28,&job,sizeof(job));
+    }
+    if(task_fixture_mode==L"abort-ui-code-drift") {
+        auto* code=reinterpret_cast<unsigned char*>(&ffr_test_finish_check);DWORD protection{},ignored{};
+        if(!VirtualProtect(code,1,PAGE_EXECUTE_READWRITE,&protection)){++fixture_errors;return;}
+        *code^=1;VirtualProtect(code,1,protection,&ignored);FlushInstructionCache(GetCurrentProcess(),code,1);
+    }
+    SetLastError(6543);
+}
+extern "C" __declspec(dllexport) __declspec(noinline)
+bool __fastcall ffr_test_finish_check(void* task) {
+    ++finish_check_calls;finish_check_thread=GetCurrentThreadId();
+    if(task!=fake_task.data() || fake_command_vm[0x199] || !fake_manager[0x222]){++fixture_errors;return false;}
+    if(task_fixture_mode==L"abort-check-false")return false;
+    fake_manager[0x1a8]=task_fixture_mode==L"abort-check-mode"?2:5;
+    const auto result=reinterpret_cast<std::uint64_t>(fake_result_task.data());std::memcpy(fake_task_manager.data()+0x38,&result,8);
+    fake_finish_routed=fake_manager[0x1a8]==5;
+    return true;
+}
+extern "C" __declspec(dllexport) __declspec(noinline)
 void __fastcall ffr_test_abort_tick(void* context,float delta) {
     ++tick_calls;last_delta=delta;
     if(context!=fake_manager.data()+0x30)++fixture_errors;
-    // Like the actual first menu: ForceEnd alone stays pending until command
-    // selection is released. No synthetic player command is submitted.
-    if(fake_manager[0x222] && ffr_test_command_state_a()) {
+    // The actual step2 has no updater: flags/UI closure alone cannot advance
+    // it. Only the once-only native finish route moves to the result task.
+    if(fake_finish_routed) {
+        fake_finish_routed=false;
         fake_manager[0x222]=0;fake_manager[0x223]=0;fake_manager[0x1a9]=0;fake_ui[0x80]=0;
         const std::int32_t zero=0;std::memcpy(fake_units.data()+0x30,&zero,4);
         if(release_managers_on_abort) {
@@ -388,7 +450,7 @@ int wmain(int argc, wchar_t** argv) {
         }
         if(mode==L"abort-command-unavailable") {
             write(connection/L"observe.txt","FFR_HELPER_OBSERVER_V1\n"+std::string(32,'a')+"\n"+std::to_string(now()+8)+"\n"+std::string(32,'b')+"\n");
-            wait_for([&]{return read(connection/L"abort-status.json").find("Native command abort profile unavailable")!=std::string::npos;});
+            wait_for([&]{return read(connection/L"abort-status.json").find("Native task-exit profile unavailable")!=std::string::npos;});
             const auto status=read(connection/L"abort-status.json");
             CHECK(status.find("\"available\":false")!=std::string::npos);
             CHECK(status.find("\"commandAbortReady\":false")!=std::string::npos);

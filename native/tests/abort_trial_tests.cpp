@@ -50,11 +50,23 @@ int main() {
         ffr::AbortTrial throws;CHECK(!throws.prepare(request,good,100,[]()->std::vector<unsigned char>{throw std::runtime_error("serialization failed");}));
         CHECK(!throws.commit(commit,good,101,end));CHECK(aborts==1);
         ffr::AbortTrial timeout;CHECK(timeout.prepare(request,good,100,capture));timeout.recovery_written(true);
-        CHECK(timeout.commit(commit,good,101,end));timeout.observe(good,117);CHECK(timeout.phase()==ffr::AbortPhase::timed_out);
+        CHECK(timeout.commit(commit,good,101,end));
+        timeout.observe(good,117,0.125f);CHECK(timeout.phase()==ffr::AbortPhase::abort_sent);
+        timeout.observe(good,10000,999.f);CHECK(timeout.phase()==ffr::AbortPhase::abort_sent);
+        CHECK(timeout.cleanup_active_millis()==375); // Long pause/large resume delta is capped.
+        timeout.observe(good,10001,0);CHECK(timeout.cleanup_active_millis()==375);
+        for(unsigned i=0;i<60;++i)timeout.observe(good,10002+i,0.25f);
+        CHECK(timeout.phase()==ffr::AbortPhase::timed_out);
         CHECK(!timeout.commit(commit,good,117,end));CHECK(aborts==2);
         ffr::AbortTrial changed;CHECK(changed.prepare(request,good,100,capture));changed.recovery_written(true);
         CHECK(changed.commit(commit,good,101,end));cleared.sequence=2;changed.observe(cleared,102);
         CHECK(changed.phase()==ffr::AbortPhase::timed_out && aborts==3);
+        ffr::AbortTrial resumed;CHECK(resumed.prepare(request,good,100,capture));resumed.recovery_written(true);
+        CHECK(resumed.commit(commit,good,101,end));cleared.sequence=1;
+        resumed.observe(cleared,10000,0.016f);CHECK(resumed.phase()==ffr::AbortPhase::manager_cleared);
+        ffr::AbortTrial invalid_time;CHECK(invalid_time.prepare(request,good,100,capture));invalid_time.recovery_written(true);
+        CHECK(invalid_time.commit(commit,good,101,end));invalid_time.observe(good,102,-1.f);
+        CHECK(invalid_time.phase()==ffr::AbortPhase::timed_out);
         std::cout<<"Opening-abort guard, durable recovery gate, expiry and exactly-once checks passed.\n";
     }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}
 }

@@ -59,10 +59,11 @@
 #ifdef FFR_PRACTICE_BUILD
 #include "abort_trial.hpp"
 #include "import_menu.hpp"
-#ifdef FFR_COMMAND_ABORT_PROFILE_HEADER
-#include FFR_COMMAND_ABORT_PROFILE_HEADER
+#include "task_exit_result.hpp"
+#ifdef FFR_TASK_ABORT_PROFILE_HEADER
+#include FFR_TASK_ABORT_PROFILE_HEADER
 #else
-#include "command_abort_profile.hpp"
+#include "task_abort_profile.hpp"
 #endif
 #include "progression_clone.hpp"
 #include "combat_transport.hpp"
@@ -318,8 +319,9 @@ struct Observer {
     std::optional<ffr::AbortRequest> abort_request;
     bool abort_available=false;
     bool dispatcher_available=false;
-    bool command_abort_issued=false,force_end_flag_observed=false,command_abort_flag_observed=false;
-    std::string command_abort_message="Native command abort has not been requested";
+    ffr::NativeTaskExitResult task_exit;
+    std::optional<ffr::TaskAbortTargets> prepared_task_targets;
+    std::string task_target_message="Task target has not been sampled";
     std::string abort_message="Abort trial has not initialized", opening_hash, recovery_hash;
     std::int64_t probe_time{};
     std::vector<unsigned char> after_progression;

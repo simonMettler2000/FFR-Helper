@@ -34,8 +34,8 @@ class AbortControllerTests(unittest.TestCase):
             def status(self):
                 guard=copy.deepcopy(guards[min(self.index,len(guards)-1)]);self.index+=1
                 return dict(available=True,phase=self.phase,guard=guard,message='Fixture',probeTime=now,
-                    nativeCommandAbort={k:self.phase=='manager-cleared' for k in ['issued','forceEndFlagObserved','commandAbortFlagObserved']},
-                    openingBoundaryPolicy='ordinary-first-menu-native-command-abort',after={'sha256':'f'*64})
+                    nativeTaskExit=dict({k:self.phase=='manager-cleared' for k in ['endIssued','forceEndFlagObserved','uiEndIssued','uiClosedObserved','forceEndResultObserved']},uncertain=False),
+                    openingBoundaryPolicy='ordinary-first-menu-force-end-task',after={'sha256':'f'*64})
             def prepare(self,report):sent.append(('prepare',report));self.phase='armed';return opening
             def progression(self,status,after=False):return opening.progression
             def commit(self,status):sent.append(('commit',status['phase']));self.phase='manager-cleared'
@@ -49,7 +49,7 @@ class AbortControllerTests(unittest.TestCase):
             result=json.loads((out/'comparison.json').read_text())
             self.assertFalse(result['restoresInvoked'])
             self.assertTrue(result['expUnchanged'] and result['mrpUnchanged'])
-            self.assertTrue(result['nativeCommandAbortUsed'] and result['openingHistoryUntouchedAfterCleanup'])
+            self.assertTrue(result['nativeTaskExitUsed'] and result['openingHistoryUntouchedAfterCleanup'])
 
     def test_unsupported_policy_cannot_prepare(self):
         sent=[];closed=[]
@@ -93,8 +93,8 @@ class AbortControllerTests(unittest.TestCase):
             def status(self):
                 guard=dict(ordinary,ordinaryEncounter=loop[0]!=1)
                 return dict(available=True,phase=self.phase,guard=guard,message='Fixture',probeTime=now,
-                    nativeCommandAbort={k:self.phase=='manager-cleared' for k in ['issued','forceEndFlagObserved','commandAbortFlagObserved']},
-                    openingBoundaryPolicy='ordinary-first-menu-native-command-abort',after={'sha256':'f'*64})
+                    nativeTaskExit=dict({k:self.phase=='manager-cleared' for k in ['endIssued','forceEndFlagObserved','uiEndIssued','uiClosedObserved','forceEndResultObserved']},uncertain=False),
+                    openingBoundaryPolicy='ordinary-first-menu-force-end-task',after={'sha256':'f'*64})
             def prepare(self,report):
                 self_test.assertEqual(loop[0],7)
                 sent.append('prepare');self.phase='armed';return opening
@@ -135,7 +135,7 @@ class AbortControllerTests(unittest.TestCase):
                 def status(self):
                     guard=dict(ordinary,sequence=2 if change=='encounter' and loop[0]>1 else 1)
                     return dict(available=True,phase='idle',guard=guard,message='Fixture',probeTime=now,
-                        openingBoundaryPolicy='ordinary-first-menu-native-command-abort')
+                        openingBoundaryPolicy='ordinary-first-menu-force-end-task')
                 def prepare(self,report):sent.append('prepare');raise AssertionError('Stale intent used')
             with tempfile.TemporaryDirectory() as folder:
                 argv=['run_abort_trial.py',str(Path(folder)/'FFRHelperBattlePractice'),'--output',str(Path(folder)/'out'),'--abort-at-opening']
@@ -161,7 +161,7 @@ class AbortControllerTests(unittest.TestCase):
             safe_guard=staticmethod(AbortTrialBridge.safe_guard)
             def __init__(self,recorder):self.phase='idle'
             def status(self):return dict(available=True,phase=self.phase,guard=ordinary,message='Fixture',probeTime=now,
-                openingBoundaryPolicy='ordinary-first-menu-native-command-abort')
+                openingBoundaryPolicy='ordinary-first-menu-force-end-task')
             def prepare(self,report):sent.append('prepare');self.phase='armed';return opening
             def commit(self,status):sent.append('commit')
         with tempfile.TemporaryDirectory() as folder:

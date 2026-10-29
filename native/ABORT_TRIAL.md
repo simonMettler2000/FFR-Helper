@@ -6,11 +6,20 @@ completed commands. Subsequent supervised tests verified fresh idle-menu samples
 and separate manual-command/Skill.Begin histories. The revised abort guard
 requires both same-thread histories untouched, with no coverage-loss flags,
 alongside the ordinary idle-menu checks. It does not accept a raw threshold of
-one. The current source pairs native EndBattle with the game's own
+one. The previous source paired native EndBattle with the game's own
 `UI_BtlCmdManager::AbortCommand` to release command selection. This native API
 pair was exercised once at an untouched normal menu. Both native flags were
 verified, but the command menu remained active even after the user refocused
 FFR. The trial timed out, sent no retry, and the user closed that launch.
+
+Read-only inspection then located the actual ordinary input task: its step2
+has an empty update callback, so that completion flag cannot advance it.
+The current candidate instead calls EndBattle, closes the owned command view
+model with native EndCommand, and, only if the same Turn task still waits at
+the verified step2, evaluates that task's existing native finish checker once.
+The checker selects the game's ForceEnd result task and result mode5. No raw
+result/step setter or fake action is used. This candidate is fixture-tested;
+it is not yet installed or live-verified.
 
 The independent detached-import policy was then exercised in FFR. A temporary
 object matched all 466,065 captured bytes; live progression and input remained
@@ -40,8 +49,10 @@ a separately approved test with backed-up practice data.
 
 - Requires the exact game/UE4SS profiles used by the verified capture observer.
   Additional loaded code fingerprints cover the battle tick, world/subsystem
-  getters, the complete 112-byte EndBattle function, 69-byte native AbortCommand,
-  43-byte UI command-manager getter and both native command-selection flag readers.
+  getters, complete EndBattle, command view-model EndCommand/clear, Turn task
+  finish checker/prechecks, class/registry ownership and result-task functions.
+  A protected result-task step entry is fingerprinted but its complete protected
+  implementation is not claimed to be decompiled.
 - Uses a separate FFRHelperBattlePractice folder and two distinct channels:
   read-only capture reports and an explicitly mutation-capable abort status.
   The existing capture client cannot send abort requests.
@@ -55,20 +66,27 @@ a separately approved test with backed-up practice data.
   Non-default battle-event IDs, bounty/test/preemptive/result-skipping flags and
   disabled escape cause refusal. This does not identify every possible script context.
   Raw turn beginnings are reported separately and never interpreted as commands.
-- The native command-abort target must be owned at the exact UI subsystem's
-  profiled getter field, with the same World through the virtual getter used by
-  AbortCommand itself. The virtual method must belong to the game image. The
+- The command view model must be owned by the root registry under the matching
+  derived class key and have the exact native type/open flag. The current Turn
+  task must belong to this GameInstance's task manager, have the exact step2,
+  callback identities and completed turn-event phase, and return the same World.
+  The virtual World method must belong to the game image. The
   battle must be initialized, with no pending ForceEnd/command-completion flag,
   an empty command-request array and no active pause flag. The client requires
-  the explicit `ordinary-first-menu-native-command-abort` policy. No attack or
+  the explicit `ordinary-first-menu-force-end-task` policy. The matching talk
+  subsystem must be quiet. No attack or
   player-command record is submitted; no raw game field or wait result is written.
 - Preparation serializes progression into a separate recovery buffer. The worker
   commits and reads back a private recovery file before reporting the trial armed.
   The client also checks its hash, GVAS class, engine, footer and required fields.
 - Only a matching explicit commit may call the verified EndBattle function.
-  After its flag is read back, the native command-abort API is called once on the
-  verified UI object; its completion flag is also read back. Code identity and
-  target readiness are checked again before commit. State is marked before each
+  After its flag is read back, native EndCommand closes the verified view model.
+  Code identity, idle jobs, source/history and the exact retained task/step/VM
+  identities are checked again before invoking the finish checker once. If the
+  callback changed task/readiness, only observation continues; no later retry
+  is queued. The existing finish checker retains its own event prechecks and
+  may refuse to select the expected result task; the helper does not override
+  them. State is marked before each
   call, and there is no automatic resend or retry. Flag readback is evidence of
   the request only; field cleanup and progression comparison remain separate.
   One attempt per game launch is supported, including rejected attempts.
@@ -78,6 +96,9 @@ a separately approved test with backed-up practice data.
   A progression snapshot
   is then captured for comparison. The user still needs to confirm actual field
   return. A changed context or unverified cleanup is reported without a retry.
+  Cleanup has a 15-second active-game-tick budget, with each delta capped at
+  250ms; background wall time cannot consume it. Request expiry remains eight
+  wall-clock seconds. The final receipt separately verifies ForceEnd result5.
 - Recovery files contain progression only. They cannot resume an ongoing battle;
   this trial has no automatic rollback or full battle-state recovery.
 - No normal game save is written. Saving anywhere remains uninstalled/deferred.
@@ -151,8 +172,8 @@ For a separately selected automatic diagnostic only, add `--trigger automatic`.
 The shortcut currently requests the **abort prerequisite**, not a completed
 battle-restart operation. The Windows API initialization was checked locally;
 the keyboard shortcut subsequently activated one supervised native pair in FFR.
-The actual controller mapping remains unverified: the tested controller was
-visible through legacy WinMM and absent from XInput. The calibrated legacy reader
+The tested controller was visible through legacy WinMM and absent from XInput.
+Its button/POV combination was calibrated read-only. The calibrated legacy reader
 is now implemented and recognizes that device; live exit activation through it
 remains unverified. Detecting the keyboard press did not establish successful
 battle exit; both flags were set while the menu remained active.

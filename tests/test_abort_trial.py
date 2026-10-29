@@ -26,7 +26,7 @@ class AbortClientTests(unittest.TestCase):
                         runtimeMode='experimental-abort-test',readOnly=False,restorable=False,
                         session=self.recorder.session,time=int(time.time()),probeTime=int(time.time()),
                         available=True,phase='idle',nonce='',trialSession='',sequence=0,message='Fixture',
-                        openingBoundaryPolicy='ordinary-first-menu-native-command-abort',
+                        openingBoundaryPolicy='ordinary-first-menu-force-end-task',
                         guard=dict(gameThread=True,matchingWorld=True,ordinaryEncounter=True,battleActive=True,
                                    commandMenu=True,units=4,waitingJobs=0,workingJobs=0,friendlyActions=1,openingHistoryUntouched=True,commandAbortReady=True,
                                    sequence=1,openingHash=self.capture.metadata['sha256']))

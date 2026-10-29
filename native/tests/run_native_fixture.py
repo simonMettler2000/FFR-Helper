@@ -15,7 +15,7 @@ def main():
     parser.add_argument('--exe', required=True, type=Path)
     parser.add_argument('--loader', required=True, type=Path)
     parser.add_argument('--module', required=True, type=Path)
-    parser.add_argument('--mode', required=True, choices=['good', 'bad-game', 'bad-loader','bad-function','boundary-unreviewed','decision-history','decision-unavailable','menu-frame','menu-unavailable','skill-history','skill-unavailable','abort','abort-released','abort-wrong-owner','abort-queued-command-denied','abort-flagged-denied','abort-denied','abort-skill-denied','abort-foreign-denied','abort-full-unavailable','abort-command-unavailable',
+    parser.add_argument('--mode', required=True, choices=['good', 'bad-game', 'bad-loader','bad-function','boundary-unreviewed','decision-history','decision-unavailable','menu-frame','menu-unavailable','skill-history','skill-unavailable','abort','abort-released','abort-wrong-owner','abort-wrong-task','abort-queued-command-denied','abort-flagged-denied','abort-denied','abort-skill-denied','abort-foreign-denied','abort-full-unavailable','abort-command-unavailable','abort-task-world-denied','abort-step-denied','abort-turn-event-denied','abort-vm-denied','abort-talk-denied','abort-ui-fails','abort-ui-task-drift','abort-ui-job-drift','abort-ui-code-drift','abort-check-false','abort-check-mode',
                                                        'clone','clone-after-action','clone-import-only','clone-unready','clone-mismatch','clone-mutates','clone-denied',
                                                        'combat','combat-after-action','combat-denied','combat-stale','combat-effects-unavailable',
                                                        'normalize','normalize-unready','normalize-stale','normalize-template','normalize-write-failed',
@@ -187,10 +187,17 @@ def main():
             status=json.loads((root/'connection/abort-final-status.json').read_text(encoding='utf8'))
             assert status['adapter']=='ffr-helper-opening-abort-trial' and status['readOnly'] is False
             assert status['restorable'] is False and status['runtimeMode']=='experimental-abort-test'
-            expected='rejected' if args.mode=='abort-wrong-owner' or 'denied' in args.mode else 'manager-cleared'
+            failed=args.mode in {'abort-ui-fails','abort-ui-task-drift','abort-ui-job-drift','abort-ui-code-drift','abort-check-false','abort-check-mode'}
+            expected='rejected' if args.mode in {'abort-wrong-owner','abort-wrong-task'} or 'denied' in args.mode else 'timed-out' if failed else 'manager-cleared'
             assert status['phase']==expected
-            assert status['nativeCommandAbort']['issued']==(expected=='manager-cleared')
-            if expected=='manager-cleared':assert status['nativeCommandAbort']['forceEndFlagObserved'] and status['nativeCommandAbort']['commandAbortFlagObserved']
+            exit_result=status['nativeTaskExit']
+            assert exit_result['endIssued']==(expected!='rejected')
+            if expected=='manager-cleared':
+                assert all(exit_result[k] is True for k in ['forceEndFlagObserved','uiEndIssued','uiClosedObserved','finishCheckIssued','finishCheckAccepted','resultTaskObserved','forceEndResultObserved'])
+                assert exit_result['uncertain'] is False
+            if failed:
+                assert status['after']['sha256']==''
+                assert exit_result['finishCheckIssued']==args.mode.startswith('abort-check-')
             if expected=='manager-cleared':
                 for key,name in [('recovery','abort-recovery.gvas'),('after','abort-after.gvas')]:
                     raw=(root/'connection'/name).read_bytes()

@@ -4,6 +4,8 @@
 #include <vector>
 #include <utility>
 #include <stdexcept>
+#include <algorithm>
+#include <cmath>
 
 namespace ffr {
 struct AbortRequest {
@@ -44,7 +46,7 @@ class AbortTrial {
     AbortPhase current=AbortPhase::idle;
     std::vector<unsigned char> recovery;
     std::string note="No abort trial requested";
-    std::int64_t sent_at{};
+    double active_cleanup_seconds{};
     bool bound(const AbortRequest& next,const AbortGuard& guard,std::int64_t now) const {
         return next.deadline>=now && next.deadline<=now+8 && next.sequence>0
             && next.session==guard.session && next.sequence==guard.sequence && next.opening_hash==guard.opening_hash;
@@ -60,6 +62,7 @@ public:
     const AbortRequest& active_request() const {return request;}
     const std::string& message() const {return note;}
     const std::vector<unsigned char>& recovery_bytes() const {return recovery;}
+    std::uint64_t cleanup_active_millis() const {return static_cast<std::uint64_t>(active_cleanup_seconds*1000);}
     template<class Capture>
     bool prepare(const AbortRequest& next,const AbortGuard& guard,std::int64_t now,Capture capture) {
         if(current!=AbortPhase::idle) return false;
@@ -88,10 +91,12 @@ public:
         }
         // Mark before calling game code: an exception/reentrant tick cannot
         // issue the abort twice. Never auto-retry a potentially completed call.
-        current=AbortPhase::abort_sent;sent_at=now;note="ForceEnd requested once; waiting for manager cleanup";
+        current=AbortPhase::abort_sent;active_cleanup_seconds=0;note="ForceEnd requested once; waiting for manager cleanup";
         end_battle();return true;
     }
-    void observe(const AbortGuard& guard,std::int64_t now) {
+    // Request expiry remains wall-clock based. Cleanup alone uses actual game
+    // tick delta: backgrounded/paused wall time cannot expire an active wait.
+    void observe(const AbortGuard& guard,std::int64_t now,float game_delta=0) {
         if(current==AbortPhase::recovery_pending || current==AbortPhase::armed) {
             if(now>request.deadline || guard.sequence!=request.sequence || guard.session!=request.session) {
                 current=AbortPhase::rejected;note="Trial expired or its encounter changed; no abort was sent";
@@ -103,7 +108,14 @@ public:
             if(guard.game_thread && guard.matching_world && guard.field_ready && !guard.battle_active && guard.units==0
                 && guard.waiting_jobs==0 && guard.working_jobs==0) {
                 current=AbortPhase::manager_cleared;note="Battle manager and job queues cleared; user must confirm field return";
-            } else if(now>sent_at+15) {current=AbortPhase::timed_out;note="ForceEnd may remain pending after the cleanup timeout. No retry; close this test launch before further gameplay";}
+            } else if(!std::isfinite(game_delta) || game_delta<0) {
+                current=AbortPhase::timed_out;note="Invalid game-tick timing after ForceEnd; outcome uncertain. No retry; close this test launch";
+            } else {
+                // A large first delta after resuming must not consume the
+                // whole budget before the exit state has had another tick.
+                active_cleanup_seconds+=std::min(game_delta,0.25f);
+                if(active_cleanup_seconds>15) {current=AbortPhase::timed_out;note="ForceEnd may remain pending after 15 active game seconds. No retry; close this test launch before further gameplay";}
+            }
         }
     }
 };

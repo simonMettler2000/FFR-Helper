@@ -43,7 +43,7 @@ class AbortTrialBridge:
     @staticmethod
     def safe_guard(status, sequence, digest):
         guard = status.get('guard', {})
-        return (status.get('openingBoundaryPolicy')=='ordinary-first-menu-native-command-abort'
+        return (status.get('openingBoundaryPolicy')=='ordinary-first-menu-force-end-task'
                 and type(status.get('probeTime')) is int and -2 <= time.time()-status['probeTime'] <= 2
                 and all(guard.get(key) is True for key in
                         ['gameThread', 'matchingWorld', 'ordinaryEncounter', 'battleActive', 'commandMenu'])

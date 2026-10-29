@@ -378,6 +378,20 @@ loader or pointer replacement as a restore command.
 
 ## Restart implementation after capture verification
 
+A later supervised test used a deliberate foreground keyboard shortcut rather
+than automatic activation. The helper accepted Ctrl + Shift + F8, committed the
+durable recovery and invoked EndBattle plus native UI AbortCommand exactly once.
+Both pending flags read back as set. The ordinary command menu remained active
+after the user refocused the game, and the trial became terminal without an
+after-progression snapshot. The user closed the launch; no second call, restore
+or encounter recreation occurred. The flags alone do not release the actual
+active command state. Backgrounding also stopped game-thread samples while the
+worker continued publishing, exposing the need for a cleanup watchdog based on
+active game time rather than paused wall time. Prepare/commit expiry must remain
+short and bound to wall time. The requested controller chord was not detected
+because that device exposed legacy WinMM input with no XInput connection;
+keyboard detection was verified, legacy controller support remains unfinished.
+
 The portable reconstruction core now rebuilds every captured encounter field,
 including nested passives and UTF-16 strings, using supplied engine allocation
 and release functions. It never passes captured vector pointers into the game.

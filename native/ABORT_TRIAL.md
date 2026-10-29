@@ -8,7 +8,9 @@ requires both same-thread histories untouched, with no coverage-loss flags,
 alongside the ordinary idle-menu checks. It does not accept a raw threshold of
 one. The current source pairs native EndBattle with the game's own
 `UI_BtlCmdManager::AbortCommand` to release command selection. This native API
-pair is prepared for a controlled test; live verification is pending.
+pair was exercised once at an untouched normal menu. Both native flags were
+verified, but the command menu remained active even after the user refocused
+FFR. The trial timed out, sent no retry, and the user closed that launch.
 
 The independent detached-import policy was then exercised in FFR. A temporary
 object matched all 466,065 captured bytes; live progression and input remained
@@ -143,8 +145,11 @@ The same durable recovery, native guards and one-attempt limit still apply.
 For a separately selected automatic diagnostic only, add `--trigger automatic`.
 The shortcut currently requests the **abort prerequisite**, not a completed
 battle-restart operation. The Windows API initialization was checked locally;
-the actual controller mapping/foreground activation still needs supervised
-verification.
+the keyboard shortcut subsequently activated one supervised native pair in FFR.
+The actual controller mapping remains unverified: the tested controller was
+visible through legacy WinMM and absent from XInput. Calibrated legacy support
+is still needed. Detecting the keyboard press did not establish successful
+battle exit; both flags were set while the menu remained active.
 
 The client binds the first captured encounter and refuses a changed encounter or
 prior party action. It saves the opening and progression recovery before commit,

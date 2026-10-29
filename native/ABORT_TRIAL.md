@@ -1,6 +1,7 @@
 # Experimental opening-abort trial
 
-**Detached import is verified; immediate ForceEnd cleanup remains unverified.** The earlier
+**Detached import and the revised opening-exit path are live-verified. Battle
+restart and restoration remain unfinished.** The earlier
 first-menu check refused because the raw counter counts turn beginnings, not
 completed commands. Subsequent supervised tests verified fresh idle-menu samples
 and separate manual-command/Skill.Begin histories. The revised abort guard
@@ -18,8 +19,15 @@ The current candidate instead calls EndBattle, closes the owned command view
 model with native EndCommand, and, only if the same Turn task still waits at
 the verified step2, evaluates that task's existing native finish checker once.
 The checker selects the game's ForceEnd result task and result mode5. No raw
-result/step setter or fake action is used. This candidate is fixture-tested;
-it is not yet installed or live-verified.
+result/step setter or fake action is used. In the supervised revised test, the
+calibrated legacy-controller shortcut triggered this sequence once. The native
+checker selected result5 and its result task, then released both battle managers
+with empty queues after about 1.03 active seconds. The user confirmed field return
+without an escape or result screen. All 466,065 progression bytes, including
+counters, inventory, EXP/MRP and HP/MP, remained identical. Read-only post-exit
+field-anchor and raw cache components also matched; complete effect graphs and
+cache coherence remain unverified. All five original save files retained their
+pre-install hashes. The controller completed and expired its lease.
 
 The independent detached-import policy was then exercised in FFR. A temporary
 object matched all 466,065 captured bytes; live progression and input remained
@@ -155,8 +163,8 @@ use a deliberately calibrated binding by adding `--legacy-controller
 <local-controller.ffrinput.json>`. Its capability hash, slot, exact two-button
 mask and D-pad Down must match; button indices are not guessed. Calibration of
 the tested controller succeeded in a read-only supervised check. The new reader
-and safe edge behavior pass fixture tests; actual legacy-triggered battle exit
-still needs verification. The keyboard fallback remains available. The exact foreground executable path
+and safe edge behavior pass fixture tests. The calibrated legacy shortcut also
+triggered the successful revised exit described above. The keyboard fallback remains available. The exact foreground executable path
 must match the game beside the supplied mod folder.
 
 Holding buttons at startup, focus return or an observed controller reconnection
@@ -174,8 +182,8 @@ battle-restart operation. The Windows API initialization was checked locally;
 the keyboard shortcut subsequently activated one supervised native pair in FFR.
 The tested controller was visible through legacy WinMM and absent from XInput.
 Its button/POV combination was calibrated read-only. The calibrated legacy reader
-is now implemented and recognizes that device; live exit activation through it
-remains unverified. Detecting the keyboard press did not establish successful
+is implemented and recognizes that device; the revised test verified exit
+activation through it. Detecting the keyboard press did not establish successful
 battle exit; both flags were set while the menu remained active.
 
 The client binds the first captured encounter and refuses a changed encounter or

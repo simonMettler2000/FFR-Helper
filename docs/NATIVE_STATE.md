@@ -40,9 +40,23 @@ registry ownership, prepared VM/task swaps, wrong World/step, incomplete turn
 events, busy talk, queued work, callback task/job/code drift, failed UI closure,
 checker refusal/wrong result, once-only game-thread calls and released managers.
 All89 native CTests pass; the162-test Python suite passes with one existing
-skip. These tests do not establish live compatibility. The new candidate has not been
-installed or tested in FFR; full battle restart/rebinding/recreation remain
-unfinished. Saving anywhere remains deferred and uninstalled.
+skip. The revised candidate was then installed with explicit approval and five
+verified save backups. In a normal untouched opening, its entire task/VM/code
+guard passed. The calibrated legacy-controller shortcut triggered one commit;
+native EndBattle, command-view-model closure and the same task's finish checker
+all succeeded. The expected result5/task were observed, then both battle managers
+were released with empty queues after about 1.03 active seconds. The user
+confirmed actual field return without a reward or escape screen.
+
+The complete before/after 466,065-byte progression objects matched, including
+HP/MP, EXP/MRP, inventory and counters. Both command/skill histories remained
+untouched. A separate query/read-only post-exit check matched the captured field
+position/direction and raw map-unit cache components. Complete effect graphs
+and overall cache coherence remain unverified. All five original save files
+retain their pre-install hashes. The controller completed and expired its lease.
+This establishes the tested opening-exit prerequisite. Full battle restart,
+progression rebinding and encounter recreation remain unfinished. Saving anywhere
+remains deferred and uninstalled.
 
 ## Live recorder findings
 
@@ -803,9 +817,11 @@ existing pool; it performs no lookup/initialization game call. Unit tests cover
 sparse holes, stale bindings, malformed counts, cycles, payload drift, wide/
 numbered names and replaced name blocks.
 
-The private host reader is prepared to collect the three load/save notification
-binding sets at a stable exploration boundary, using query/read-only process
-access and code/build checks. It has not been run in FFR. Binding presence alone
+The private host reader collected all three load/save notification binding sets
+at a stable exploration boundary, using query/read-only process access and
+code/build checks: 11 live bindings were found. The update set includes chat,
+backlog, mount, unit-view-model, quest and scenario consumers; load-start includes
+system, talk and timer consumers. No callback was invoked by the reader. Binding presence alone
 does not establish complete consumer coverage or callback side effects. The
 normal-load adapter's external-effects gate remains false; no restore command
 has been enabled by this parser.

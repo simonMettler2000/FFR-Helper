@@ -138,9 +138,8 @@ class RecreationTrialBridge:
                 or self.abort.progression(current,after=True)!=self.source.progression):
             raise ValueError('Recreation recovery/source bytes changed.')
         field=self.probe(current)['entryFieldAnchor'];source_field=self.source.metadata['fieldAnchor']
-        if (field!=self.probe(status)['entryFieldAnchor'] or field['mapId']!=source_field['mapId']
-                or field['direction']!=source_field['direction']):
-            raise ValueError('Prepared entry field/map/direction changed; no entry requested.')
+        if field!=self.probe(status)['entryFieldAnchor'] or field['mapId']!=source_field['mapId']:
+            raise ValueError('Prepared entry field/map changed; no entry requested.')
         self.entry_field=copy.deepcopy(field)
         self.commit_attempted=True
         self._write('commit-recreate')

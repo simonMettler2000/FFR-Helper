@@ -4,43 +4,55 @@
 // this path never reconstructs or claims equality of complete effect graphs.
 bool recreation_field_ready(Observer* current,void* context,const std::shared_ptr<const Observer::Opening>& source,
                             const std::string& session,const std::string& hash,const ffr::FieldAnchor& entry_field,
-                            std::uint64_t expected_root=0) {
+                            std::string& reason,std::uint64_t expected_root=0) {
+    auto deny=[&](const char* text){reason=text;return false;};
     if(!source || source->session!=session || source->thread!=GetCurrentThreadId() || !source->field_value
-        || source->map_unit_cache=="null" || current->quit.load() || current->expires.load()<seconds())return false;
+        || source->map_unit_cache=="null" || current->quit.load() || current->expires.load()<seconds())
+        return deny("Source capture/session/thread/lease or required field/cache metadata unavailable");
     auto guard=probe_abort(context,source,session,hash);
     if(!guard.game_thread || !guard.matching_world || !guard.ordinary_encounter || guard.battle_active
-        || !guard.field_ready || !guard.managers_released || guard.units!=0 || guard.waiting_jobs || guard.working_jobs)return false;
+        || !guard.field_ready || !guard.managers_released || guard.units!=0 || guard.waiting_jobs || guard.working_jobs)
+        return deny("Matching ordinary inactive field with released managers and empty queues required");
     {
         std::lock_guard lock(current->mutex);
-        if(current->opening!=source || current->session!=session || current->opening_hash!=hash
-            || current->recreation_deadline<seconds()
-            || current->trial.phase()!=ffr::AbortPhase::manager_cleared || current->import_attempted
-            || current->normalization_attempted || !untouched_history_locked(*current,*source)
-            || !current->task_exit.result_task_observed || !current->task_exit.result_mode_observed
-            || current->task_exit.uncertain || current->recovery_hash!=hash || current->after_hash!=hash
-            || current->after_progression!=source->progression || current->trial.recovery_bytes()!=source->progression)return false;
+        if(current->opening!=source || current->session!=session || current->opening_hash!=hash)
+            return deny("Retained source/session/hash identity changed");
+        if(current->recreation_deadline<seconds())return deny("Recreation request expired");
+        if(current->trial.phase()!=ffr::AbortPhase::manager_cleared || current->import_attempted || current->normalization_attempted)
+            return deny("Verified exit required without another practice experiment");
+        if(!untouched_history_locked(*current,*source))return deny("Opening command/skill history changed");
+        if(!current->task_exit.result_task_observed || !current->task_exit.result_mode_observed || current->task_exit.uncertain)
+            return deny("Native exit result/task verification incomplete");
+        if(current->recovery_hash!=hash || current->after_hash!=hash || current->after_progression!=source->progression
+            || current->trial.recovery_bytes()!=source->progression)return deny("Durable exit/source progression identity differs");
     }
-    if(!current->recreation_binding.ready() || file_hash(current->connection/L"abort-after.gvas")!=hash
-        || file_hash(current->connection/L"abort-recovery.gvas")!=hash)return false;
+    if(!current->recreation_binding.ready())return deny("Consuming entry/allocator/hook profile changed");
+    if(file_hash(current->connection/L"abort-after.gvas")!=hash || file_hash(current->connection/L"abort-recovery.gvas")!=hash)
+        return deny("Durable exit/recovery file hashes differ");
     auto* root=root_getter();
-    if(!root || (expected_root && reinterpret_cast<std::uint64_t>(root)!=expected_root))return false;
+    if(!root || (expected_root && reinterpret_cast<std::uint64_t>(root)!=expected_root))return deny("Current progression root identity changed");
     const auto saved=ffr::capture_progression(read_memory,root_getter,save_memory,memory_free);
-    if(!saved || *saved!=source->progression || root_getter()!=root)return false;
+    if(!saved)return deny("Current progression serialization unavailable");
+    if(*saved!=source->progression)return deny("Current progression bytes differ from the captured opening");
+    if(root_getter()!=root)return deny("Progression root changed during serialization");
     const auto field=capture_live_field(reinterpret_cast<void*>(source->context_identity));
     const auto& old=*source->field_value;
     // Ordinary encounter entry/exit can settle the player's transform while
     // leaving progression unchanged. Bind the actual post-exit field separately;
     // never rewrite the original capture or treat this as position restoration.
-    if(!field || entry_field.map_id!=old.map_id || entry_field.direction!=old.direction
-        || field->map_id!=entry_field.map_id || field->position!=entry_field.position
-        || field->direction!=entry_field.direction)return false;
+    if(!field)return deny("Current field pose unavailable");
+    if(entry_field.map_id!=old.map_id)return deny("Post-exit map differs from captured source map");
+    if(field->map_id!=entry_field.map_id || field->position!=entry_field.position || field->direction!=entry_field.direction)
+        return deny("Prepared post-exit field pose changed");
     const auto base=reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr));
     const auto cache=ffr::capture_map_unit_cache(read_memory,source->context_identity,base+ffr::field_profile::map_storage_vtable_rva);
-    if(!cache || ffr::to_json(*cache)!=source->map_unit_cache)return false;
+    if(!cache)return deny("Current raw map cache unavailable");
+    if(ffr::to_json(*cache)!=source->map_unit_cache)return deny("Raw map cache differs from the captured opening");
     // Cache comparison covers exactly the recorded raw components and counts.
     // Nonzero field effects are ordinary engine state, not a permission to
     // restore them from incomplete metadata. No cache setter is called here.
-    return root_getter()==root;
+    if(root_getter()!=root)return deny("Progression root changed during field/cache verification");
+    reason.clear();return true;
 }
 
 void run_recreation_trial_inner(Observer* current,void* context,const std::shared_ptr<const Observer::Opening>& opening,
@@ -61,9 +73,10 @@ void run_recreation_trial_inner(Observer* current,void* context,const std::share
         }
         const auto field=matched?capture_live_field(reinterpret_cast<void*>(retained->context_identity)):
             std::optional<ffr::FieldAnchor>{};
-        if(!field || !recreation_field_ready(current,context,retained,session,hash,*field,root)) {
+        std::string reason="Preparation identity expired or field pose unavailable";
+        if(!field || !recreation_field_ready(current,context,retained,session,hash,*field,reason,root)) {
             std::lock_guard lock(current->mutex);current->recreation_phase="refused";
-            current->recreation_message="Post-exit preparation expired or its world/progression/cache changed; no entry";return;
+            current->recreation_message="Post-exit preparation refused: "+reason;return;
         }
         std::lock_guard lock(current->mutex);
         if(current->recreation_entry_field && ffr::to_json(*current->recreation_entry_field)==ffr::to_json(*field))
@@ -119,16 +132,17 @@ void run_recreation_trial_inner(Observer* current,void* context,const std::share
         }
         const auto entry_field=opening?capture_live_field(reinterpret_cast<void*>(opening->context_identity)):
             std::optional<ffr::FieldAnchor>{};
+        std::string reason="Request/source/deadline identity or field pose unavailable";
         const bool matched=opening && entry_field && request->session==opening->session && request->sequence==opening->sequence
             && request->opening_hash==guard.opening_hash && request->deadline>=now && request->deadline<=now+8
-            && recreation_field_ready(current,context,opening,request->session,request->opening_hash,*entry_field);
+            && recreation_field_ready(current,context,opening,request->session,request->opening_hash,*entry_field,reason);
         const auto root=matched?reinterpret_cast<std::uint64_t>(root_getter()):0;
         std::lock_guard lock(current->mutex);
         current->recreation_entry_field=entry_field;
         current->recreation_field_stable_samples=matched&&root?1:0;
         current->recreation_root=root;current->recreation_phase=matched&&root?"checking":"refused";
         current->recreation_message=matched&&root?"Verifying unchanged post-exit field across consecutive game ticks":
-            "Recreation requires the same verified untouched exit, unchanged recovery/progression, matching field/raw cache and consuming-entry profile";
+            "Recreation preparation refused: "+reason;
         return;
     }
     if(request->phase=="commit-recreate" && phase=="armed") {
@@ -143,19 +157,21 @@ void run_recreation_trial_inner(Observer* current,void* context,const std::share
                 && request->sequence==retained->sequence && request->opening_hash==hash
                 && request->deadline==current->recreation_deadline && now<=current->recreation_deadline;
         }
-        if(!matched || !entry_field || !recreation_field_ready(current,context,retained,session,hash,*entry_field,root)) {
+        std::string reason="Commit/source/session identity or prepared field pose differs";
+        if(!matched || !entry_field || !recreation_field_ready(current,context,retained,session,hash,*entry_field,reason,root)) {
             std::lock_guard lock(current->mutex);current->recreation_phase="refused";
-            current->recreation_message="Recreation commit or current field/progression changed; no entry";return;
+            current->recreation_message="Recreation commit refused: "+reason;return;
         }
         {std::lock_guard lock(current->mutex);current->recreation_phase="invoking";}
         // No observer lock during entry: our ordinary capture hook must be able
         // to retain the child while this immutable source remains alive.
         auto result=current->recreation_binding.invoke(reinterpret_cast<void*>(retained->context_identity),retained->encounter,
-            retained->thread,[&]{return recreation_field_ready(current,context,retained,session,hash,*entry_field,root);});
+            retained->thread,[&]{return recreation_field_ready(current,context,retained,session,hash,*entry_field,reason,root);});
         std::lock_guard lock(current->mutex);current->recreation_result=std::move(result);
         current->recreation_phase=current->recreation_result.native_returned?"returned":
             current->recreation_result.attempted?"uncertain":"refused";
         current->recreation_message=current->recreation_result.message;current->recreation_active_seconds=0;
+        if(!reason.empty())current->recreation_message+="; "+reason;
     }
 }
 

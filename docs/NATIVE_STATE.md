@@ -80,15 +80,18 @@ The controller is stopped. Actual recreation remains unverified.
 The uninstalled correction retains the original pre-entry anchor, verifies a
 separate post-exit anchor over three game ticks, then requires that exact target
 through commit/allocation/entry and in the independent child capture. It keeps
-the original map/direction and all existing progression/cache/ownership checks.
+the original map and all existing progression/cache/ownership checks. Both
+position and direction belong to the separate stable post-exit sample: the
+position-only correction refused before entry because direction also differed.
+That second exit again preserved all progression bytes and all five original
+save hashes. Native preflight failures now identify the exact failed condition.
 Receipts report original-anchor equality separately and explicitly deny position
 restoration. This remains a prerequisite for full retry; post-action rollback
 and RNG/effect restoration are still missing.
 
-Offline validation for the anchor correction: the full 112-case native regression
-passed, including an exit-position shift and post-preparation drift refusal.
-The 185-test Python suite passes with one existing skip. After adding a final
-expiry recheck, all 25 affected adapter/recreation/exit tests passed before packaging.
+Offline validation for the position/direction correction: all 112 native tests
+passed, including an exit-pose shift and post-preparation drift refusal with
+specific error messages. The 185-test Python suite passes with one existing skip.
 These checks use isolated fixtures and do not establish live recreation.
 
 ## Live recorder findings

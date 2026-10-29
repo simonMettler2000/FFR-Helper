@@ -191,6 +191,13 @@ def main():
             from ffr_helper.recreation_trial import validate_recreation
             validate_recreation(recreated)
             assert recreated['entryFieldAnchor']['position'][0]==(170.125 if args.mode=='abort-recreate-exit-anchor' else 123.125)
+            assert recreated['entryFieldAnchor']['direction']==(3 if args.mode=='abort-recreate-exit-anchor' else 2)
+            if args.mode in {'abort-recreate-field-drift','abort-recreate-allocate-drift'}:
+                assert 'Prepared post-exit field pose changed' in recreated['message']
+            if args.mode=='abort-recreate-root-drift':
+                assert 'Current progression bytes differ' in recreated['message']
+            if args.mode=='abort-recreate-cache-drift':
+                assert 'Raw map cache differs' in recreated['message']
             assert recreated['operation']=='same-setup-current-field' and recreated['available'] is True
             entered=success or args.mode=='abort-recreate-menu-drift'
             assert recreated['phase']==('verified' if success else 'uncertain' if entered else 'refused')

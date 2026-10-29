@@ -166,7 +166,7 @@ void run_abort_fixture(const std::filesystem::path& connection,const std::wstrin
             };
             recreate("commit-recreate");for(unsigned i=0;i<8;++i){pump();std::this_thread::sleep_for(std::chrono::milliseconds(25));}
             CHECK(calls==1 && recreation_allocations==0);
-            if(mode==L"abort-recreate-exit-anchor")put(fake_field_component,0x200,170.125);
+            if(mode==L"abort-recreate-exit-anchor") {put(fake_field_component,0x200,170.125);fake_field_operation[0xc9]=3;}
             recreate("prepare-recreate");
             wait([&] {return read(connection/L"abort-status.json").find("\"phase\":\"armed\"")!=std::string::npos;});
             CHECK(calls==1 && recreation_allocations==0);

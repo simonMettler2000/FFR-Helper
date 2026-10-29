@@ -4,7 +4,9 @@ This is a prerequisite for battle restart. Its first supervised preparation in
 FFR refused before calling entry: the exit preserved progression/cache, but the
 live position differed from the original pre-entry sample. The user confirmed
 released inputs and no movement. **Actual recreation remains unverified.**
-The subsequent anchor correction is uninstalled. It does not restore progression, resources,
+An installed position-only correction also refused before entry: the direction
+sample differed too. The subsequent position/direction correction is uninstalled.
+It does not restore progression, resources,
 effects, clock or RNG, and does not implement retry after an action.
 
 The separate practice DLL can request the same ordinary encounter setup once
@@ -19,11 +21,14 @@ progression must match the original bytes. Battle managers must be released,
 queues empty, UI inactive and both command/skill histories untouched. The recorded
 raw map-cache components must match the source. The original pre-entry position
 remains immutable evidence. A separate post-exit `entryFieldAnchor` must retain
-the original map and direction and remain exactly stable for three game ticks.
+the original map, with both position and direction exactly stable for three game ticks.
 That target is bound through commit, allocation and entry; later drift refuses
 the operation. The child capture must match this prepared anchor. Receipts
 separately report whether it equals the original anchor and explicitly set
-`worldPositionRestored=false`. No tolerance or position setter is used. Partial
+`worldPositionRestored=false`. Every failed native preflight condition now names
+the failed check, including identity, expiry, progression, map, prepared pose or
+raw cache; no additional mutation is performed to diagnose it.
+No tolerance or position setter is used. Partial
 component equality does not prove complete effect or cache coherence.
 
 A separate nonce and eight-second preparation deadline bind one explicit

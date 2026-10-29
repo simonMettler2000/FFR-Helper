@@ -130,6 +130,7 @@ class RecreationTrialTests(unittest.TestCase):
     def test_stable_post_exit_position_is_bound_separately_without_rewriting_source(self):
         state=self.arm();f=self.fixture;original=copy.deepcopy(f.capture.metadata['fieldAnchor'])
         f.frame['recreationTrial']['entryFieldAnchor']['position'][0]+=47
+        f.frame['recreationTrial']['entryFieldAnchor']['direction']=3
         f.write_frame();self.bridge.commit(f.bridge.status())
         f.frame['recreationTrial'].update(phase='verified',entryAttempted=True,inputTransferred=True,nativeReturned=True,
             newEncounterVerified=True,firstMenuProgressionUnchanged=True,childSequence=2);f.write_frame()
@@ -144,5 +145,5 @@ class RecreationTrialTests(unittest.TestCase):
     def test_changed_prepared_anchor_cannot_commit(self):
         state=self.arm();f=self.fixture
         f.frame['recreationTrial']['entryFieldAnchor']['position'][0]+=1;f.write_frame()
-        with self.assertRaisesRegex(ValueError,'field/map/direction'):self.bridge.commit(state)
+        with self.assertRaisesRegex(ValueError,'field/map'):self.bridge.commit(state)
         self.assertFalse(self.bridge.commit_attempted)

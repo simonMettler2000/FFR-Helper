@@ -28,7 +28,7 @@ class RecreationControllerTests(unittest.TestCase):
                 loop[0]+=1
                 if loop[0]>12:raise AssertionError('Controller did not terminate')
                 self.focused=not (mode=='focus-loss' and loop[0]>=4)
-                return 'keyboard' if loop[0]==1 else None
+                return 'keyboard' if loop[0]==1 or mode=='startup' and loop[0]==3 else None
         class Recorder:
             def __init__(self,directory):self.request='0'*32
             def heartbeat(self):pass
@@ -38,11 +38,11 @@ class RecreationControllerTests(unittest.TestCase):
         class Bridge:
             safe_guard=staticmethod(AbortTrialBridge.safe_guard)
             def __init__(self,recorder):self.recorder=recorder
-            def status(self):return dict(available=True,phase=phase[0],guard=ordinary,message='Fixture',probeTime=now,
+            def status(self):return dict(available=mode!='startup' or loop[0]>1,phase=phase[0],guard=ordinary,message='Fixture',probeTime=now,
                 openingBoundaryPolicy='ordinary-first-menu-force-end-task',after={'sha256':'f'*64},
                 nativeTaskExit=dict({k:phase[0]=='manager-cleared' for k in ['endIssued','forceEndFlagObserved',
                     'uiEndIssued','uiClosedObserved','forceEndResultObserved']},uncertain=False),
-                recreationTrial=dict(available=mode!='unavailable',phase=recreation_phase[0],message='Fixture'))
+                recreationTrial=dict(available=mode!='unavailable' and (mode!='startup' or loop[0]>1),phase=recreation_phase[0],message='Fixture'))
             def prepare(self,report):events.append('exit-prepare');phase[0]='armed';return source
             def progression(self,status,after=False):return source.progression
             def commit(self,status):events.append('exit-commit');phase[0]='manager-cleared'
@@ -77,6 +77,10 @@ class RecreationControllerTests(unittest.TestCase):
 
     def test_unavailable_recreation_refuses_before_any_exit(self):
         events,error=self.run_trial('unavailable');self.assertEqual(events,[]);self.assertIn('no abort request',error)
+
+    def test_startup_frame_discards_intent_then_accepts_a_new_press_after_readiness(self):
+        events,error=self.run_trial('startup');self.assertIsNone(error)
+        self.assertEqual(events,['exit-prepare','exit-commit','recreate-prepare','recreate-commit','compare-child'])
 
     def test_focus_loss_after_recreation_prepare_never_commits(self):
         events,error=self.run_trial('focus-loss')

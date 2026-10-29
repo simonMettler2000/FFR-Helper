@@ -60,6 +60,12 @@ def main():
                 time.sleep(0.02 if shortcut else 0.25);continue
             guard=state['guard']
             if recreation and not prepared:
+                # The DLL publishes an initial frame before its asynchronous
+                # hook/profile initialization completes. No shortcut intent may
+                # survive that frame, and no prepare can be sent from it.
+                if not state['available']:
+                    intent.clear();pending=False;target_sequence=None
+                    time.sleep(0.02 if shortcut else 0.25);continue
                 probe=recreation.probe(state)
                 if not probe['available'] or probe['phase']!='idle':
                     raise RuntimeError('Current-field recreation is unavailable or already used; no abort request was sent.')

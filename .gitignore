@@ -13,6 +13,7 @@ dist/
 *.ffrruntime.json
 *.ffrcombat.json
 *.ffrplaytime.json
+*.ffrcomparison.json
 *.ffrrecovery
 *.ffropening
 *.gvas

@@ -545,6 +545,21 @@ remain separate from diagnostic reports and ordinary-save checkpoints.
 
 ## Future live verification
 
+An offline opening-component comparator now validates every bounded encounter
+entry field, compares the complete serialized progression including unknown
+properties, and optionally compares the independent normalized playtime
+candidate and partial field anchors. It reports changed field names without
+printing encounter values. Legacy clocks yield an unavailable normalization
+comparison rather than invented elapsed time. A repeated or byte-matching
+capture cannot prove an actual restart, independent provenance, full resources,
+RNG, world restoration or absence of external effects; these gaps stay explicit
+even when every compared component matches. Its `.ffrcomparison.json` export is
+a small diagnostic receipt with no GVAS payload or native command.
+
+```sh
+python tools/compare_openings.py local/source.ffropening local/observed.ffropening --output local/check.ffrcomparison.json
+```
+
 The three-encounter native test is complete. Native capture and replacement,
 preservation of earlier openings, escape counters and victory EXP/MRP updates were
 observed in ordinary encounters. Further coverage must include scripted/preemptive

@@ -72,6 +72,14 @@ They pass isolated DLL tests but have not
 been installed or verified in FFR; they do not provide restoration. See
 [native development status](docs/NATIVE_STATE.md).
 
+The separate practice component also includes a detached playtime normalization
+comparison and read-only partial recovery/combat diagnostics, including optional
+capture-local vision and damage links. These are prerequisites with explicit
+coverage gaps. Offline `tools/compare_openings.py` compares retained components
+without operating the game; equal files cannot verify a restart or a full state.
+The ordinary native-load path has unreviewed delegate/platform effects and
+remains deliberately unavailable to runtime commands.
+
 ## Use
 
 1. Open **FFR Helper** and choose a detected `GameSaveData` slot, or browse for it.

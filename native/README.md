@@ -141,6 +141,12 @@ python tools/package_native_observer.py --dll local/native-build/Release/main.dl
 
 ## Source references
 
+For offline component validation, `tools/compare_openings.py` compares two
+`.ffropening` archives with complete entry-field checks, full progression bytes,
+optional normalized playtime and partial field anchors. It can export only a
+non-restorable `.ffrcomparison.json` receipt. Legacy clock metadata is not
+inferred, and equality never verifies an actual restart or complete state.
+
 - [Exact UE4SS host definition](https://github.com/UE4SS-RE/RE-UE4SS/blob/cdbc0b66/UE4SS/include/Mod/CppUserModBase.hpp).
 - [Pinned loader factory/lifecycle](https://github.com/UE4SS-RE/RE-UE4SS/blob/cdbc0b66/UE4SS/src/Mod/CppMod.cpp).
 - [UE4SS explanation of direct-call hook bypass](https://github.com/UE4SS-RE/RE-UE4SS/issues/626).

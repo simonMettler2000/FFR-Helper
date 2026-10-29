@@ -266,6 +266,19 @@ capture-local unit indices; null references use -1. An unresolved non-null targe
 duplicate actor/parameter, wrong owner or invalid collection causes refusal.
 Neither pointers nor shallow engine containers leave the core.
 
+An optional capture-local relation graph now translates vision/owner links, the
+last damage dealer, the ordered list of damage sources and active skill targets.
+Actor references and parameter references use separate pointer domains before
+translation to the same unit indices. Duplicate IDs, repeated links and nulls
+are preserved. Unrepresented reserve/vision/source objects, wrong domains,
+unreadable data or an exhausted shared reference budget make the whole optional
+graph null; other partial components remain available. Null/omitted graphs do
+not imply that those relationships are empty. Old diagnostics remain accepted.
+Mimic command payloads and complete ownership/lifecycle reconstruction remain
+uncovered. Portable and compiled-DLL tests verify domain translation, duplicate
+identity, replay/deep-copy preservation, optional failure and combined bounds.
+This addition has not been installed or live-verified.
+
 These are raw stored components, **not displayed or fully calculated stats**.
 The native HP getter adds base HP at +0x10c to temporary HP at +0x268. MP and
 stagger getters clamp the underlying +0x110/+0x114 values against calculated maxima;

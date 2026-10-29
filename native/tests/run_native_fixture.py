@@ -116,6 +116,10 @@ def main():
                 assert report['observation']['units'][0]['raw']['actionCount']==(2 if args.mode=='combat-after-action' else 0)
                 assert report['observation']['kind']=='partial-combat-observation' and report['observation']['restorable'] is False
                 assert len(report['observation']['units'])==2 and report['request']=='d'*32
+                original_links=first['observation']['unitRelations']['units'];links=report['observation']['unitRelations']['units']
+                assert original_links[0]['vision']==1 and links[0]['vision']==0 and links[1]['visionOwner']==0
+                assert links[0]['lastDamageDealer']==1 and links[0]['damageSources']==[1,1,-1]
+                assert links[0]['activeSkillTargets']==[1,-1]
         elif args.mode.startswith('clone'):
             status=json.loads((root/'connection/clone-final-status.json').read_text(encoding='utf8'))
             assert status['readOnly'] is False and status['restorable'] is False and status['phase']=='idle'

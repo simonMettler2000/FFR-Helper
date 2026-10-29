@@ -141,6 +141,15 @@ write. Nonces are consumed before copying; replay never captures a different
 moment. Request history and detached output are bounded. Actor references become
 capture-local indices, preserving duplicate unit IDs and nested AI targets.
 
+Optional `unitRelations` adds vision/owner links, last damage dealer, ordered
+damage sources and active skill targets. Native actor and parameter links are
+translated through separate domains to the same local indices. If any referenced
+object lies outside the capture, the whole optional graph is null rather than
+inventing a null relationship. Other components can still be retained. Old files
+with no graph remain valid partial diagnostics. Shared reference limits apply
+across AI, timeline, targets and relations; mimic payloads and complete lifecycle
+state are still missing.
+
 Start the controller before entering the encounter so its opening is observed
 in the same session. Observe readiness without requesting a frame:
 

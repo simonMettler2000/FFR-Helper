@@ -171,3 +171,29 @@ class CombatTransportTests(unittest.TestCase):
         self.combat['observation'] = sample_observation()
         with self.assertRaises(ValueError):
             validate_combat_report(self.combat)
+
+    def test_optional_relations_preserve_indices_and_old_diagnostics_stay_valid(self):
+        data=sample_observation();validate_observation(data)
+        data['unitRelations']=None;validate_observation(data)
+        data['unitRelations']=dict(coverage='capture-local-links-only',units=[
+            dict(index=0,vision=1,visionOwner=-1,lastDamageDealer=1,damageSources=[1,1,-1],activeSkillTargets=[1,-1,0]),
+            dict(index=1,vision=-1,visionOwner=0,lastDamageDealer=-1,damageSources=[],activeSkillTargets=[])])
+        self.assertEqual(validate_observation(data)['unitRelations']['units'][0]['damageSources'],[1,1,-1])
+        self.receive_frame();self.combat['observation']=data
+        with tempfile.TemporaryDirectory() as folder:
+            path=Path(folder)/'links.ffrcombat.json';export_combat(path,self.combat)
+            self.assertEqual(load_combat(path)['observation'],data)
+
+    def test_relations_cannot_hide_foreign_indices_domains_or_exceed_total_budget(self):
+        data=sample_observation();base=dict(index=0,vision=-1,visionOwner=-1,lastDamageDealer=-1,damageSources=[],activeSkillTargets=[])
+        data['unitRelations']=dict(coverage='capture-local-links-only',units=[base,dict(base,index=1)])
+        original=copy.deepcopy(data)
+        for key,value in [('vision',2),('visionOwner',True),('lastDamageDealer',-2),('damageSources',[123456]),
+                          ('activeSkillTargets',[True]),('index',1),('nativeAddress',123456)]:
+            data=copy.deepcopy(original);data['unitRelations']['units'][0][key]=value
+            with self.subTest(key=key),self.assertRaises(ValueError):validate_observation(data)
+        data=copy.deepcopy(original);data['unitRelations']['coverage']='complete-ownership'
+        with self.assertRaises(ValueError):validate_observation(data)
+        data=copy.deepcopy(original);data['units'][1]['ai']['stack']=[dict(skillId=1,targets=[0]*64) for _ in range(63)]
+        data['unitRelations']['units'][0]['activeSkillTargets']=[0]*64
+        with self.assertRaisesRegex(ValueError,'reference budget'):validate_observation(data)

@@ -23,6 +23,9 @@ void run_combat_fixture(const std::filesystem::path& connection,const std::wstri
     put(fake_units,0x40,reinterpret_cast<std::uint64_t>(fake_scheduler.data()));
     put(fake_units,0x48,ffr::RawArray{});put(fake_scheduler,0x28,reinterpret_cast<std::uint64_t>(fake_units.data()));
     put(fake_scheduler,0x30,ffr::RawArray{});
+    std::vector<std::uint64_t> damage_sources{actors[1],actors[1],0},skill_targets{reinterpret_cast<std::uint64_t>(fake_parameters[1].data()),0};
+    put(fake_parameters[0],0x368,actors[1]);put(fake_parameters[1],0x370,actors[0]);put(fake_parameters[0],0x380,actors[1]);
+    put(fake_parameters[0],0x388,array(damage_sources));put(fake_parameters[0],0x270,array(skill_targets));
     std::vector<std::uint64_t> queued{actors[0]};if(denied)put(fake_jobs,0x28,array(queued));
     const auto tick=reinterpret_cast<void(__fastcall*)(void*,float)>(GetProcAddress(GetModuleHandleW(nullptr),"ffr_test_abort_tick"));
     auto pump=[&]{const auto count=tick_calls;tick(fake_manager.data()+0x30,0.5f);CHECK(tick_calls==count+1 && last_delta==0.5f && GetLastError()==9876);};
@@ -47,7 +50,7 @@ void run_combat_fixture(const std::filesystem::path& connection,const std::wstri
     if(!denied && !stale) {
         CHECK(first.find("\"hpBase\":150")!=std::string::npos && first.find("\"temporaryHp\":25")!=std::string::npos);
         write(connection/L"combat-first-report.json",first);
-        put(fake_parameters[0],0x10c,std::int32_t{7});send('c');
+        put(fake_parameters[0],0x10c,std::int32_t{7});put(fake_parameters[0],0x368,actors[0]);send('c');
         for(unsigned i=0;i<8;++i){pump();std::this_thread::sleep_for(std::chrono::milliseconds(50));}
         CHECK(read(connection/L"combat-report.json").find("\"hpBase\":7")==std::string::npos);
         lease();send('d');wait([&]{return read(connection/L"combat-report.json").find("\"request\":\""+std::string(32,'d')+'"')!=std::string::npos;});

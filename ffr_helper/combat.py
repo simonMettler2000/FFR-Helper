@@ -29,7 +29,7 @@ def _hex(value, size):
 def validate_observation(data):
     keys = {'kind', 'restorable', 'readOnly', 'referenceEncoding', 'battleTurn', 'selectedUnit',
             'targetUnits', 'additionalTimeline', 'units', 'missingState'}
-    if (not isinstance(data, dict) or set(data) != keys or data.get('kind') != 'partial-combat-observation'
+    if (not isinstance(data, dict) or set(data) not in (keys,keys|{'unitRelations'}) or data.get('kind') != 'partial-combat-observation'
             or data.get('restorable') is not False or data.get('readOnly') is not True
             or data.get('referenceEncoding') != 'capture-local-unit-index; -1 is null'
             or data.get('missingState') != MISSING or not isinstance(data.get('units'), list)
@@ -76,6 +76,19 @@ def validate_observation(data):
             if not isinstance(item, dict) or set(item) != {'skillId', 'targets'} or not _integer(item.get('skillId')):
                 raise ValueError('Invalid detached AI stack entry.')
             targets(item['targets'], 64)
+    relations=data.get('unitRelations')
+    if relations is not None:
+        if (not isinstance(relations,dict) or set(relations)!={'coverage','units'}
+                or relations.get('coverage')!='capture-local-links-only' or not isinstance(relations.get('units'),list)
+                or len(relations['units'])!=count):
+            raise ValueError('Invalid optional capture-local unit relation graph.')
+        for index,unit in enumerate(relations['units']):
+            if (not isinstance(unit,dict) or set(unit)!={'index','vision','visionOwner','lastDamageDealer','damageSources','activeSkillTargets'}
+                    or type(unit.get('index')) is not int or unit['index']!=index):
+                raise ValueError('Invalid capture-local unit relation identity.')
+            targets([unit['vision'],unit['visionOwner'],unit['lastDamageDealer']],3)
+            targets(unit['damageSources'],64)
+            targets(unit['activeSkillTargets'],64)
     return data
 
 

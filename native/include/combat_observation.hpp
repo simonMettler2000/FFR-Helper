@@ -1,6 +1,7 @@
 #pragma once
 // Detached partial combat evidence. No setters, game calls or restoration.
 #include "encounter_capture.hpp"
+#include "combat_relations.hpp"
 #include <map>
 #include <set>
 
@@ -26,6 +27,7 @@ struct ObservedCombatUnit {
 };
 struct CombatObservation {
     std::vector<ObservedCombatUnit> units;
+    std::optional<std::vector<ObservedUnitRelations>> unit_relations;
     std::vector<std::int32_t> target_units,additional_timeline;
     std::int32_t selected_unit=-1,battle_turn{};
 };
@@ -70,10 +72,12 @@ inline std::optional<CombatObservation> capture_combat_observation(const Reader&
         ||!value(manager+0x200,out.battle_turn)||out.battle_turn<0)return {};
     out.selected_unit=indices.at(selected);
     std::set<std::uint64_t> parameters;
+    std::vector<std::uint64_t> parameter_list;
     for(auto actor:actor_list) {
         std::uint64_t parameter{},owner{},ai{};
         if(!value(actor+0x838,parameter)||!object(parameter)||!parameters.insert(parameter).second
             ||!value(parameter+0x360,owner)||owner!=actor||!value(actor+0x870,ai))return {};
+        parameter_list.push_back(parameter);
         ObservedCombatUnit unit;
         // UNIT_PARAMETER begins at +0xc8. These scalar offsets are corroborated
         // by its reflected struct and native getter thunks. No FText, maps or
@@ -109,6 +113,7 @@ inline std::optional<CombatObservation> capture_combat_observation(const Reader&
         }
         out.units.push_back(std::move(unit));
     }
+    out.unit_relations=capture_combat_relations(read,actor_list,parameter_list,reference_budget);
     return out;
 }
 
@@ -133,7 +138,7 @@ inline std::string to_json(const CombatObservation& observation) {
             }out+="]}";
         }out+='}';
     }
-    return out+"],\"missingState\":[\"Complete scheduler state and native callbacks\",\"Continuous effects and status durations\","
+    return out+"],\"unitRelations\":"+relations_json(observation.unit_relations)+",\"missingState\":[\"Complete scheduler state and native callbacks\",\"Continuous effects and status durations\","
         "\"Resistance maps and calculated modifiers\",\"Shared AI state, phases and other native counters\","
         "\"Native RNG state and draw order\",\"Actor lifecycle and world restoration\",\"Verified restoration path\"]}";
 }

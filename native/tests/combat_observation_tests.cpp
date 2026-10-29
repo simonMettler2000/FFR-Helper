@@ -47,6 +47,9 @@ struct Fixture {
         m.put(ai+0x44,std::int32_t{3002});m.put(ai+0x48,std::int32_t{-1});m.put(ai+0x30,m.array<std::uint64_t>({actors[0]}));
         const ffr::RawSkillStack first{3003,0,m.array<std::uint64_t>({actors[1],0})},second{3004,0,m.array<std::uint64_t>({actors[0]})};
         stack=m.array<ffr::RawSkillStack>({first,second});m.put(ai+0x50,stack);
+        m.put(parameters[0]+0x368,actors[1]);m.put(parameters[1]+0x370,actors[0]);m.put(parameters[0]+0x380,actors[1]);
+        m.put(parameters[0]+0x388,m.array<std::uint64_t>({actors[1],actors[1],0}));
+        m.put(parameters[0]+0x270,m.array<std::uint64_t>({parameters[1],0,parameters[0]}));
     }
     std::optional<ffr::CombatObservation> capture() {return ffr::capture_combat_observation([&](auto a,auto b,auto c){return m.read(a,b,c);},manager);}
 };
@@ -62,9 +65,14 @@ int main() {
             CHECK(first.continuous_effect_count==2 && first.accessories==std::vector<std::int32_t>({101,202}));
             CHECK(!first.ai && second.ai && second.ai->targets==std::vector<std::int32_t>{0});
             CHECK(second.ai->stack[0].targets==std::vector<std::int32_t>({1,-1}) && second.ai->stack[1].skill==3004);
+            CHECK(result->unit_relations && result->unit_relations->size()==2);
+            const auto& links=result->unit_relations->at(0);CHECK(links.vision==1 && links.vision_owner==-1 && links.last_damage_dealer==1);
+            CHECK(links.damage_sources==std::vector<std::int32_t>({1,1,-1}) && links.active_skill_targets==std::vector<std::int32_t>({1,-1,0}));
+            CHECK(result->unit_relations->at(1).vision_owner==0);
             const auto json=ffr::to_json(*result);CHECK(json.find("\"restorable\":false")!=std::string::npos);
             CHECK(json.find("\"mp\":-20")!=std::string::npos && json.find("Native RNG state and draw order")!=std::string::npos);
-            f.m.put(f.parameters[0]+0x10c,std::int32_t{1});f.m.put(f.stack.data,std::int32_t{999});CHECK(ffr::to_json(*result)==json);
+            f.m.put(f.parameters[0]+0x10c,std::int32_t{1});f.m.put(f.stack.data,std::int32_t{999});
+            f.m.put(f.parameters[0]+0x368,f.actors[0]);CHECK(ffr::to_json(*result)==json);
         }
         for(unsigned failure=0;failure<14;++failure) {
             Fixture f;
@@ -90,6 +98,20 @@ int main() {
             Fixture f;auto targets=f.m.array<std::uint64_t>(std::vector<std::uint64_t>(64,f.actors[0]));
             f.m.put(f.ai+0x50,f.m.array<ffr::RawSkillStack>(std::vector<ffr::RawSkillStack>(64,ffr::RawSkillStack{1,0,targets})));
             CHECK(!f.capture()); // Aggregate reference budget, not merely per-array limits.
+        }
+        for(unsigned failure=0;failure<4;++failure) {
+            Fixture f;
+            if(failure==0)f.m.put(f.parameters[0]+0x368,std::uint64_t{0x99999999});
+            if(failure==1)f.m.put(f.parameters[0]+0x270,f.m.array<std::uint64_t>({f.actors[1]})); // Wrong domain: actor, not parameter.
+            if(failure==2)f.m.put(f.parameters[0]+0x388,f.m.array<std::uint64_t>({f.parameters[1]}));
+            if(failure==3)f.m.put(f.parameters[0]+0x388,ffr::RawArray{1,65,65});
+            auto result=f.capture();CHECK(result && !result->unit_relations && result->units[0].raw.at("hpBase")==150);
+            CHECK(ffr::to_json(*result).find("\"unitRelations\":null")!=std::string::npos);
+        }
+        {
+            Fixture f;const std::vector<std::uint64_t> actors(f.actors.begin(),f.actors.end()),parameters(f.parameters.begin(),f.parameters.end());
+            CHECK(!ffr::capture_combat_relations([&](auto a,auto b,auto c){return f.m.read(a,b,c);},actors,parameters,11));
+            CHECK(ffr::capture_combat_relations([&](auto a,auto b,auto c){return f.m.read(a,b,c);},actors,parameters,12));
         }
         CHECK(!ffr::capture_combat_observation([](auto,auto,auto){return false;},0x10000));
         std::cout<<"Detached combat components, duplicate-unit identities and deep AI-reference checks passed.\n";

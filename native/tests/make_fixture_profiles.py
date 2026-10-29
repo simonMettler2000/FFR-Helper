@@ -61,6 +61,21 @@ def main():
         skill_text+=f'inline constexpr std::uintptr_t {key}_rva={rva};\ninline constexpr std::size_t {key}_size={size};\ninline constexpr char {key}_sha256[]="{digest}";\n'
     skill_text+=f'inline constexpr std::uintptr_t callsite_rva={calls[0]};\n}}\n'
     (output/'good_skill_event_profile.hpp').write_text(skill_text,encoding='utf8')
+    state=game_pe.exports['ffr_test_abort_tick'];gate=game_pe.exports['ffr_test_command_wait'];helper=game_pe.exports['ffr_test_state_wait']
+    state_size=game_pe.functions[state]-state;gate_size=game_pe.functions[gate]-gate;helper_size=game_pe.functions[helper]-helper
+    start=game_pe.offset(state);code=game_pe.raw[start:start+state_size]
+    sites=[state+i for i in range(len(code)-4) if code[i]==0xe8 and state+i+5+struct.unpack_from('<i',code,i+1)[0]==gate]
+    assert len(sites)==1,'Fixture must contain one direct command-wait check'
+    wait_text='#pragma once\n#include <cstddef>\n#include <cstdint>\nnamespace ffr::command_wait_profile {\n'
+    for key,rva,size in [('state',state,state_size),('helper',helper,helper_size),('gate',gate,gate_size)]:
+        start=game_pe.offset(rva);digest=hashlib.sha256(game_pe.raw[start:start+size]).hexdigest()
+        wait_text+=f'inline constexpr std::uintptr_t {key}_rva={rva};\ninline constexpr std::size_t {key}_size={size};\ninline constexpr char {key}_sha256[]="{digest}";\n'
+    start=game_pe.offset(helper);helper_code=game_pe.raw[start:start+helper_size]
+    helper_sites=[helper+i for i in range(len(helper_code)-4) if helper_code[i]==0xe8 and helper+i+5+struct.unpack_from('<i',helper_code,i+1)[0]==gate]
+    assert len(helper_sites)==1,'Fixture must contain the earlier direct command-wait check'
+    wait_text+=f'inline constexpr std::uintptr_t callsite_rva={sites[0]};\ninline constexpr std::uintptr_t helper_callsite_rva={helper_sites[0]};\n}}\n'
+    (output/'good_command_wait_profile.hpp').write_text(wait_text,encoding='utf8')
+    (output/'bad_command_wait_profile.hpp').write_text(wait_text.replace(f'gate_sha256[]="{digest}"','gate_sha256[]="'+'0'*64+'"'),encoding='utf8')
     decision_rva=game_pe.exports['ffr_test_decision'];decision_offset=game_pe.offset(decision_rva)
     decision_hash=hashlib.sha256(game_pe.raw[decision_offset:decision_offset+64]).hexdigest()
     (output/'good_decision_profile.hpp').write_text('#pragma once\n#include <cstddef>\n#include <cstdint>\nnamespace ffr::decision_profile {\n'

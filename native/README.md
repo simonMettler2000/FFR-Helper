@@ -149,7 +149,10 @@ any request in the earlier FFR test. Its independent ordinary idle-menu import
 policy subsequently passed a supervised test: clone/input/live-save comparisons
 and temporary-pin release all passed, and the game stayed responsive. The next
 source enables a separate untouched event-history guard for a controlled ForceEnd
-test. No FFR abort or restoration has run. Normalization remains disabled; this
+test. Its first live request was deferred behind command input and only cleared
+after a user action; after-progression equality was not captured. The follow-up
+source has a scoped command-wait gate; immediate cleanup remains unverified.
+No restoration has run. Normalization remains disabled; this
 does not yet perform restart or save-state restoration.
 
 The desktop or CLI verifies the sidecar against the matched report, parses its

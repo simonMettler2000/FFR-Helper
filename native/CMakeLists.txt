@@ -129,6 +129,8 @@ if(FFR_BUILD_NATIVE_OBSERVER)
   list(APPEND profiles "${generated}/good_skill_event_profile.hpp")
   list(APPEND profiles "${generated}/import_only_abort_profile.hpp")
   list(APPEND profiles "${generated}/bad_end_abort_profile.hpp")
+  list(APPEND profiles "${generated}/good_command_wait_profile.hpp")
+  list(APPEND profiles "${generated}/bad_command_wait_profile.hpp")
   add_custom_command(OUTPUT ${profiles}
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/make_fixture_profiles.py"
       "$<TARGET_FILE:native_host_fixture>" "$<TARGET_FILE:native_mock_loader>" "${generated}"
@@ -169,7 +171,8 @@ if(FFR_BUILD_NATIVE_OBSERVER)
       "FFR_CAPTURE_PROFILE_HEADER=\"good_profile.hpp\"" "FFR_ABORT_PROFILE_HEADER=\"good_abort_profile.hpp\"" "FFR_IMPORT_PROFILE_HEADER=\"good_import_profile.hpp\"" "FFR_FIELD_PROFILE_HEADER=\"good_field_profile.hpp\"" "FFR_PLAYTIME_PROFILE_HEADER=\"good_playtime_profile.hpp\"" "FFR_CRT_PROFILE_HEADER=\"good_crt_profile.hpp\"")
     target_compile_definitions(fixture_observer_abort PRIVATE "FFR_ENGINE_RNG_PROFILE_HEADER=\"good_engine_rng_profile.hpp\"")
     target_compile_definitions(fixture_observer_abort PRIVATE "FFR_DECISION_PROFILE_HEADER=\"good_decision_profile.hpp\"" "FFR_SKILL_EVENT_PROFILE_HEADER=\"good_skill_event_profile.hpp\"")
-    foreach(mode abort abort-released abort-denied abort-skill-denied abort-foreign-denied clone clone-after-action clone-unready clone-mismatch clone-mutates clone-denied combat combat-after-action combat-denied combat-stale combat-effects-unavailable recovery recovery-released recovery-denied recovery-stale recovery-drift recovery-write-failed recovery-map-changed normalize normalize-unready normalize-stale normalize-template normalize-write-failed)
+    target_compile_definitions(fixture_observer_abort PRIVATE "FFR_COMMAND_WAIT_PROFILE_HEADER=\"good_command_wait_profile.hpp\"")
+    foreach(mode abort abort-released abort-wrong-owner abort-denied abort-skill-denied abort-foreign-denied clone clone-after-action clone-unready clone-mismatch clone-mutates clone-denied combat combat-after-action combat-denied combat-stale combat-effects-unavailable recovery recovery-released recovery-denied recovery-stale recovery-drift recovery-write-failed recovery-map-changed normalize normalize-unready normalize-stale normalize-template normalize-write-failed)
       add_test(NAME native_${mode} COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/run_native_fixture.py"
         --exe "$<TARGET_FILE:native_host_fixture>" --loader "$<TARGET_FILE:native_mock_loader>"
         --module "$<TARGET_FILE:fixture_observer_abort>" --mode "${mode}" --work "${CMAKE_CURRENT_BINARY_DIR}/test-work")
@@ -196,6 +199,18 @@ if(FFR_BUILD_NATIVE_OBSERVER)
     add_test(NAME native_abort_full_envelope_refused COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/run_native_fixture.py"
       --exe "$<TARGET_FILE:native_host_fixture>" --loader "$<TARGET_FILE:native_mock_loader>"
       --module "$<TARGET_FILE:fixture_observer_bad_end>" --mode abort-full-unavailable --work "${CMAKE_CURRENT_BINARY_DIR}/test-work")
+    add_library(fixture_observer_bad_wait SHARED src/native_observer.cpp)
+    add_dependencies(fixture_observer_bad_wait generate_fixture_profiles)
+    target_include_directories(fixture_observer_bad_wait PRIVATE include "${generated}")
+    target_link_libraries(fixture_observer_bad_wait PRIVATE minhook bcrypt)
+    target_compile_options(fixture_observer_bad_wait PRIVATE /W4 /EHsc /utf-8)
+    target_compile_definitions(fixture_observer_bad_wait PRIVATE UNICODE _UNICODE FFR_PRACTICE_BUILD=1
+      "FFR_CAPTURE_PROFILE_HEADER=\"good_profile.hpp\"" "FFR_ABORT_PROFILE_HEADER=\"good_abort_profile.hpp\""
+      "FFR_COMMAND_WAIT_PROFILE_HEADER=\"bad_command_wait_profile.hpp\"")
+    set_property(TARGET fixture_observer_bad_wait PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
+    add_test(NAME native_abort_wait_profile_refused COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/run_native_fixture.py"
+      --exe "$<TARGET_FILE:native_host_fixture>" --loader "$<TARGET_FILE:native_mock_loader>"
+      --module "$<TARGET_FILE:fixture_observer_bad_wait>" --mode abort-wait-unavailable --work "${CMAKE_CURRENT_BINARY_DIR}/test-work")
     add_test(NAME native_unreviewed_boundary_refused COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/run_native_fixture.py"
       --exe "$<TARGET_FILE:native_host_fixture>" --loader "$<TARGET_FILE:native_mock_loader>"
       --module "$<TARGET_FILE:fixture_observer_unreviewed>" --mode boundary-unreviewed --work "${CMAKE_CURRENT_BINARY_DIR}/test-work")

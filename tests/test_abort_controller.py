@@ -20,8 +20,9 @@ class AbortControllerTests(unittest.TestCase):
         now=int(time.time());sent=[];closed=[]
         ordinary=dict(gameThread=True,matchingWorld=True,ordinaryEncounter=True,battleActive=True,
             commandMenu=True,units=4,waitingJobs=0,workingJobs=0,friendlyActions=1,
-            openingHistoryUntouched=True,sequence=2,openingHash=opening.metadata['sha256'])
-        guards=[dict(ordinary,ordinaryEncounter=False,sequence=1),dict(ordinary,commandMenu=False),ordinary]
+            openingHistoryUntouched=True,commandWaitReady=True,sequence=2,openingHash=opening.metadata['sha256'])
+        guards=[dict(ordinary,ordinaryEncounter=False,sequence=1),dict(ordinary,commandMenu=False),
+            dict(ordinary,openingHistoryUntouched=False,sequence=99),ordinary]
         class Recorder:
             def __init__(self,directory):self.request='0'*32
             def heartbeat(self):pass
@@ -31,8 +32,9 @@ class AbortControllerTests(unittest.TestCase):
             safe_guard=staticmethod(AbortTrialBridge.safe_guard)
             def __init__(self,recorder):self.phase='idle';self.index=0
             def status(self):
-                guard=copy.deepcopy(guards[min(self.index,2)]);self.index+=1
+                guard=copy.deepcopy(guards[min(self.index,len(guards)-1)]);self.index+=1
                 return dict(available=True,phase=self.phase,guard=guard,message='Fixture',probeTime=now,
+                    commandWaitGate={'overrides':1 if self.phase=='manager-cleared' else 0},
                     openingBoundaryPolicy='ordinary-first-menu-event-history',after={'sha256':'f'*64})
             def prepare(self,report):sent.append(('prepare',report));self.phase='armed';return opening
             def progression(self,status,after=False):return opening.progression
@@ -47,6 +49,7 @@ class AbortControllerTests(unittest.TestCase):
             result=json.loads((out/'comparison.json').read_text())
             self.assertFalse(result['restoresInvoked'])
             self.assertTrue(result['expUnchanged'] and result['mrpUnchanged'])
+            self.assertTrue(result['commandWaitOverrideUsed'] and result['openingHistoryUntouchedAfterCleanup'])
 
     def test_unsupported_policy_cannot_prepare(self):
         sent=[];closed=[]

@@ -21,6 +21,7 @@ struct AbortGuard {
     // Separate from the raw turn-beginning count. Both exact-profile journals
     // must cover this opening/thread with no entries or coverage-loss flags.
     bool opening_history_untouched{};
+    bool command_wait_ready{};
 };
 enum class AbortPhase { idle, recovery_pending, armed, abort_sent, manager_cleared, rejected, timed_out };
 inline const char* phase_name(AbortPhase phase) {
@@ -52,7 +53,7 @@ class AbortTrial {
         return guard.game_thread && guard.matching_world && guard.ordinary_encounter
             && guard.battle_active && guard.command_menu && guard.units>0 && guard.units<=64
             && guard.waiting_jobs==0 && guard.working_jobs==0 && guard.friendly_actions>=0
-            && guard.opening_history_untouched;
+            && guard.opening_history_untouched && guard.command_wait_ready;
     }
 public:
     AbortPhase phase() const {return current;}
@@ -102,7 +103,7 @@ public:
             if(guard.game_thread && guard.matching_world && guard.field_ready && !guard.battle_active && guard.units==0
                 && guard.waiting_jobs==0 && guard.working_jobs==0) {
                 current=AbortPhase::manager_cleared;note="Battle manager and job queues cleared; user must confirm field return";
-            } else if(now>sent_at+15) {current=AbortPhase::timed_out;note="Abort was sent once; cleanup was not verified. No automatic retry";}
+            } else if(now>sent_at+15) {current=AbortPhase::timed_out;note="ForceEnd may remain pending after the cleanup timeout. No retry; close this test launch before further gameplay";}
         }
     }
 };

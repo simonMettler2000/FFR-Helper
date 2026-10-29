@@ -36,21 +36,23 @@ def main():
                 time.sleep(0.25);continue
             guard=state['guard']
             summary=(state['available'],state['phase'],guard.get('battleActive'),guard.get('commandMenu'),
-                     guard.get('friendlyActions'),guard.get('waitingJobs'),guard.get('workingJobs'))
+                     guard.get('friendlyActions'),guard.get('waitingJobs'),guard.get('workingJobs'),
+                     guard.get('openingHistoryUntouched'),guard.get('commandWaitReady'))
             if summary!=last:
                 print(f'Available={summary[0]}; phase={summary[1]}; battle={summary[2]}; command menu={summary[3]}; '
-                      f'party turn beginnings={summary[4]}; jobs={summary[5]}/{summary[6]}. {state["message"]}',flush=True);last=summary
+                      f'party turn beginnings={summary[4]}; jobs={summary[5]}/{summary[6]}; '
+                      f'untouched history={summary[7]}; wait gate ready={summary[8]}. {state["message"]}',flush=True);last=summary
             if (args.abort_at_opening and not prepared and state['phase']=='idle'
                     and guard.get('ordinaryEncounter') is True and guard.get('commandMenu') is True):
                 if state.get('openingBoundaryPolicy')!='ordinary-first-menu-event-history':
                     raise RuntimeError('Unsupported opening-boundary policy; no abort request was sent.')
                 sequence,digest=guard.get('sequence'),guard.get('openingHash')
-                if type(sequence) is int and sequence>0 and isinstance(digest,str) and len(digest)==64:
+                if (type(sequence) is int and sequence>0 and isinstance(digest,str) and len(digest)==64
+                        and bridge.safe_guard(state,sequence,digest)):
                     if target_sequence is None:
                         target_sequence=sequence
                     elif sequence!=target_sequence:
                         raise RuntimeError('The selected encounter changed; no abort will be requested.')
-                if isinstance(sequence,int) and sequence>0 and isinstance(digest,str) and len(digest)==64 and bridge.safe_guard(state,sequence,digest):
                     if not pending:
                         recorder.request=uuid.uuid4().hex;pending=True
                     report=recorder.report()
@@ -69,7 +71,10 @@ def main():
                 after=bridge.progression(state,after=True)
                 atomic_write(args.output/'after-abort.gvas',after)
                 result=compare_progression(recovery,after)
+                result['commandWaitOverrideUsed']=state.get('commandWaitGate',{}).get('overrides') in (1,2)
+                result['openingHistoryUntouchedAfterCleanup']=state.get('guard',{}).get('openingHistoryUntouched') is True
                 atomic_write(args.output/'comparison.json',json.dumps(result,indent=2).encode('utf8'))
+                atomic_write(args.output/'abort-receipt.json',json.dumps(state,indent=2).encode('utf8'))
                 print(json.dumps(result,indent=2),flush=True)
                 print('Native cleanup observed. Confirm the actual field return; this is not battle restart or save-state restoration.',flush=True)
                 return
@@ -77,6 +82,15 @@ def main():
         if args.abort_at_opening:
             raise TimeoutError('Trial timed out. No automatic retry will be performed.')
         print('Probe finished; no abort was requested.',flush=True)
+    except BaseException:
+        # Keep a bound terminal/uncertain receipt for diagnosis without another
+        # game command. Diagnostic I/O must never mask the original failure.
+        try:
+            terminal=bridge.status()
+            if terminal is not None:
+                atomic_write(args.output/'terminal-status.json',json.dumps(terminal,indent=2).encode('utf8'))
+        except (OSError,ValueError,TypeError):pass
+        raise
     finally:
         recorder.disconnect()
 

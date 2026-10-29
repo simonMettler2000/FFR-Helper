@@ -32,6 +32,9 @@ bool recovery_fixture{},recovery_drift{};
 std::int32_t recovery_money=101,fixture_map_id=1000;
 std::array<unsigned char,0x280> fake_manager{};
 std::array<unsigned char,0x80> fake_jobs{},fake_units{};
+std::array<unsigned char,0x40> fake_command{},fake_command_request{};
+std::array<unsigned char,0x40> fake_other_command{};
+void* wait_argument{};
 std::array<unsigned char,0x90> fake_ui{};
 std::array<unsigned char,32> fake_world{};
 std::array<unsigned char,0x210> fake_map{};
@@ -45,6 +48,9 @@ std::array<std::array<unsigned char,0x560>,2> fake_parameters{};
 std::array<unsigned char,0x40> fake_scheduler{};
 unsigned abort_calls{},tick_calls{};
 DWORD abort_thread{};
+unsigned wait_gate_calls{};
+unsigned state_wait_calls{};
+bool release_managers_on_abort{};
 unsigned decision_calls{};void* decision_context{};void* decision_data{};DWORD decision_input_error{};
 unsigned dispatch_calls{},skill_producer_calls{},unrelated_producer_calls{};
 void* dispatch_context{};void* dispatch_data{};std::uint64_t dispatch_name{};DWORD dispatch_input_error{};
@@ -110,12 +116,31 @@ void __fastcall ffr_test_abort_end_battle() {
     abort_thread=GetCurrentThreadId();++abort_calls;fake_manager[0x222]=1;
 }
 extern "C" __declspec(dllexport) __declspec(noinline)
+bool __fastcall ffr_test_command_wait(void* command) {
+    ++wait_gate_calls;ffr::RawArray requests{};
+    std::memcpy(&requests,static_cast<unsigned char*>(command)+0x28,sizeof(requests));
+    bool waiting=false;
+    for(int i=0;i<requests.count;++i)
+        if(!*(reinterpret_cast<unsigned char*>(requests.data)+64*i+0x38))waiting=true;
+    SetLastError(6543);return waiting;
+}
+extern "C" __declspec(dllexport) __declspec(noinline)
+bool __fastcall ffr_test_state_wait(void* command) {
+    const auto waiting=ffr_test_command_wait(command);++state_wait_calls;return waiting;
+}
+extern "C" __declspec(dllexport) __declspec(noinline)
 void __fastcall ffr_test_abort_tick(void* context,float delta) {
     ++tick_calls;last_delta=delta;
     if(context!=fake_manager.data()+0x30)++fixture_errors;
-    if(fake_manager[0x222]) {
+    // Like FFR: the nested helper can return before the outer wait/ForceEnd check.
+    if(ffr_test_state_wait(wait_argument?wait_argument:fake_command.data())) {SetLastError(9876);return;}
+    const auto waiting=ffr_test_command_wait(wait_argument?wait_argument:fake_command.data());
+    if(fake_manager[0x222] && !waiting) {
         fake_manager[0x222]=0;fake_manager[0x1a9]=0;fake_ui[0x80]=0;
         const std::int32_t zero=0;std::memcpy(fake_units.data()+0x30,&zero,4);
+        if(release_managers_on_abort) {
+            const std::uint64_t none=0;std::memcpy(fake_manager.data()+0x40,&none,8);std::memcpy(fake_manager.data()+0x48,&none,8);
+        }
     }
     SetLastError(9876);
 }
@@ -357,6 +382,16 @@ int wmain(int argc, wchar_t** argv) {
             CHECK(abort_calls==0 && clone_loads==0);
             CHECK(std::memcmp(initial_decision.data(),decision_code,64)==0);
             std::cout<<"Read-only decision history fixture passed; no practice commands enabled.\n";return 0;
+        }
+        if(mode==L"abort-wait-unavailable") {
+            write(connection/L"observe.txt","FFR_HELPER_OBSERVER_V1\n"+std::string(32,'a')+"\n"+std::to_string(now()+8)+"\n"+std::string(32,'b')+"\n");
+            wait_for([&]{return read(connection/L"abort-status.json").find("Scoped command wait profile unavailable")!=std::string::npos;});
+            const auto status=read(connection/L"abort-status.json");
+            CHECK(status.find("\"available\":false")!=std::string::npos);
+            CHECK(status.find("\"commandWaitReady\":false")!=std::string::npos);
+            CHECK(abort_calls==0 && clone_loads==0 && serialized==0);
+            stop(object);CHECK(host_count()==0 && host_errors()==0 && fixture_errors==0);
+            std::cout<<"Command wait mismatch disables abort before any game action.\n";return 0;
         }
         if(mode==L"boundary-unreviewed" || mode==L"abort-full-unavailable") {
             write(connection/L"observe.txt","FFR_HELPER_OBSERVER_V1\n"+std::string(32,'a')+"\n"+std::to_string(now()+8)+"\n"+std::string(32,'b')+"\n");

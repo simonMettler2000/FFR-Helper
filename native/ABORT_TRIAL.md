@@ -1,6 +1,6 @@
 # Experimental opening-abort trial
 
-**Detached import is verified in FFR; ForceEnd remains untested.** The earlier
+**Detached import is verified; immediate ForceEnd cleanup remains unverified.** The earlier
 first-menu check refused because the raw counter counts turn beginnings, not
 completed commands. Subsequent supervised tests verified fresh idle-menu samples
 and separate manual-command/Skill.Begin histories. The revised abort guard
@@ -16,8 +16,11 @@ Detached normalization, live-root replacement and battle restart remain disabled
 or unimplemented.
 
 This is a separate, mutation-capable development component. It has passed
-isolated dummy-process tests and the supervised detached import. No abort or
-restoration operation has been executed in FFR.
+isolated dummy-process tests and the supervised detached import. The first live
+ForceEnd request stayed pending at the command menu and timed out; a subsequent
+user command was followed by field return without a result screen. Fresh read-only
+diagnostics verified that delayed cleanup. After-progression was not captured,
+so reward/resource equality is unverified. No restoration has run in FFR.
 It does not restart a battle, replace live progression or restore a save state.
 It now also has a separate, explicit **detached import comparison** described
 below. Creating a comparison UObject does not apply it to the running game.
@@ -45,6 +48,13 @@ a separately approved test with backed-up practice data.
   Non-default battle-event IDs, bounty/test/preemptive/result-skipping flags and
   disabled escape cause refusal. This does not identify every possible script context.
   Raw turn beginnings are reported separately and never interpreted as commands.
+- A fresh exact-callsite command-wait observation is also required before abort.
+  The follow-up source can let the native ForceEnd check run past this input wait
+  at two verified callsites, each at most once after an own committed abort.
+  Complete gate/state/helper fingerprints, both direct calls, the captured thread,
+  fresh revalidated tick context, delegate ownership, native ForceEnd flag, queues and
+  untouched histories are rechecked. Other calls keep their original results.
+  No attack or player-command record is submitted. Live verification is pending.
 - Preparation serializes progression into a separate recovery buffer. The worker
   commits and reads back a private recovery file before reporting the trial armed.
   The client also checks its hash, GVAS class, engine, footer and required fields.
@@ -60,6 +70,8 @@ a separately approved test with backed-up practice data.
 - Recovery files contain progression only. They cannot resume an ongoing battle;
   this trial has no automatic rollback or full battle-state recovery.
 - No normal game save is written. Saving anywhere remains uninstalled/deferred.
+- A timed-out ForceEnd may still be pending. Close that test launch before further
+  gameplay; do not resend the request or assume the flag was cleared.
 
 The ordinary observer build excludes this command/tick-hook code. Packaging
 checks refuse to label this DLL as a read-only observer, and refuse to include

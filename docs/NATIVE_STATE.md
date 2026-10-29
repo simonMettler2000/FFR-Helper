@@ -268,7 +268,48 @@ EndBattle fingerprint, and accept inactive teardown with both managers released.
 The CLI lifecycle test skips preemptive/setup frames before exactly one durable
 prepare/commit. A full-run fixture receipt-copy race was corrected by using
 Windows delete-sharing reads and bounded nonempty terminal readback; the fresh
-complete run passed. No FFR ForceEnd call has been made.
+complete run passed. At that checkpoint, no FFR ForceEnd call had been made.
+
+### First ForceEnd test: deferred behind command input
+
+With explicit installation/one-call approval, source18df14a loaded normally and
+sent one ForceEnd request after durable recovery at a normal first command menu.
+The command menu stayed active until the trial's 15-second cleanup timeout.
+The user then reported a self-attack followed by a fade to the overworld, with
+neither escape nor battle results. A separate read-only continuation of that
+terminal trial's owned session verified fresh matching thread/world, inactive
+battle flags, both managers released and zero units/jobs. It sent no command.
+The terminal result was not relabelled as a successful immediate abort. No
+after-progression snapshot was captured, so rewards/resources remain unverified.
+
+Static tracing shows that the pending-command check returns before the ForceEnd
+flag is processed. The follow-up source adds a practice-only, exact-callsite wait
+gate: it observes the original result, then may return false at each of two
+verified callsites at most once during a committed own abort, on the captured
+thread with a fresh, revalidated context from the actual manager tick, with
+the matching delegate/ForceEnd flag, ordinary idle menu, empty queues and untouched
+histories. The complete gate, enclosing state and earlier pending-command helper
+are fingerprinted, and both direct call targets are verified. Callback nesting
+inside manager Tick is not assumed. Other callers/results are forwarded unchanged.
+Preparation now additionally requires a fresh observation of that wait gate.
+No player command record, UI value, queue, skill, resource or live root is written.
+The follow-up has not been installed or live-verified. On timeout, ForceEnd may
+remain pending; end the test launch before further gameplay rather than retrying.
+
+The corrected source passes 151 Python tests and all 74 native cases. Its dummy
+state path reproduces the two early wait checks: exactly one ForceEnd and two
+scoped wait results reach cleanup with zero manual-command or skill events.
+Unrelated calls preserve their result/error behavior. Wrong delegate ownership
+leaves the wait and pending flag unchanged; profile mismatch disables abort.
+Released-manager cleanup, durable recovery, expiry and exactly-once behavior are
+also checked. Preparation validates the wait owner and bounded request array
+before queuing ForceEnd. These are isolated results; corrected live verification
+is still pending.
+
+The CLI now retains a success or terminal diagnostic receipt, compares all
+progression bytes as well as named resources/rewards, and records whether the
+wait override and untouched history were observed. None of these receipts claims
+restoration or reconstruction.
 
 ## In-memory progression and teardown findings
 

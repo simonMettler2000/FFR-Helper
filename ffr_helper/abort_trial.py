@@ -51,6 +51,7 @@ class AbortTrialBridge:
                 and all(type(guard.get(key)) is int and guard[key] == 0 for key in ['waitingJobs', 'workingJobs'])
                 and type(guard.get('friendlyActions')) is int and guard['friendlyActions']>=0
                 and guard.get('openingHistoryUntouched') is True
+                and guard.get('commandWaitReady') is True
                 and type(guard.get('sequence')) is int and guard['sequence'] == sequence
                 and guard.get('openingHash') == digest)
 
@@ -138,7 +139,8 @@ def compare_progression(before: bytes, after: bytes):
     def player(editor):
         return {key: editor.root['player'].struct()[key].integer()
                 for key in ['currentMoney', 'EscapeNum', 'WinNum', 'StealSuccessNum']}
-    return dict(countersUnchanged=player(a) == player(b), inventoryUnchanged=a.inventory() == b.inventory(),
+    return dict(allProgressionBytesUnchanged=before==after,
+                countersUnchanged=player(a) == player(b), inventoryUnchanged=a.inventory() == b.inventory(),
                 expUnchanged=unit_values(a, 'Experience') == unit_values(b, 'Experience'),
                 mrpUnchanged=mrp(a) == mrp(b),
                 hpUnchanged=unit_values(a, 'HitPoint') == unit_values(b, 'HitPoint'),

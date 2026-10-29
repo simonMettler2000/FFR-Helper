@@ -93,7 +93,10 @@ after earlier turns, while rechecking the current context and unchanged live
 progression. Its supervised engine test passed with all 466,065 bytes matching,
 unchanged live/input bytes, released temporary pins and a responsive game.
 The next source enables a separate first-menu event-history guard for a controlled
-ForceEnd test; no FFR abort or restoration has run. Normalization remains disabled.
+ForceEnd test. That first live request remained pending until a user command,
+then returned to the field without a result screen; immediate cleanup and
+progression equality remain unverified. A scoped command-wait correction is in
+development. No restoration has run. Normalization remains disabled.
 Battle restart and save-state restoration remain unfinished.
 
 ## Use

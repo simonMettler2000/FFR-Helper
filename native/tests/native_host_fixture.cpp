@@ -181,6 +181,7 @@ void run_clone_fixture(const std::filesystem::path& connection,const std::wstrin
 void run_combat_fixture(const std::filesystem::path& connection,const std::wstring& mode);
 void run_recovery_fixture(const std::filesystem::path& connection,const std::wstring& mode);
 void run_normalization_fixture(const std::filesystem::path& connection,const std::wstring& mode,HMODULE loader);
+void run_menu_fixture(const std::filesystem::path& connection,bool available);
 }
 
 #include "abort_fixture.inl"
@@ -188,6 +189,7 @@ void run_normalization_fixture(const std::filesystem::path& connection,const std
 #include "combat_fixture.inl"
 #include "recovery_fixture.inl"
 #include "normalization_fixture.inl"
+#include "menu_fixture.inl"
 int wmain(int argc, wchar_t** argv) {
     try {
         CHECK(argc == 5);
@@ -238,6 +240,11 @@ int wmain(int argc, wchar_t** argv) {
         std::memcpy(initial_code, reinterpret_cast<const void*>(entry_function), sizeof(initial_code));
         auto* fixture_tick=reinterpret_cast<const void*>(GetProcAddress(GetModuleHandleW(nullptr),"ffr_test_abort_tick"));CHECK(fixture_tick);
         std::array<unsigned char,64> initial_tick{};std::memcpy(initial_tick.data(),fixture_tick,initial_tick.size());
+        if(mode==L"menu-unavailable") {
+            auto* code=const_cast<unsigned char*>(static_cast<const unsigned char*>(fixture_tick));
+            DWORD protection{},unused{};CHECK(VirtualProtect(code,1,PAGE_EXECUTE_READWRITE,&protection));
+            *code^=1;CHECK(VirtualProtect(code,1,protection,&unused));FlushInstructionCache(GetCurrentProcess(),code,1);
+        }
         auto object = start();
         if (mode == L"bad-loader") {
             CHECK(object == nullptr && host_count() == 0);
@@ -247,6 +254,18 @@ int wmain(int argc, wchar_t** argv) {
         }
         CHECK(object != nullptr && host_count() == 1);
         CHECK(start() == nullptr); // Restart is required; no duplicate detour/worker.
+        if(mode.starts_with(L"menu-")) {
+            run_menu_fixture(connection,mode==L"menu-frame");
+            if(mode==L"menu-unavailable") {
+                auto* code=const_cast<unsigned char*>(static_cast<const unsigned char*>(fixture_tick));
+                DWORD protection{},unused{};CHECK(VirtualProtect(code,1,PAGE_EXECUTE_READWRITE,&protection));
+                *code=initial_tick[0];CHECK(VirtualProtect(code,1,protection,&unused));FlushInstructionCache(GetCurrentProcess(),code,1);
+            }
+            stop(object);CHECK(host_count()==0 && host_errors()==0 && fixture_errors==0);
+            CHECK(std::memcmp(initial_tick.data(),fixture_tick,initial_tick.size())==0);
+            CHECK(abort_calls==0 && clone_loads==0);
+            std::cout<<"Read-only menu-frame fixture passed without practice dispatch.\n";return 0;
+        }
         if(mode.starts_with(L"decision-")) {
             const auto active=mode==L"decision-history";
             auto lease=[&](char session,std::int64_t expiry) {

@@ -172,6 +172,35 @@ stays at zero through the first menu and menu cancellation, then advances after
 a user command, while separately verifying the menu's fresh game-thread state.
 Alternative native/Blueprint/automatic action paths still need coverage review.
 
+### Independent read-only menu-frame sampling
+
+The ordinary recorder now has a separate, optional manager-tick sampler. It is
+excluded from the practice build, so it cannot share or enable the experimental
+dispatch hook. The full tick envelope and read-only getter fingerprints are
+checked before installation. Sampling runs after the original tick at most ten
+times per second, on the encounter's original thread and matching world/map.
+It records bounded UI/selection/unit/job state and labels the raw counter
+`turnBeginnings`. No abort, import, serializer, setter or root assignment is
+invoked by the sampler.
+
+The optional `menuObservation` has its own game-thread `sampleTime`, separate
+from the worker's status-publication time. Its strict consumer can report a
+sample as recent, while coverage remains explicitly unreviewed and non-atomic.
+A recent menu sample is not permission to retry. Invalid context/layout or a
+profile mismatch leaves this component null without suppressing opening capture;
+new encounters, sessions and lease gaps invalidate the cached frame.
+
+The native collector saves private `.ffrmenu.json` records. Compiled-DLL tests
+verify a first-menu frame with one turn beginning but zero decision-handler
+entries, a later decision, and unchanged source progression. They stop the fake
+game ticks while keeping the observer worker alive: the frame becomes stale
+despite fresh status heartbeats, then becomes recent after ticks resume. Other
+checks cover malformed jobs, optional profile mismatch, unchanged call arguments
+and Win32 error behavior, and restored code at shutdown. This source passes the
+full 63-case native suite and 143 Python tests. Actual FFR menu sampling and
+command-handler coverage still need supervised verification; practice remains
+disabled.
+
 ## In-memory progression and teardown findings
 
 On this exact binary, the ordinary encrypted save writer calls the engine's

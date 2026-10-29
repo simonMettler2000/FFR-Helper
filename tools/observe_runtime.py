@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from ffr_helper.runtime import RuntimeRecorder, NativeEntryRecorder, export_report
 from ffr_helper.opening import export_opening
 from ffr_helper.decision_history import validate_decision_history
+from ffr_helper.menu_frame import validate_menu_frame,menu_frame_is_recent
 from ffr_helper.storage import atomic_write
 
 
@@ -34,6 +35,8 @@ def main():
     first_io_error = None
     last_opening = None
     last_decision = False
+    last_menu = False
+    last_menu_summary = None
     try:
         print('Read-only observation session started; waiting for the game recorder.', flush=True)
         while time.monotonic() < deadline and not (args.stop_file and args.stop_file.exists()):
@@ -49,6 +52,20 @@ def main():
                 continue
             first_io_error = None
             status = recorder.status()
+            if args.native and status and 'menuObservation' in status:
+                try:
+                    menu=validate_menu_frame(status['menuObservation'])
+                    if menu!=last_menu:
+                        stamp=datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S-%f')
+                        evidence=dict(format='ffr-helper-menu-frame-observation',readOnly=True,restorable=False,
+                            session=recorder.session,time=status['time'],menuObservation=menu)
+                        atomic_write(args.output/(stamp+'.ffrmenu.json'),json.dumps(evidence,indent=2).encode('utf8'))
+                        last_menu=menu
+                    summary=(menu_frame_is_recent(menu),menu['commandMenu'],menu['turnBeginnings']) if menu else None
+                    if summary!=last_menu_summary:
+                        print(f'Read-only menu frame: {summary}; fields are recency, command menu, turn beginnings. Retry remains disabled.',flush=True)
+                        last_menu_summary=summary
+                except (OSError,ValueError,TypeError,KeyError):pass
             if args.native and status and 'decisionHistory' in status:
                 try:
                     history=validate_decision_history(status['decisionHistory'])

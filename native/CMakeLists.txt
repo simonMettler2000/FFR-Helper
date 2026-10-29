@@ -125,6 +125,7 @@ if(FFR_BUILD_NATIVE_OBSERVER)
   set(generated "${CMAKE_CURRENT_BINARY_DIR}/fixture_profiles")
   set(profiles "${generated}/good_profile.hpp" "${generated}/bad_game_profile.hpp" "${generated}/bad_loader_profile.hpp" "${generated}/bad_function_profile.hpp" "${generated}/good_abort_profile.hpp" "${generated}/unreviewed_abort_profile.hpp" "${generated}/good_import_profile.hpp" "${generated}/good_field_profile.hpp" "${generated}/good_playtime_profile.hpp" "${generated}/good_crt_profile.hpp" "${generated}/good_engine_rng_profile.hpp")
   list(APPEND profiles "${generated}/good_decision_profile.hpp")
+  list(APPEND profiles "${generated}/good_menu_profile.hpp")
   add_custom_command(OUTPUT ${profiles}
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/make_fixture_profiles.py"
       "$<TARGET_FILE:native_host_fixture>" "$<TARGET_FILE:native_mock_loader>" "${generated}"
@@ -148,7 +149,8 @@ if(FFR_BUILD_NATIVE_OBSERVER)
         --module "$<TARGET_FILE:fixture_observer_${mode}>" --mode "${case}" --work "${CMAKE_CURRENT_BINARY_DIR}/test-work")
   endforeach()
   target_compile_definitions(fixture_observer_good PRIVATE "FFR_DECISION_PROFILE_HEADER=\"good_decision_profile.hpp\"")
-  foreach(mode decision-history decision-unavailable)
+  target_compile_definitions(fixture_observer_good PRIVATE "FFR_MENU_PROFILE_HEADER=\"good_menu_profile.hpp\"")
+  foreach(mode decision-history decision-unavailable menu-frame menu-unavailable)
     add_test(NAME native_${mode} COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/run_native_fixture.py"
       --exe "$<TARGET_FILE:native_host_fixture>" --loader "$<TARGET_FILE:native_mock_loader>"
       --module "$<TARGET_FILE:fixture_observer_good>" --mode "${mode}" --work "${CMAKE_CURRENT_BINARY_DIR}/test-work")

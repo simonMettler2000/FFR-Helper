@@ -19,6 +19,13 @@
 #include "map_unit_cache.hpp"
 #include "crt_rand_capture.hpp"
 #include "engine_rng_capture.hpp"
+#ifndef FFR_PRACTICE_BUILD
+#ifdef FFR_MENU_PROFILE_HEADER
+#include FFR_MENU_PROFILE_HEADER
+#else
+#include "menu_profile.hpp"
+#endif
+#endif
 #ifdef FFR_DECISION_PROFILE_HEADER
 #include FFR_DECISION_PROFILE_HEADER
 #else
@@ -73,6 +80,7 @@
 #include <string_view>
 #include <tuple>
 #include <intrin.h>
+#include <set>
 
 namespace {
 using Clock = std::chrono::system_clock;
@@ -239,11 +247,9 @@ struct Observer {
         std::optional<ffr::FieldAnchor> field_value;
         std::optional<ffr::PlaytimeBasis> clock_value;
         std::vector<unsigned char> progression;
-#ifdef FFR_PRACTICE_BUILD
         ffr::Encounter encounter;
         std::uint64_t context_identity{};
         DWORD thread{};
-#endif
     };
     std::filesystem::path connection;
     std::mutex mutex;
@@ -253,6 +259,7 @@ struct Observer {
     std::string session, request, message{"Waiting for native capture initialization"};
     std::atomic<std::int64_t> expires{0};
     std::atomic<bool> quit{false}, ready{false};
+    std::atomic<bool> menu_ready{false};
     std::atomic<unsigned> failures{0};
     std::atomic<unsigned> progression_failures{0};
     std::atomic<unsigned> field_failures{0};
@@ -261,6 +268,13 @@ struct Observer {
     std::atomic<unsigned> crt_rand_failures{0};
     std::atomic<unsigned> engine_rng_failures{0};
     std::shared_ptr<const Opening> opening;
+    std::string menu_frame="null";
+    std::uint64_t menu_sequence{};
+    ULONGLONG menu_sample_after{};
+    std::string menu_status() {
+        std::lock_guard lock(mutex);
+        return opening && opening->sequence==menu_sequence?menu_frame:"null";
+    }
     std::uint64_t decision_sequence{};
     DWORD decision_thread{};
     unsigned decision_entries{};
@@ -317,7 +331,7 @@ struct Observer {
                 auto lease = read_lease(connection/L"observe.txt");
                 if (!lease) {
                     expires.store(0);
-                    {std::lock_guard lock(mutex);decision_sequence=0;decision_tracked_from_entry=false;}
+                    {std::lock_guard lock(mutex);decision_sequence=0;decision_tracked_from_entry=false;menu_frame="null";}
                     Sleep(250);continue;
                 }
                 std::deque<std::string> copied;
@@ -329,6 +343,8 @@ struct Observer {
                     if (session != lease->session) {
                         events.clear(); event_bytes = 0; sequence = 0; request.clear(); session = lease->session;
                         opening.reset(); published.reset(); opening_metadata="null";
+                        menu_frame="null";menu_sequence=0;
+                        menu_sample_after=0;
                         decision_sequence=0;decision_thread=0;decision_tracked_from_entry=false;
 #ifdef FFR_PRACTICE_BUILD
                         combat_request.reset();combat_controller.clear_latest();
@@ -369,8 +385,9 @@ struct Observer {
                 }
                 const auto base = envelope(*lease);
                 auto status = "{" + base + ",\"hooks\":{\"native-encounter-entry\":"
-                    + ffr::quote(ready.load() ? "observing" : "unavailable") + "},\"message\":" + ffr::quote(note)
-                    +",\"decisionHistory\":"+decision_status()+'}';
+                    + ffr::quote(ready.load() ? "observing" : "unavailable")
+                    +",\"native-menu-frame\":"+ffr::quote(menu_ready.load()?"observing":"unavailable")+"},\"message\":"+ffr::quote(note)
+                    +",\"decisionHistory\":"+decision_status()+",\"menuObservation\":"+menu_status()+'}';
                 write_atomic(connection/L"observer-status.json", status);
                 if (requested) {
                     // Keep room for bounded opening metadata even when earlier
@@ -416,6 +433,9 @@ struct Observer {
 std::unique_ptr<Observer> observer;
 std::atomic<Observer*> published_observer{nullptr};
 #include "decision_runtime.inl"
+#ifndef FFR_PRACTICE_BUILD
+#include "menu_runtime.inl"
+#endif
 std::optional<ffr::FieldAnchor> capture_live_field(void* context);
 std::optional<ffr::PlaytimeBasis> capture_live_playtime(void* root);
 #ifdef FFR_PRACTICE_BUILD
@@ -488,6 +508,8 @@ void __fastcall encounter_hook(void* context, const void* entry, bool skip_intro
         }
         std::string capture_session;
         { std::lock_guard lock(current->mutex); capture_session=current->session; current->opening.reset();
+            current->menu_frame="null";current->menu_sequence=0;
+            current->menu_sample_after=0;
             current->decision_sequence=current->sequence+1;current->decision_thread=GetCurrentThreadId();
             current->decision_entries=0;current->decision_foreign_thread=false;current->decision_overflow=false;
             current->decision_tracked_from_entry=decision_installed.load(std::memory_order_acquire); }
@@ -509,10 +531,8 @@ void __fastcall encounter_hook(void* context, const void* entry, bool skip_intro
             if(cache && encoded.size()<=48*1024)opening->map_unit_cache=encoded;
             else current->map_cache_failures.fetch_add(1);
         }catch(...) {current->map_cache_failures.fetch_add(1);}
-#ifdef FFR_PRACTICE_BUILD
         opening->encounter=std::move(*copied); opening->context_identity=reinterpret_cast<std::uint64_t>(context);
         opening->thread=GetCurrentThreadId();
-#endif
         const auto rng_thread=GetCurrentThreadId();std::optional<ffr::CrtRandSample> rng_before;
         try {rng_before=capture_live_crt_rand(rng_thread);}catch(...){}
         std::optional<std::uint32_t> engine_rng_before;
@@ -655,13 +675,16 @@ extern "C" __declspec(dllexport) void* start_mod() noexcept {
 #ifdef FFR_PRACTICE_BUILD
         if(installed)install_abort_tick_hook();
 #else
-        (void)installed;
+        if(installed){try {install_menu_hook();}catch(...) {shutdown_menu_hook();}}
 #endif
         return host_object;
     } catch (...) {
         if (observer) {
             observer->expires.store(0); observer->quit.store(true);
             shutdown_decision_hook();
+#ifndef FFR_PRACTICE_BUILD
+            shutdown_menu_hook();
+#endif
 #ifdef FFR_PRACTICE_BUILD
             shutdown_abort_tick_hook();
 #endif
@@ -683,6 +706,9 @@ extern "C" __declspec(dllexport) void uninstall_mod(void* object) noexcept {
         if (observer) {
             observer->expires.store(0); observer->quit.store(true);
             shutdown_decision_hook();
+#ifndef FFR_PRACTICE_BUILD
+            shutdown_menu_hook();
+#endif
 #ifdef FFR_PRACTICE_BUILD
             shutdown_abort_tick_hook();
 #endif

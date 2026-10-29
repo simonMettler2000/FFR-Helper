@@ -117,6 +117,17 @@ completed commands. Coverage and fresh game-thread verification remain false;
 this telemetry cannot authorize a retry or practice operation. It has not been
 installed or tested in FFR.
 
+The ordinary recorder also provides an independent optional `menuObservation`
+from the actual battle-manager tick, with its own sample timestamp. Exact code
+profiles, encounter-thread/world matching and bounded reads gate UI/selection,
+unit/job counts and raw turn-beginning counts. Sampling is limited to ten times
+per second and preserves the original tick's arguments and Win32 error state.
+The collector stores `.ffrmenu.json` evidence; worker heartbeats cannot refresh an
+old game-frame timestamp. Invalid context or unavailable code makes this optional
+component null. It is excluded from the practice build and cannot enable a
+practice command. Coverage remains unreviewed and non-atomic; actual FFR behavior
+still needs verification.
+
 A separate [opening-abort trial](ABORT_TRIAL.md) is compiled only when explicitly
 requested. Its game-thread command path is excluded from the ordinary observer.
 It is a mutation-capable experiment. Its first-menu import guard refused before

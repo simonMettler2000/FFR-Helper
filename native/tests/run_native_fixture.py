@@ -15,7 +15,7 @@ def main():
     parser.add_argument('--exe', required=True, type=Path)
     parser.add_argument('--loader', required=True, type=Path)
     parser.add_argument('--module', required=True, type=Path)
-    parser.add_argument('--mode', required=True, choices=['good', 'bad-game', 'bad-loader','bad-function','boundary-unreviewed','decision-history','decision-unavailable','abort','abort-denied',
+    parser.add_argument('--mode', required=True, choices=['good', 'bad-game', 'bad-loader','bad-function','boundary-unreviewed','decision-history','decision-unavailable','menu-frame','menu-unavailable','abort','abort-denied',
                                                        'clone','clone-unready','clone-mismatch','clone-mutates','clone-denied',
                                                        'combat','combat-after-action','combat-denied','combat-stale','combat-effects-unavailable',
                                                        'normalize','normalize-unready','normalize-stale','normalize-template','normalize-write-failed',
@@ -31,6 +31,21 @@ def main():
         shutil.copy2(args.module, module)
         subprocess.run([str(args.exe.resolve()), str(module), str(args.loader.resolve()), str(root/'connection'), args.mode], check=True, timeout=30)
         if args.mode=='boundary-unreviewed':return
+        if args.mode.startswith('menu-'):
+            if args.mode=='menu-frame':
+                sys.path.insert(0,str(Path(__file__).resolve().parents[2]))
+                from ffr_helper.menu_frame import validate_menu_frame,menu_frame_is_recent
+                first=json.loads((root/'connection/menu-first.json').read_text())
+                paused=json.loads((root/'connection/menu-paused.json').read_text())
+                resumed=json.loads((root/'connection/menu-resumed.json').read_text())
+                frame=validate_menu_frame(first['menuObservation'])
+                assert frame['commandMenu'] is True and frame['turnBeginnings']==1 and frame['units']==2
+                assert first['decisionHistory']['handlerEntries']==0
+                assert menu_frame_is_recent(frame,first['time'])
+                assert not menu_frame_is_recent(paused['menuObservation'],paused['time'])
+                assert menu_frame_is_recent(resumed['menuObservation'],resumed['time'])
+                assert resumed['decisionHistory']['handlerEntries']==1
+            return
         if args.mode.startswith('decision-'):
             if args.mode=='decision-history':
                 sys.path.insert(0,str(Path(__file__).resolve().parents[2]))

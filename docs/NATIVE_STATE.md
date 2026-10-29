@@ -787,6 +787,29 @@ This is another reason why matching root bytes or retaining both roots does not
 prove gameplay cache consistency. Indirect delegate/Blueprint refresh behavior
 remains unverified.
 
+Further static review identified the examined storage routine through the
+reflected `FullRecoveryMapUnit` registration. It adds large HP/MP amounts, clamps
+resources and reloads cached values. It must be excluded from exact restoration:
+it would heal the party instead of preserving the captured resource values.
+No helper has called this routine.
+
+A bounded read-only named-delegate snapshot parser is now available for the
+remaining cache audit. Its layout follows the exact-build registration,
+dispatch and script-broadcast implementations: sparse hash chains with holes,
+multicast arrays and weak object/function-name references. It refuses active
+dispatch/deferred changes, corrupt/cyclic chains, aggregate limits and changes
+in payloads even when root pointers/counts match. Name decoding copies the
+existing pool; it performs no lookup/initialization game call. Unit tests cover
+sparse holes, stale bindings, malformed counts, cycles, payload drift, wide/
+numbered names and replaced name blocks.
+
+The private host reader is prepared to collect the three load/save notification
+binding sets at a stable exploration boundary, using query/read-only process
+access and code/build checks. It has not been run in FFR. Binding presence alone
+does not establish complete consumer coverage or callback side effects. The
+normal-load adapter's external-effects gate remains false; no restore command
+has been enabled by this parser.
+
 New opening metadata can include an optional read-only `mapUnitCache`: bounded
 raw inherited parameter components, equipment/passives and effect counts from
 that profiled storage vtable. Distinct objects with duplicate unit IDs retain

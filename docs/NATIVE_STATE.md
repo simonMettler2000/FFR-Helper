@@ -386,6 +386,19 @@ Unicode validation, ownership transfer and exactly-once consuming destruction.
 The verified engine allocator entry is RVA 0x12406c0 with size/alignment arguments;
 integration with actual native encounter recreation remains pending.
 
+Following the encounter consumer's on-disk jump resolved the input-ownership
+question for this executable. The map-entry path forwards the descriptor to a
+routine that deep-copies its four integer arrays, nested passive arrays, BGM and
+scalar fields into the battle manager. On return, the map entry destroys the
+original BGM, each nested passive allocation, the passive container and all four
+integer arrays through the same engine release function. The downstream battle
+consumer alone does not perform that terminal input cleanup. A reconstruction
+adapter must therefore transfer allocations once to the verified map entry,
+validate the complete entry/copy/destructor/allocator chain, and never free
+transferred buffers after an uncertain invocation. Full function envelopes and
+the forwarding target were fingerprinted privately. This is a static ownership
+review; actual encounter recreation and repeated retries remain untested.
+
 The separately compiled [abort trial](../native/ABORT_TRIAL.md) adds a profiled
 battle-tick dispatcher and one EndBattle request, with session/revision/hash/nonce
 binding, expiry, a durable progression-only recovery gate and a second explicit

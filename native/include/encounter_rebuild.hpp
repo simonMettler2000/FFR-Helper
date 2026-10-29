@@ -35,7 +35,10 @@ inline std::vector<char16_t> utf16(const std::string& value) {
 // Rebuilds owned engine arrays, never pointers into captured vectors. Allocate
 // and Release MUST be paired functions from the same verified game allocator.
 // Before transfer(), this scope frees every allocation on failure/destruction.
-// After transfer(), the consuming native Encount function owns their destruction.
+// After transfer(), the caller must use the verified consuming MAP entry path,
+// which deep-copies the descriptor and destroys all its input arrays on return.
+// Calling its downstream battle consumer alone does not perform that cleanup.
+// Never helper-free transferred blocks after an uncertain native invocation.
 template<class Allocate, class Release>
 class EngineEncounter {
     Allocate allocate;

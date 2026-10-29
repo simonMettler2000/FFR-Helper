@@ -1,7 +1,10 @@
 # Current-field encounter recreation experiment
 
-This is a prerequisite for battle restart. It has isolated test coverage and
-**has not been tested in FFR**. It does not restore progression, resources,
+This is a prerequisite for battle restart. Its first supervised preparation in
+FFR refused before calling entry: the exit preserved progression/cache, but the
+live position differed from the original pre-entry sample. The user confirmed
+released inputs and no movement. **Actual recreation remains unverified.**
+The subsequent anchor correction is uninstalled. It does not restore progression, resources,
 effects, clock or RNG, and does not implement retry after an action.
 
 The separate practice DLL can request the same ordinary encounter setup once
@@ -13,8 +16,14 @@ unbound restoration/reentry core still refuses unsupported effects.
 Preparation requires the same captured source, session, game thread, map and
 live progression root. Both durable exit files and the current complete
 progression must match the original bytes. Battle managers must be released,
-queues empty, UI inactive and both command/skill histories untouched. The typed
-field anchor and recorded raw map-cache components must also match. Partial
+queues empty, UI inactive and both command/skill histories untouched. The recorded
+raw map-cache components must match the source. The original pre-entry position
+remains immutable evidence. A separate post-exit `entryFieldAnchor` must retain
+the original map and direction and remain exactly stable for three game ticks.
+That target is bound through commit, allocation and entry; later drift refuses
+the operation. The child capture must match this prepared anchor. Receipts
+separately report whether it equals the original anchor and explicitly set
+`worldPositionRestored=false`. No tolerance or position setter is used. Partial
 component equality does not prove complete effect or cache coherence.
 
 A separate nonce and eight-second preparation deadline bind one explicit

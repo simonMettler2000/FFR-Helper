@@ -3,7 +3,8 @@
 // through allocation. Normal engine entry preserves/uses its current effects;
 // this path never reconstructs or claims equality of complete effect graphs.
 bool recreation_field_ready(Observer* current,void* context,const std::shared_ptr<const Observer::Opening>& source,
-                            const std::string& session,const std::string& hash,std::uint64_t expected_root=0) {
+                            const std::string& session,const std::string& hash,const ffr::FieldAnchor& entry_field,
+                            std::uint64_t expected_root=0) {
     if(!source || source->session!=session || source->thread!=GetCurrentThreadId() || !source->field_value
         || source->map_unit_cache=="null" || current->quit.load() || current->expires.load()<seconds())return false;
     auto guard=probe_abort(context,source,session,hash);
@@ -12,6 +13,7 @@ bool recreation_field_ready(Observer* current,void* context,const std::shared_pt
     {
         std::lock_guard lock(current->mutex);
         if(current->opening!=source || current->session!=session || current->opening_hash!=hash
+            || current->recreation_deadline<seconds()
             || current->trial.phase()!=ffr::AbortPhase::manager_cleared || current->import_attempted
             || current->normalization_attempted || !untouched_history_locked(*current,*source)
             || !current->task_exit.result_task_observed || !current->task_exit.result_mode_observed
@@ -26,7 +28,12 @@ bool recreation_field_ready(Observer* current,void* context,const std::shared_pt
     if(!saved || *saved!=source->progression || root_getter()!=root)return false;
     const auto field=capture_live_field(reinterpret_cast<void*>(source->context_identity));
     const auto& old=*source->field_value;
-    if(!field || field->map_id!=old.map_id || field->position!=old.position || field->direction!=old.direction)return false;
+    // Ordinary encounter entry/exit can settle the player's transform while
+    // leaving progression unchanged. Bind the actual post-exit field separately;
+    // never rewrite the original capture or treat this as position restoration.
+    if(!field || entry_field.map_id!=old.map_id || entry_field.direction!=old.direction
+        || field->map_id!=entry_field.map_id || field->position!=entry_field.position
+        || field->direction!=entry_field.direction)return false;
     const auto base=reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr));
     const auto cache=ffr::capture_map_unit_cache(read_memory,source->context_identity,base+ffr::field_profile::map_storage_vtable_rva);
     if(!cache || ffr::to_json(*cache)!=source->map_unit_cache)return false;
@@ -41,6 +48,33 @@ void run_recreation_trial_inner(Observer* current,void* context,const std::share
                           std::int64_t now,float delta) {
     std::string phase;
     {std::lock_guard lock(current->mutex);phase=current->recreation_phase;}
+    if(phase=="checking") {
+        std::shared_ptr<const Observer::Opening> retained;std::string session,hash;std::uint64_t root{};
+        bool matched=false;
+        {
+            std::lock_guard lock(current->mutex);retained=current->recreation_source;session=current->recreation_session;
+            hash=current->recreation_hash;root=current->recreation_root;
+            matched=request && request->phase=="prepare-recreate" && request->session==session
+                && request->nonce==current->recreation_nonce && request->deadline==current->recreation_deadline
+                && retained && request->sequence==retained->sequence && request->opening_hash==hash
+                && now<=current->recreation_deadline;
+        }
+        const auto field=matched?capture_live_field(reinterpret_cast<void*>(retained->context_identity)):
+            std::optional<ffr::FieldAnchor>{};
+        if(!field || !recreation_field_ready(current,context,retained,session,hash,*field,root)) {
+            std::lock_guard lock(current->mutex);current->recreation_phase="refused";
+            current->recreation_message="Post-exit preparation expired or its world/progression/cache changed; no entry";return;
+        }
+        std::lock_guard lock(current->mutex);
+        if(current->recreation_entry_field && ffr::to_json(*current->recreation_entry_field)==ffr::to_json(*field))
+            ++current->recreation_field_stable_samples;
+        else {current->recreation_entry_field=field;current->recreation_field_stable_samples=1;}
+        if(current->recreation_field_stable_samples>=3) {
+            current->recreation_phase="armed";
+            current->recreation_message="Unchanged progression/cache and stable post-exit field bound across three game ticks; waiting for explicit commit";
+        }
+        return;
+    }
     if(phase=="armed") {
         std::lock_guard lock(current->mutex);
         if(now>current->recreation_deadline || current->session!=current->recreation_session || current->opening!=current->recreation_source) {
@@ -53,7 +87,9 @@ void run_recreation_trial_inner(Observer* current,void* context,const std::share
         if(!source || current->session!=current->recreation_session || !opening
             || opening==source || opening->sequence!=source->sequence+1
             || opening->context_identity!=source->context_identity || opening->session!=source->session
-            || opening->thread!=source->thread || opening->entry!=source->entry || opening->progression!=source->progression) {
+            || opening->thread!=source->thread || opening->entry!=source->entry || opening->progression!=source->progression
+            || !opening->field_value || !current->recreation_entry_field
+            || ffr::to_json(*opening->field_value)!=ffr::to_json(*current->recreation_entry_field)) {
             current->recreation_phase="uncertain";current->recreation_message="Native entry returned without the expected independent child capture; no retry";return;
         }
         current->recreation_child_sequence=opening->sequence;
@@ -81,27 +117,33 @@ void run_recreation_trial_inner(Observer* current,void* context,const std::share
             current->recreation_nonce=request->nonce;current->recreation_hash=request->opening_hash;
             current->recreation_deadline=request->deadline;current->recreation_source=opening;
         }
-        const bool matched=opening && request->session==opening->session && request->sequence==opening->sequence
+        const auto entry_field=opening?capture_live_field(reinterpret_cast<void*>(opening->context_identity)):
+            std::optional<ffr::FieldAnchor>{};
+        const bool matched=opening && entry_field && request->session==opening->session && request->sequence==opening->sequence
             && request->opening_hash==guard.opening_hash && request->deadline>=now && request->deadline<=now+8
-            && recreation_field_ready(current,context,opening,request->session,request->opening_hash);
+            && recreation_field_ready(current,context,opening,request->session,request->opening_hash,*entry_field);
         const auto root=matched?reinterpret_cast<std::uint64_t>(root_getter()):0;
         std::lock_guard lock(current->mutex);
-        current->recreation_root=root;current->recreation_phase=matched&&root?"armed":"refused";
-        current->recreation_message=matched&&root?"Unchanged durable progression and matching partial field/cache bound; waiting for explicit recreation commit":
+        current->recreation_entry_field=entry_field;
+        current->recreation_field_stable_samples=matched&&root?1:0;
+        current->recreation_root=root;current->recreation_phase=matched&&root?"checking":"refused";
+        current->recreation_message=matched&&root?"Verifying unchanged post-exit field across consecutive game ticks":
             "Recreation requires the same verified untouched exit, unchanged recovery/progression, matching field/raw cache and consuming-entry profile";
         return;
     }
     if(request->phase=="commit-recreate" && phase=="armed") {
         std::shared_ptr<const Observer::Opening> retained;std::string session,hash;std::uint64_t root{};
+        std::optional<ffr::FieldAnchor> entry_field;
         bool matched=false;
         {
             std::lock_guard lock(current->mutex);retained=current->recreation_source;session=current->recreation_session;
             hash=current->recreation_hash;root=current->recreation_root;
+            entry_field=current->recreation_entry_field;
             matched=retained && request->session==session && request->nonce==current->recreation_nonce
                 && request->sequence==retained->sequence && request->opening_hash==hash
                 && request->deadline==current->recreation_deadline && now<=current->recreation_deadline;
         }
-        if(!matched || !recreation_field_ready(current,context,retained,session,hash,root)) {
+        if(!matched || !entry_field || !recreation_field_ready(current,context,retained,session,hash,*entry_field,root)) {
             std::lock_guard lock(current->mutex);current->recreation_phase="refused";
             current->recreation_message="Recreation commit or current field/progression changed; no entry";return;
         }
@@ -109,7 +151,7 @@ void run_recreation_trial_inner(Observer* current,void* context,const std::share
         // No observer lock during entry: our ordinary capture hook must be able
         // to retain the child while this immutable source remains alive.
         auto result=current->recreation_binding.invoke(reinterpret_cast<void*>(retained->context_identity),retained->encounter,
-            retained->thread,[&]{return recreation_field_ready(current,context,retained,session,hash,root);});
+            retained->thread,[&]{return recreation_field_ready(current,context,retained,session,hash,*entry_field,root);});
         std::lock_guard lock(current->mutex);current->recreation_result=std::move(result);
         current->recreation_phase=current->recreation_result.native_returned?"returned":
             current->recreation_result.attempted?"uncertain":"refused";
@@ -141,6 +183,7 @@ std::string recreation_status(const Observer& current) {
         {"sourceSequence",std::to_string(current.recreation_source?current.recreation_source->sequence:0)},
         {"sourceHash",ffr::quote(current.recreation_hash)},{"deadline",std::to_string(current.recreation_deadline)},
         {"childSequence",std::to_string(current.recreation_child_sequence)},
+        {"entryFieldAnchor",current.recreation_entry_field?ffr::to_json(*current.recreation_entry_field):"null"},
         {"entryAttempted",json_flag(r.attempted)},{"inputTransferred",json_flag(r.input_transferred)},
         {"nativeReturned",json_flag(r.native_returned)},{"cleanupVerified",json_flag(r.cleanup_verified)},
         {"newEncounterVerified",json_flag(r.new_encounter_verified)},

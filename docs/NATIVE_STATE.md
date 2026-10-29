@@ -71,13 +71,24 @@ opening/menu, including current progression at that menu. The controller retains
 both receipts and requires foreground manual activation. Nonzero current field
 effects are left to normal engine entry; no effect/cache setter is involved.
 The older restoration core's refusal of unsupported effects remains intact.
-This experiment is uninstalled and not live-verified. It is a prerequisite for
-full retry; post-action rollback and RNG/effect restoration are still missing.
+The first installed test loaded normally and verified another unchanged exit,
+then refused recreation preparation before any entry call. Raw cache, map and
+direction matched; position differed by about 47 native units. The user confirmed
+released inputs and no movement. All five original save hashes stayed unchanged.
+The controller is stopped. Actual recreation remains unverified.
 
-Offline validation: the full 111-case native regression passed. A subsequent
-uncertain-cleanup reporting correction passed all 24 affected adapter, compiled
-recreation and opening-exit checks. The 182-test Python suite passes with one
-existing skip; the final sequence-type guard also passed its eight focused tests.
+The uninstalled correction retains the original pre-entry anchor, verifies a
+separate post-exit anchor over three game ticks, then requires that exact target
+through commit/allocation/entry and in the independent child capture. It keeps
+the original map/direction and all existing progression/cache/ownership checks.
+Receipts report original-anchor equality separately and explicitly deny position
+restoration. This remains a prerequisite for full retry; post-action rollback
+and RNG/effect restoration are still missing.
+
+Offline validation for the anchor correction: the full 112-case native regression
+passed, including an exit-position shift and post-preparation drift refusal.
+The 185-test Python suite passes with one existing skip. After adding a final
+expiry recheck, all 25 affected adapter/recreation/exit tests passed before packaging.
 These checks use isolated fixtures and do not establish live recreation.
 
 ## Live recorder findings

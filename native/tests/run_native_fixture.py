@@ -16,7 +16,7 @@ def main():
     parser.add_argument('--loader', required=True, type=Path)
     parser.add_argument('--module', required=True, type=Path)
     parser.add_argument('--mode', required=True, choices=['good', 'bad-game', 'bad-loader','bad-function','boundary-unreviewed','decision-history','decision-unavailable','menu-frame','menu-unavailable','skill-history','skill-unavailable','abort','abort-released','abort-wrong-owner','abort-wrong-task','abort-queued-command-denied','abort-flagged-denied','abort-denied','abort-skill-denied','abort-foreign-denied','abort-full-unavailable','abort-command-unavailable','abort-task-world-denied','abort-step-denied','abort-turn-event-denied','abort-vm-denied','abort-talk-denied','abort-ui-fails','abort-ui-task-drift','abort-ui-job-drift','abort-ui-code-drift','abort-check-false','abort-check-mode',
-                                                       'abort-recreate','abort-recreate-effects','abort-recreate-root-drift','abort-recreate-field-drift','abort-recreate-cache-drift','abort-recreate-allocate-drift','abort-recreate-menu-drift',
+                                                       'abort-recreate','abort-recreate-effects','abort-recreate-root-drift','abort-recreate-field-drift','abort-recreate-cache-drift','abort-recreate-allocate-drift','abort-recreate-menu-drift','abort-recreate-exit-anchor',
                                                        'clone','clone-after-action','clone-import-only','clone-unready','clone-mismatch','clone-mutates','clone-denied',
                                                        'combat','combat-after-action','combat-denied','combat-stale','combat-effects-unavailable',
                                                        'normalize','normalize-unready','normalize-stale','normalize-template','normalize-write-failed',
@@ -186,10 +186,11 @@ def main():
             assert probe['loaderReady']==(args.mode!='clone-unready')
         elif args.mode.startswith('abort-recreate'):
             status=json.loads((root/'connection/recreation-final-status.json').read_text(encoding='utf8'))
-            recreated=status['recreationTrial'];success=args.mode in {'abort-recreate','abort-recreate-effects'}
+            recreated=status['recreationTrial'];success=args.mode in {'abort-recreate','abort-recreate-effects','abort-recreate-exit-anchor'}
             sys.path.insert(0,str(Path(__file__).resolve().parents[2]))
             from ffr_helper.recreation_trial import validate_recreation
             validate_recreation(recreated)
+            assert recreated['entryFieldAnchor']['position'][0]==(170.125 if args.mode=='abort-recreate-exit-anchor' else 123.125)
             assert recreated['operation']=='same-setup-current-field' and recreated['available'] is True
             entered=success or args.mode=='abort-recreate-menu-drift'
             assert recreated['phase']==('verified' if success else 'uncertain' if entered else 'refused')

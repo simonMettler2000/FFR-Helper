@@ -337,6 +337,8 @@ struct Observer {
     std::int64_t recreation_deadline{};
     double recreation_active_seconds{};
     bool recreation_menu_progression_unchanged=false;
+    std::optional<ffr::FieldAnchor> recreation_entry_field;
+    unsigned recreation_field_stable_samples{};
     std::string abort_message="Abort trial has not initialized", opening_hash, recovery_hash;
     std::int64_t probe_time{};
     std::vector<unsigned char> after_progression;

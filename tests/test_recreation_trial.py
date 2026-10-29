@@ -14,7 +14,7 @@ from test_map_cache import sample_cache
 def recreation_status():
     return dict({k:False for k in FLAGS},available=True,cleanupVerified=True,
                 operation='same-setup-current-field',phase='idle',nonce='',session='',sourceHash='',
-                sourceSequence=0,childSequence=0,deadline=0,message='Fixture')
+                sourceSequence=0,childSequence=0,deadline=0,entryFieldAnchor=None,message='Fixture')
 
 
 class RecreationTrialTests(unittest.TestCase):
@@ -38,7 +38,7 @@ class RecreationTrialTests(unittest.TestCase):
     def arm(self):
         f=self.fixture;self.bridge.prepare(f.bridge.status(),f.capture);r=self.bridge.request
         f.frame['recreationTrial'].update(phase='armed',nonce=r['nonce'],session=f.recorder.session,
-            sourceSequence=r['sequence'],sourceHash=r['sha256'],deadline=r['deadline'])
+            sourceSequence=r['sequence'],sourceHash=r['sha256'],deadline=r['deadline'],entryFieldAnchor=copy.deepcopy(f.capture.metadata['fieldAnchor']))
         f.write_frame();return f.bridge.status()
 
     def child(self):
@@ -126,3 +126,23 @@ class RecreationTrialTests(unittest.TestCase):
             with self.subTest(key=key),self.assertRaises(ValueError):self.bridge.compare_child(state,child)
         changed=copy.deepcopy(state);changed['recreationTrial']['nonce']='b'*32
         with self.assertRaises(ValueError):self.bridge.compare_child(changed,good)
+
+    def test_stable_post_exit_position_is_bound_separately_without_rewriting_source(self):
+        state=self.arm();f=self.fixture;original=copy.deepcopy(f.capture.metadata['fieldAnchor'])
+        f.frame['recreationTrial']['entryFieldAnchor']['position'][0]+=47
+        f.write_frame();self.bridge.commit(f.bridge.status())
+        f.frame['recreationTrial'].update(phase='verified',entryAttempted=True,inputTransferred=True,nativeReturned=True,
+            newEncounterVerified=True,firstMenuProgressionUnchanged=True,childSequence=2);f.write_frame()
+        child=self.child();child.metadata['fieldAnchor']=copy.deepcopy(self.bridge.entry_field)
+        result=self.bridge.compare_child(f.bridge.status(),child)
+        self.assertTrue(result['childMatchesPreparedExitField'])
+        self.assertFalse(result['originalFieldAnchorUnchanged']);self.assertFalse(result['worldPositionRestored'])
+        self.assertEqual(f.capture.metadata['fieldAnchor'],original)
+        f.frame['recreationTrial']['entryFieldAnchor']['position'][0]+=1;f.write_frame()
+        with self.assertRaises(ValueError):self.bridge.compare_child(f.bridge.status(),child)
+
+    def test_changed_prepared_anchor_cannot_commit(self):
+        state=self.arm();f=self.fixture
+        f.frame['recreationTrial']['entryFieldAnchor']['position'][0]+=1;f.write_frame()
+        with self.assertRaisesRegex(ValueError,'field/map/direction'):self.bridge.commit(state)
+        self.assertFalse(self.bridge.commit_attempted)

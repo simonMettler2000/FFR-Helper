@@ -8,6 +8,7 @@ import uuid
 
 from .opening import OpeningCapture
 from .opening_comparison import validate_complete_entry
+from .field_anchor import validate_field_anchor
 from .storage import atomic_write
 
 PHASES={'idle','checking','armed','invoking','returned','verified','refused','uncertain'}
@@ -31,16 +32,19 @@ def _hex(value, length):
 
 
 def validate_recreation(probe):
-    fields=FLAGS|{'operation','phase','nonce','session','sourceSequence','sourceHash','deadline','childSequence','message'}
+    fields=FLAGS|{'operation','phase','nonce','session','sourceSequence','sourceHash','deadline','childSequence','entryFieldAnchor','message'}
     if (not isinstance(probe,dict) or set(probe)!=fields or probe.get('operation')!='same-setup-current-field'
             or any(type(probe.get(k)) is not bool for k in FLAGS)
             or any(probe[k] for k in FALSE_FLAGS) or probe.get('phase') not in PHASES
             or any(type(probe.get(k)) is not int or not 0<=probe[k]<10**12 for k in ['sourceSequence','childSequence','deadline'])
             or not isinstance(probe.get('message'),str) or len(probe['message'])>1000):
         raise ValueError('Invalid current-field recreation receipt.')
+    if probe['entryFieldAnchor'] is not None:validate_field_anchor(probe['entryFieldAnchor'])
+    if probe['phase'] in {'armed','invoking','returned','verified'} and probe['entryFieldAnchor'] is None:
+        raise ValueError('Prepared recreation field anchor is missing.')
     if probe['phase']=='idle':
         if (probe['nonce'] or probe['session'] or probe['sourceHash'] or probe['sourceSequence'] or probe['childSequence']
-                or probe['deadline'] or any(probe[k] for k in ['entryAttempted','inputTransferred','nativeReturned',
+                or probe['deadline'] or probe['entryFieldAnchor'] is not None or any(probe[k] for k in ['entryAttempted','inputTransferred','nativeReturned',
                                                                'newEncounterVerified','firstMenuProgressionUnchanged'])):
             raise ValueError('Idle recreation contains an action identity.')
     elif (not _hex(probe['nonce'],32) or not _hex(probe['session'],32) or not _hex(probe['sourceHash'],64)
@@ -66,6 +70,7 @@ class RecreationTrialBridge:
         self.request=None
         self.source=None
         self.commit_attempted=False
+        self.entry_field=None
 
     def probe(self,status):
         return validate_recreation(status.get('recreationTrial'))
@@ -118,7 +123,8 @@ class RecreationTrialBridge:
         r=self.request
         return bool(r and probe['session']==self.recorder.session and probe['nonce']==r['nonce']
                     and probe['sourceSequence']==r['sequence'] and probe['sourceHash']==r['sha256']
-                    and probe['deadline']==r['deadline'])
+                    and probe['deadline']==r['deadline']
+                    and (self.entry_field is None or probe['entryFieldAnchor']==self.entry_field))
 
     def commit(self,status):
         if self.commit_attempted:
@@ -131,6 +137,11 @@ class RecreationTrialBridge:
         if (self.abort.progression(current)!=self.source.progression
                 or self.abort.progression(current,after=True)!=self.source.progression):
             raise ValueError('Recreation recovery/source bytes changed.')
+        field=self.probe(current)['entryFieldAnchor'];source_field=self.source.metadata['fieldAnchor']
+        if (field!=self.probe(status)['entryFieldAnchor'] or field['mapId']!=source_field['mapId']
+                or field['direction']!=source_field['direction']):
+            raise ValueError('Prepared entry field/map/direction changed; no entry requested.')
+        self.entry_field=copy.deepcopy(field)
         self.commit_attempted=True
         self._write('commit-recreate')
 
@@ -142,11 +153,13 @@ class RecreationTrialBridge:
                 or child.metadata['sequence']!=self.probe(status)['childSequence']
                 or child.metadata['gameSha256']!=source.metadata['gameSha256']
                 or child.metadata['entry']!=source.metadata['entry'] or child.progression!=source.progression
-                or child.metadata.get('fieldAnchor')!=source.metadata.get('fieldAnchor')
+                or child.metadata.get('fieldAnchor')!=self.entry_field
                 or child.metadata.get('mapUnitCache')!=source.metadata.get('mapUnitCache')):
             raise ValueError('The child capture does not match the retained setup/progression/recorded field components.')
         return dict(currentFieldRecreationVerified=True,setupUnchanged=True,progressionBytesUnchanged=True,
-                    firstMenuProgressionUnchanged=True,recordedFieldComponentsUnchanged=True,
+                    firstMenuProgressionUnchanged=True,recordedMapCacheComponentsUnchanged=True,
+                    childMatchesPreparedExitField=True,
+                    originalFieldAnchorUnchanged=self.entry_field==source.metadata['fieldAnchor'],worldPositionRestored=False,
                     sourceSequence=source.metadata['sequence'],childSequence=child.metadata['sequence'],
                     battleRestartImplemented=False,progressionRestored=False,rngRestored=False,
                     effectGraphsVerified=False,fullCacheCoherenceVerified=False)

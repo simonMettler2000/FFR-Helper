@@ -184,7 +184,7 @@ if(FFR_BUILD_NATIVE_OBSERVER)
     target_compile_definitions(fixture_observer_abort PRIVATE "FFR_DECISION_PROFILE_HEADER=\"good_decision_profile.hpp\"" "FFR_SKILL_EVENT_PROFILE_HEADER=\"good_skill_event_profile.hpp\"")
     target_compile_definitions(fixture_observer_abort PRIVATE "FFR_TASK_ABORT_PROFILE_HEADER=\"good_task_abort_profile.hpp\"")
     target_compile_definitions(fixture_observer_abort PRIVATE "FFR_ENCOUNTER_ENTRY_PROFILE_HEADER=\"good_encounter_entry_profile.hpp\"")
-    foreach(mode abort-recreate abort-recreate-effects abort-recreate-root-drift abort-recreate-field-drift abort-recreate-cache-drift abort-recreate-allocate-drift abort-recreate-menu-drift)
+    foreach(mode abort-recreate abort-recreate-effects abort-recreate-root-drift abort-recreate-field-drift abort-recreate-cache-drift abort-recreate-allocate-drift abort-recreate-menu-drift abort-recreate-exit-anchor)
       add_test(NAME native_${mode} COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/run_native_fixture.py"
         --exe "$<TARGET_FILE:native_host_fixture>" --loader "$<TARGET_FILE:native_mock_loader>"
         --module "$<TARGET_FILE:fixture_observer_abort>" --mode "${mode}" --work "${CMAKE_CURRENT_BINARY_DIR}/test-work")

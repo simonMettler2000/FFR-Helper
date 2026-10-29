@@ -2,8 +2,11 @@
 
 The source now includes a separate, explicitly selected
 [current-field encounter recreation experiment](ENCOUNTER_RECREATION.md).
-It requires an unchanged verified opening exit and manual activation. It is
-uninstalled and not live-verified; it restores no progression, effects or RNG.
+It requires an unchanged verified opening exit and manual activation. Its first
+live preparation refused before entry because the original pre-entry position
+differed from the post-exit position. A separately bound, stable post-exit anchor
+correction is being tested offline; actual recreation remains unverified.
+It restores no progression, position, effects or RNG.
 The existing abort-only invocation retains its previous behavior.
 
 **Detached import and the revised opening-exit path are live-verified. Battle

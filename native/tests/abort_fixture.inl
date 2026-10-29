@@ -166,6 +166,7 @@ void run_abort_fixture(const std::filesystem::path& connection,const std::wstrin
             };
             recreate("commit-recreate");for(unsigned i=0;i<8;++i){pump();std::this_thread::sleep_for(std::chrono::milliseconds(25));}
             CHECK(calls==1 && recreation_allocations==0);
+            if(mode==L"abort-recreate-exit-anchor")put(fake_field_component,0x200,170.125);
             recreate("prepare-recreate");
             wait([&] {return read(connection/L"abort-status.json").find("\"phase\":\"armed\"")!=std::string::npos;});
             CHECK(calls==1 && recreation_allocations==0);
@@ -174,7 +175,7 @@ void run_abort_fixture(const std::filesystem::path& connection,const std::wstrin
             if(mode==L"abort-recreate-cache-drift")put(fake_map_parameters[0],0x10c,std::int32_t{999});
             recreation_allocate_drift=mode==L"abort-recreate-allocate-drift";
             recreate("commit-recreate");
-            const bool success=mode==L"abort-recreate" || mode==L"abort-recreate-effects";
+            const bool success=mode==L"abort-recreate" || mode==L"abort-recreate-effects" || mode==L"abort-recreate-exit-anchor";
             const bool entered=success || recreation_menu_drift;
             const auto expected=success?"\"phase\":\"verified\"":recreation_menu_drift?"\"phase\":\"uncertain\"":"\"phase\":\"refused\"";
             wait([&] {return read(connection/L"abort-status.json").find(expected)!=std::string::npos;});

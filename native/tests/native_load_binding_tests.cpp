@@ -140,7 +140,8 @@ int main(int argc,char** argv) {
             CHECK(native_result.native_called && native_result.native_returned && native_result.route_complete && native_result.root_matches
                 && !native_result.context_matches && !native_result.passed);
         }else {
-            CHECK(result.passed && result.native_attempted && result.bytes_match && result.pins_released && pins.empty());
+            CHECK(result.passed && result.native_attempted && result.bytes_match && !result.pins_released
+                && result.retention_expected && result.retention_verified && result.retained_owned_pins==2 && pins.size()==2);
             CHECK(native_result.passed && native_result.native_called && native_result.route_complete && native_result.root_matches);
         }
         CHECK(manager.root==&captured_root && disk_checks==checks_after && disk_reads==reads_after);

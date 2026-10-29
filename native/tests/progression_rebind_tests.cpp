@@ -27,15 +27,24 @@ struct Fixture {
         };
         api.native_load=[&](void* p){++applications;CHECK(p==&clone && roots.count(&original) && roots.count(&clone));current=p;return true;};
     }
-    ffr::ProgressionRebindResult run(bool durable=true){return controller.run(target,before,durable,api);}
+    ffr::ProgressionRebindResult run(bool durable=true,ffr::RebindRootPolicy policy=ffr::RebindRootPolicy::retain_after_application){return controller.run(target,before,durable,api,policy);}
 };
 int main() {
     try {
         {
             Fixture f;auto result=f.run();CHECK(result.passed && result.verified && result.native_attempted && result.native_returned);
             CHECK(result.clone_matches && result.recovery_matches && result.input_unchanged && result.root_matches && result.bytes_match);
-            CHECK(result.pins_released && result.retained_owned_pins==0 && f.roots.empty() && f.current==&f.clone && f.applications==1);
+            CHECK(!result.pins_released && result.retention_expected && result.retention_verified && result.retained_owned_pins==2
+                && f.roots.size()==2 && f.removes==0 && f.current==&f.clone && f.applications==1);
             CHECK(!f.run().native_attempted && f.applications==1 && f.imports==1);
+        }
+        {
+            Fixture f;auto result=f.run(true,ffr::RebindRootPolicy::release_after_verified_application);
+            CHECK(result.passed && result.pins_released && !result.retention_expected && result.retained_owned_pins==0 && f.roots.empty());
+        }
+        {
+            Fixture f;auto apply=f.api.native_load;f.api.native_load=[&](void* p){const bool result=apply(p);f.roots.erase(&f.original);return result;};
+            auto result=f.run();CHECK(result.verified && !result.passed && result.retention_expected && !result.retention_verified && f.removes==0);
         }
         {
             Fixture f;CHECK(!f.run(false).native_attempted && f.imports==0 && f.roots.empty());
@@ -72,7 +81,7 @@ int main() {
             Fixture f;f.roots.insert(&f.original);f.roots.insert(&f.clone);CHECK(f.run().passed && f.roots.size()==2 && f.removes==0);
         }
         {
-            Fixture f;f.api.objects.remove_root=[&](void*){++f.removes;};auto result=f.run();
+            Fixture f;f.api.objects.remove_root=[&](void*){++f.removes;};auto result=f.run(true,ffr::RebindRootPolicy::release_after_verified_application);
             CHECK(result.verified && result.native_attempted && !result.passed && !result.pins_released && f.removes==2);
         }
         {

@@ -345,8 +345,15 @@ root, imports and pins a separate target, verifies its bytes and input, and chec
 the original progression and field preconditions again immediately before its
 injected native-load callback. It marks the attempt before calling, never retries
 or rolls back automatically, and compares the resulting root, bytes and context.
-Uncertain application retains at most its two owned GC pins until process exit;
-pre-existing engine roots are preserved. Tests cover rejected prerequisites,
+By default, every attempted application retains at most its two owned GC pins
+until process exit, including a byte-matching result. Old caches may still refer
+to the previous root, and the engine may have added its own root flag while the
+helper's flag was set. Matching progression does not prove either ownership path.
+Intentional retention and its final root-flag checks are reported separately from
+failed pin release. Pre-existing engine roots are preserved. An explicit release
+policy exists for independently verified ownership paths and controlled tests;
+it must not become a client option for the unverified FFR experiment.
+Tests cover rejected prerequisites,
 changed recovery/target/input, callback exceptions, changed roots/bytes/context,
 pin-release failure and the one-attempt rule.
 

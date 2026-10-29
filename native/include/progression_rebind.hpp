@@ -13,10 +13,12 @@ struct ProgressionRebindResult {
     bool native_attempted{},native_returned{},clone_matches{},input_unchanged{},recovery_matches{};
     bool root_matches{},bytes_match{},context_stable{},verified{},pins_released=true,passed{};
     bool root_changed_before_apply{};
+    bool retention_expected{},retention_verified{};
     unsigned retained_owned_pins{};
     std::vector<unsigned char> after;
     std::string message="Progression rebind has not run";
 };
+enum class RebindRootPolicy {retain_after_application,release_after_verified_application};
 
 // Callback-driven prerequisite, NOT connected to a game command. The owner must
 // prove the exact game thread/profile, matching cleared field context, and a
@@ -26,7 +28,8 @@ class ProgressionRebindController {
     bool attempted=false;
 public:
     ProgressionRebindResult run(const std::vector<unsigned char>& target,const std::vector<unsigned char>& recovery,
-                               bool recovery_durable,const ProgressionRebindAPI& api) {
+                               bool recovery_durable,const ProgressionRebindAPI& api,
+                               RebindRootPolicy root_policy=RebindRootPolicy::retain_after_application) {
         ProgressionRebindResult result;
         if(attempted) {result.message="Rebind was already attempted; no retry is allowed";return result;}
         attempted=true;
@@ -41,6 +44,7 @@ public:
         }catch(...) {result.message="Rebind prerequisites failed before application";return result;}
         ScopedObjectRoot original_pin(api.objects,original);
         std::unique_ptr<ScopedObjectRoot> target_pin;
+        void* imported{};
         auto run=[&] {
             if(!original_pin.acquire()) {result.message="Could not retain the live progression object";return;}
             auto before=api.objects.save_memory(original);
@@ -50,6 +54,7 @@ public:
             auto input=target;
             const RawArray descriptor{reinterpret_cast<std::uint64_t>(input.data()),static_cast<std::int32_t>(input.size()),static_cast<std::int32_t>(input.size())};
             auto* clone=api.objects.load_memory(&descriptor);
+            imported=clone;
             result.input_unchanged=input==target;
             if(api.objects.current_root()!=original) {
                 result.root_changed_before_apply=true;result.message="Live root changed during detached import; application was not requested";return;
@@ -92,9 +97,15 @@ public:
                 catch(...) {result.root_changed_before_apply=true;}
             }
         }
-        if((result.native_attempted && !result.verified) || result.root_changed_before_apply) {
+        result.retention_expected=result.native_attempted && result.verified && root_policy==RebindRootPolicy::retain_after_application;
+        if((result.native_attempted && (!result.verified || result.retention_expected)) || result.root_changed_before_apply) {
             // Keep our own roots until process exit when native callbacks may
-            // have changed ownership. Never unroot an engine-owned existing pin.
+            // have changed ownership. Even matching bytes do not prove that old
+            // caches released their references or that the engine did not add
+            // its own root flag while ours was set. Default experiments retain
+            // BOTH objects; release requires a separately verified policy.
+            try {result.retention_verified=api.objects.is_rooted(original) && (!target_pin || api.objects.is_rooted(imported));}
+            catch(...) {result.retention_verified=false;}
             result.retained_owned_pins=original_pin.retain_until_exit()?1u:0u;
             if(target_pin && target_pin->retain_until_exit())++result.retained_owned_pins;
             result.pins_released=result.retained_owned_pins==0;
@@ -102,8 +113,11 @@ public:
             if(target_pin)result.pins_released=target_pin->release();
             result.pins_released=original_pin.release() && result.pins_released;
         }
-        result.passed=result.verified && result.pins_released;
-        if(result.verified && !result.pins_released)result.message="Native application verified, but temporary pin release could not be verified; no retry";
+        result.passed=result.verified && (result.retention_expected?result.retention_verified:result.pins_released);
+        if(result.retention_expected)result.message=result.retention_verified?
+            "Target bytes verified; original and target roots retained while cache ownership is unverified. World restoration is not established":
+            "Target bytes matched, but retained roots could not be verified; no retry";
+        else if(result.verified && !result.pins_released)result.message="Native application verified, but temporary pin release could not be verified; no retry";
         return result;
     }
 };

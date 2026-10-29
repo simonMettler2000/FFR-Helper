@@ -399,6 +399,22 @@ transferred buffers after an uncertain invocation. Full function envelopes and
 the forwarding target were fingerprinted privately. This is a static ownership
 review; actual encounter recreation and repeated retries remain untested.
 
+An unbound `EncounterReentry` controller now prepares a one-shot, source-preserving
+recreation experiment. It retains its own source, requires the same progression
+root and byte-identical GVAS, exact captured field position/direction and matching
+captured party-cache components, and refuses nonzero cached effects because the
+cache capture does not include their complete state. It checks two current
+snapshots around engine-buffer allocation and rechecks the field and complete
+consuming-entry profile before invocation. Refusal and uncertain native outcomes
+are terminal; a potentially consumed descriptor is never helper-freed or retried.
+The consuming input lives through the native call, while the retained source
+remains unchanged. Allocation failures, progression/resource/cache/context/code
+drift, reentrancy and consumption/exception lifetime paths pass focused portable
+tests. **This controller is disconnected from both game DLLs.** It does not
+restore changed progression, reset RNG or establish complete cache/world
+coherence. Its returned state only means the supplied native callback returned;
+it never claims a verified new encounter or functioning battle restart.
+
 The separately compiled [abort trial](../native/ABORT_TRIAL.md) adds a profiled
 battle-tick dispatcher and one EndBattle request, with session/revision/hash/nonce
 binding, expiry, a durable progression-only recovery gate and a second explicit

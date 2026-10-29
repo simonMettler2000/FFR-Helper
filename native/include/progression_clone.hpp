@@ -9,8 +9,8 @@ namespace ffr {
 // This is a type gate for an engine-produced, privately retained capture. It is
 // deliberately not a general parser or permission to deserialize files supplied
 // by a client. No disk path or payload is accepted by the native command.
-inline bool captured_progression_header(std::span<const unsigned char> bytes) {
-    if (bytes.size()<48 || bytes.size()>max_progression_bytes) return false;
+inline std::optional<std::size_t> captured_progression_body(std::span<const unsigned char> bytes) {
+    if (bytes.size()<48 || bytes.size()>max_progression_bytes) return {};
     std::size_t position=0;
     auto number=[&]<class T>(T& value) {
         if (sizeof(T)>bytes.size()-position) return false;
@@ -28,15 +28,18 @@ inline bool captured_progression_header(std::span<const unsigned char> bytes) {
     if (!number(magic)||magic!=0x53415647||!number(version)||version!=3
         ||!number(ue4)||!number(ue5)||ue5!=1017||!number(major)||major!=5
         ||!number(minor)||minor!=6||!number(patch)||patch!=1||!number(changelist)
-        ||!string({},false)||!number(format)||format!=3||!number(custom_count)||custom_count>10000) return false;
+        ||!string({},false)||!number(format)||format!=3||!number(custom_count)||custom_count>10000) return {};
     const auto custom_bytes=static_cast<std::size_t>(custom_count)*20;
-    if(custom_bytes>bytes.size()-position)return false;
+    if(custom_bytes>bytes.size()-position)return {};
     position+=custom_bytes;
-    if(!string("/Script/mucha.CPP_MuchaGameSaveData",true)||position>=bytes.size()||bytes[position++]!=0)return false;
+    if(!string("/Script/mucha.CPP_MuchaGameSaveData",true)||position>=bytes.size()||bytes[position++]!=0)return {};
     // An ordinary in-memory object has a None terminator followed by a zero u32.
     constexpr unsigned char footer[]{5,0,0,0,'N','o','n','e',0,0,0,0,0};
-    return bytes.size()-position>=sizeof(footer)
-        && std::memcmp(bytes.data()+bytes.size()-sizeof(footer),footer,sizeof(footer))==0;
+    if(bytes.size()-position<sizeof(footer) || std::memcmp(bytes.data()+bytes.size()-sizeof(footer),footer,sizeof(footer)))return {};
+    return position;
+}
+inline bool captured_progression_header(std::span<const unsigned char> bytes) {
+    return captured_progression_body(bytes).has_value();
 }
 
 struct CloneProbeAPI {

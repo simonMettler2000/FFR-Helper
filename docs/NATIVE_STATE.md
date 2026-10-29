@@ -450,6 +450,24 @@ For a new opening with supported clock metadata:
 python tools/plan_opening_playtime.py local/opening.ffropening --output local/opening.ffrplaytime.json
 ```
 
+A bounded native tagged-property walker now locates the canonical
+`Player.PlayTime` float through the supported GVAS header and nested property
+types. It refuses duplicate/ambiguous names, unsupported flags/types, truncation
+and missing fields rather than using a substring or client-supplied offset. Its
+location/value matched the independent full decoder on all three private
+engine-produced captures. A pure preparer changes exactly those four prospective
+bytes using the two-stage float32 plan and preserves the source.
+
+The callback-driven normalized-clone probe now verifies a separate rooted import
+before a fixed-member write, compares its serialization to that exact prospective
+payload, and checks unchanged input and live progression. It permits one attempt
+and retains owned roots if live identity changes or becomes uncertain. Tests use
+separate current/source values, a fixed native-layout member, wrong clones,
+incorrect writes, original corruption, exceptions and cleanup failures.
+**This probe is not connected to either game DLL or a runtime request.** Its
+profiled detached writer and actual engine behavior still need integration and
+live verification; it performs no live load, clock reset or battle recreation.
+
 Before enabling a restart button, an implementation must demonstrate:
 
 1. Capture occurs before party resources or encounter flags change, including

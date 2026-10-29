@@ -103,6 +103,7 @@ def main():
                 assert basis['savedSeconds']==1000.25 and basis['startSeconds']==9000
                 assert basis['sampleSeconds']==10000 and basis['totalSuspendedSeconds']==30 and basis['elapsedSeconds']==970
                 assert basis['suspendedStartSeconds']==0 and basis['restorable'] is False
+                assert basis['roundingMode']=='nearest-even'
                 assert report['objects']['nativeEntry']['playtimeBasisReady'] is True
                 assert report['objects']['nativeEntry']['playtimeBasisFailures']==0
                 replacement=json.loads((root/'connection/replacement-report.json').read_text(encoding='utf8'))

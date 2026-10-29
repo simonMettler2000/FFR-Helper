@@ -12,6 +12,14 @@ def sample_basis():
 
 
 class PlaytimeTests(unittest.TestCase):
+    def test_optional_rounding_control_preserves_legacy_diagnostics(self):
+        validate_playtime_basis(sample_basis())
+        for mode in ['nearest-even', 'downward', 'upward', 'toward-zero']:
+            self.assertEqual(validate_playtime_basis(dict(sample_basis(), roundingMode=mode))['roundingMode'], mode)
+        for mode in ['unknown', True, 0, [], None]:
+            with self.subTest(mode=mode), self.assertRaises(ValueError):
+                validate_playtime_basis(dict(sample_basis(), roundingMode=mode))
+
     def test_detached_valid_basis_and_ongoing_suspension(self):
         value = sample_basis()
         copied = validate_playtime_basis(value)

@@ -6,6 +6,7 @@ namespace ffr {
 struct PlaytimeBasis {
     float saved_seconds{};
     std::int64_t start_seconds{},suspended_start_seconds{},total_suspended_seconds{},sample_seconds{},elapsed_seconds{};
+    std::uint8_t rounding_mode=255; // Unknown unless the native thread's MXCSR was sampled coherently.
 };
 inline bool valid_playtime_basis(const PlaytimeBasis& value) {
     constexpr std::int64_t limit=1000000000000LL;
@@ -58,6 +59,9 @@ inline std::string to_json(const PlaytimeBasis& value) {
         "\"elapsedDefinition\":\"sample-minus-start-minus-completed-suspension\",\"savedSeconds\":"<<value.saved_seconds
         <<",\"startSeconds\":"<<value.start_seconds<<",\"suspendedStartSeconds\":"<<value.suspended_start_seconds
         <<",\"totalSuspendedSeconds\":"<<value.total_suspended_seconds<<",\"sampleSeconds\":"<<value.sample_seconds
-        <<",\"elapsedSeconds\":"<<value.elapsed_seconds<<'}';return out.str();
+        <<",\"elapsedSeconds\":"<<value.elapsed_seconds;
+    constexpr const char* modes[]{"nearest-even","downward","upward","toward-zero"};
+    if(value.rounding_mode<4)out<<",\"roundingMode\":"<<quote(modes[value.rounding_mode]);
+    out<<'}';return out.str();
 }
 } // namespace ffr

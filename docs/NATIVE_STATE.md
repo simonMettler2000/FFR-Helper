@@ -416,6 +416,31 @@ basis remain outstanding, alongside live field/world restoration. The absence of
 a property from a serialized object is not evidence that every possible non-default
 value is omitted; no broader serialization-loss claim is made here.
 
+The latest observer also records the native thread's MXCSR rounding control when
+it is unchanged across the clock read. Legacy diagnostics without that optional
+field remain valid. An offline Python/C++ planner now previews normal-load
+playtime normalization only for known nearest-even rounding, no ongoing suspension
+and bounded normal saved values. It reproduces the two separate binary32 stages:
+integer elapsed seconds are rounded to float first, then added to the saved float
+with another nearest-even rounding. A single high-precision sum can give a different
+answer at tie boundaries.
+
+The Python planner preserves the original opening and prepares distinct prospective
+bytes changing only `Player.PlayTime`. Its `.ffrplaytime.json` export contains a
+small non-restorable receipt with source/target hashes and values, never a game
+slot or target GVAS file. No native command accepts these bytes. Unknown rounding,
+ongoing suspension, subnormal values and overflow are refused. Tests cover exact
+tie cases, 2,000 native two-stage comparisons, source/unknown-field preservation
+and format separation. Applying the plan to an owned clone, rechecking current
+rounding, capturing a fresh recovery basis and verifying the actual clock reset
+remain outstanding.
+
+For a new opening with supported clock metadata:
+
+```sh
+python tools/plan_opening_playtime.py local/opening.ffropening --output local/opening.ffrplaytime.json
+```
+
 Before enabling a restart button, an implementation must demonstrate:
 
 1. Capture occurs before party resources or encounter flags change, including

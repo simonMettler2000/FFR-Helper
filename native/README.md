@@ -28,6 +28,9 @@ suspension only; an ongoing suspension is recorded separately. The consumer also
 checks the saved float against the serialized progression. Invalid clock evidence
 becomes null without suppressing the opening. This addition is fixture-tested,
 not installed or live-verified; it does not reset, restore or advance playtime.
+Stable native-thread MXCSR rounding control is included when available. The
+offline normalization planner requires known nearest-even rounding and refuses
+ongoing suspension; it never applies a clock change or overwrites the opening.
 
 ## Bounds and compatibility
 

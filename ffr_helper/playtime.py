@@ -10,12 +10,15 @@ FIELDS = {'kind', 'restorable', 'source', 'coverage', 'sameRootChecked', 'elapse
 
 
 def validate_playtime_basis(value):
-    if (not isinstance(value, dict) or set(value) != FIELDS
+    if (not isinstance(value, dict) or set(value) not in (FIELDS, FIELDS | {'roundingMode'})
             or value.get('kind') != 'partial-playtime-basis' or value.get('restorable') is not False
             or value.get('source') != 'live-playtime-subsystem' or value.get('coverage') != 'saved-base-and-clock-only'
             or value.get('sameRootChecked') is not True
             or value.get('elapsedDefinition') != 'sample-minus-start-minus-completed-suspension'):
         raise ValueError('Invalid partial playtime basis; this is not a restorable timer state.')
+    if 'roundingMode' in value and (not isinstance(value['roundingMode'], str)
+                                   or value['roundingMode'] not in ('nearest-even', 'downward', 'upward', 'toward-zero')):
+        raise ValueError('Invalid native rounding mode in partial playtime basis.')
     saved = value['savedSeconds']
     if type(saved) not in (int, float) or not 0 <= saved <= LIMIT or not math.isfinite(saved):
         raise ValueError('Invalid saved seconds in partial playtime basis.')

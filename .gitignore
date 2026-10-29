@@ -11,6 +11,8 @@ dist/
 *.ffrsnapshot
 *.ffrroute
 *.ffrruntime.json
+*.ffrcombat.json
+*.ffrplaytime.json
 *.ffropening
 *.gvas
 *.spec

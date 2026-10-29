@@ -5,6 +5,7 @@
 #define NOMINMAX
 #include <windows.h>
 #include <bcrypt.h>
+#include <xmmintrin.h>
 #include <MinHook.h>
 #ifdef FFR_CAPTURE_PROFILE_HEADER
 #include FFR_CAPTURE_PROFILE_HEADER
@@ -417,7 +418,9 @@ void __fastcall encounter_hook(void* context, const void* entry, bool skip_intro
             if (progression) {
                 opening->progression=std::move(*progression);
                 try {
+                    const auto rounding=_MM_GET_ROUNDING_MODE();
                     auto basis=playtime_profile_ready?ffr::capture_playtime_basis(read_memory,captured_root,root_getter,playtime_clock,playtime_seconds):std::nullopt;
+                    if(basis && rounding==_MM_GET_ROUNDING_MODE())basis->rounding_mode=static_cast<std::uint8_t>(rounding>>13);
                     if(basis)opening->playtime_basis=ffr::to_json(*basis);
                     else current->playtime_failures.fetch_add(1);
                 }catch(...) {current->playtime_failures.fetch_add(1);}

@@ -129,8 +129,13 @@ deliberate shortcut (the default):
 With FFR focused, release all shortcut buttons and press **R1 + Square + D-pad
 Down** once (XInput **RB + X + D-pad Down**), or **Ctrl + Shift + F8**. The helper
 reads those combinations only; it does not inject, suppress or remap game input.
-Controller support uses Windows XInput/Steam Input. A DirectInput-only controller
-needs Steam Input or the keyboard fallback. The exact foreground executable path
+Controller support uses Windows XInput/Steam Input. A legacy WinMM controller can
+use a deliberately calibrated binding by adding `--legacy-controller
+<local-controller.ffrinput.json>`. Its capability hash, slot, exact two-button
+mask and D-pad Down must match; button indices are not guessed. Calibration of
+the tested controller succeeded in a read-only supervised check. The new reader
+and safe edge behavior pass fixture tests; actual legacy-triggered battle exit
+still needs verification. The keyboard fallback remains available. The exact foreground executable path
 must match the game beside the supplied mod folder.
 
 Holding buttons at startup, focus return or an observed controller reconnection
@@ -147,8 +152,9 @@ The shortcut currently requests the **abort prerequisite**, not a completed
 battle-restart operation. The Windows API initialization was checked locally;
 the keyboard shortcut subsequently activated one supervised native pair in FFR.
 The actual controller mapping remains unverified: the tested controller was
-visible through legacy WinMM and absent from XInput. Calibrated legacy support
-is still needed. Detecting the keyboard press did not establish successful
+visible through legacy WinMM and absent from XInput. The calibrated legacy reader
+is now implemented and recognizes that device; live exit activation through it
+remains unverified. Detecting the keyboard press did not establish successful
 battle exit; both flags were set while the menu remained active.
 
 The client binds the first captured encounter and refuses a changed encounter or

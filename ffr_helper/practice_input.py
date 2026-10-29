@@ -64,12 +64,12 @@ class ManualIntent:
 class WindowsPracticeShortcut:
     """Poll only the two configured chords, with an exact foreground exe gate.
 
-    XInput is loaded only from the Windows system directory. DirectInput-only
-    controllers need Steam Input or the keyboard shortcut. No hooks, remapping,
+    Input libraries are loaded only from the Windows system directory. A legacy
+    controller needs an explicit calibrated binding. No hooks, remapping,
     game calls, input synthesis or gameplay-memory reads/writes are performed.
     """
 
-    def __init__(self, executable: Path):
+    def __init__(self, executable: Path, legacy_binding=None):
         if os.name != 'nt':
             raise RuntimeError('This experimental live shortcut requires Windows.')
         import ctypes
@@ -78,6 +78,8 @@ class WindowsPracticeShortcut:
         self.expected = os.path.normcase(os.path.abspath(executable))
         self.edge = ShortcutEdge()
         self.focused = False
+        self.legacy_binding = legacy_binding
+        self.legacy = None
         self.user = ctypes.WinDLL('user32', use_last_error=True)
         self.kernel = ctypes.WinDLL('kernel32', use_last_error=True)
         self.user.GetForegroundWindow.restype = wintypes.HWND
@@ -118,6 +120,11 @@ class WindowsPracticeShortcut:
                 break
             except (OSError, AttributeError):
                 continue
+        if legacy_binding is not None:
+            from .legacy_input import LegacyBinding, WindowsLegacyJoystick
+            if not isinstance(legacy_binding, LegacyBinding):
+                raise ValueError('A validated legacy-controller binding is required.')
+            self.legacy = WindowsLegacyJoystick(self.kernel)
 
     def _foreground_matches(self):
         from ctypes import wintypes
@@ -147,5 +154,11 @@ class WindowsPracticeShortcut:
                 state = self.state_type()
                 if self.xinput.XInputGetState(index, self.c.byref(state)) == 0:
                     buttons[index] = state.gamepad.buttons
+        if self.legacy is not None:
+            binding = self.legacy_binding
+            pad = self.legacy.read(binding.index)
+            buttons.extend([None] * 16)
+            if pad is not None and pad.capability_sha256 == binding.capability_sha256:
+                buttons[4 + binding.index] = RETRY_BUTTONS if binding.held(pad) else 0
         keyboard = all(self.user.GetAsyncKeyState(key) & 0x8000 for key in (0x11, 0x10, 0x77))
         return self.edge.update(True, tuple(buttons), keyboard)

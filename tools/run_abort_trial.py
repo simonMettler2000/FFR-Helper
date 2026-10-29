@@ -12,6 +12,7 @@ from ffr_helper.opening import export_opening
 from ffr_helper.runtime import NativeEntryRecorder
 from ffr_helper.storage import atomic_write
 from ffr_helper.practice_input import WindowsPracticeShortcut, ManualIntent, CONTROLLER_SHORTCUT, KEYBOARD_SHORTCUT
+from ffr_helper.legacy_input import LegacyBinding
 
 
 def main():
@@ -22,15 +23,20 @@ def main():
     parser.add_argument('--abort-at-opening',action='store_true',help='Explicitly request one abort at the first ordinary command menu')
     parser.add_argument('--trigger',choices=['manual','automatic'],default='manual',
                         help='Default: deliberate foreground controller/keyboard shortcut; automatic is for explicitly selected diagnostics')
+    parser.add_argument('--legacy-controller',type=Path,help='Locally calibrated legacy-controller .ffrinput.json binding')
     args=parser.parse_args()
     if not 1<=args.duration<=900:parser.error('--duration must be between 1 and 900 seconds')
     if args.directory.name.casefold()!='ffrhelperbattlepractice':
         parser.error('Choose the separate experimental practice component.')
+    if args.legacy_controller and (not args.abort_at_opening or args.trigger!='manual'):
+        parser.error('--legacy-controller requires an explicit manual abort trial')
     args.output.mkdir(parents=True,exist_ok=False)
     recorder=NativeEntryRecorder(args.directory);bridge=AbortTrialBridge(recorder)
     shortcut=None;intent=ManualIntent();activation=None;next_heartbeat=0
     if args.abort_at_opening and args.trigger=='manual':
-        shortcut=WindowsPracticeShortcut(args.directory.parents[2]/'FFRS-Win64-Shipping.exe')
+        executable=args.directory.parents[2]/'FFRS-Win64-Shipping.exe'
+        shortcut=(WindowsPracticeShortcut(executable,LegacyBinding.load(args.legacy_controller)) if args.legacy_controller
+                  else WindowsPracticeShortcut(executable))
     deadline=time.monotonic()+args.duration;pending=False;prepared=False;committed=False;last=None;recovery=None
     target_sequence=None
     try:

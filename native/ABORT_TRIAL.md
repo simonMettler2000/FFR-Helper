@@ -119,9 +119,32 @@ Probe only:
 
     python tools/run_abort_trial.py <FFRHelperBattlePractice-folder> --output local/abort-probe --duration 300
 
-One explicitly requested abort at the selected encounter's opening:
+One explicitly requested abort at the selected encounter's opening, with a
+deliberate shortcut (the default):
 
     python tools/run_abort_trial.py <FFRHelperBattlePractice-folder> --output local/abort-test --duration 300 --abort-at-opening
+
+With FFR focused, release all shortcut buttons and press **R1 + Square + D-pad
+Down** once (XInput **RB + X + D-pad Down**), or **Ctrl + Shift + F8**. The helper
+reads those combinations only; it does not inject, suppress or remap game input.
+Controller support uses Windows XInput/Steam Input. A DirectInput-only controller
+needs Steam Input or the keyboard fallback. The exact foreground executable path
+must match the game beside the supplied mod folder.
+
+Holding buttons at startup, focus return or an observed controller reconnection
+does not trigger a request. A press in a preemptive/surprise encounter, at an
+unsupported boundary or without fresh status is discarded. It never queues an
+abort for a later encounter. A valid press grants at most two seconds to collect
+the matching opening report, bound to that exact source; losing readiness,
+foreground or source cancels that intent. Losing foreground after preparation
+also prevents commit. Waiting alone performs no abort in this default mode.
+The same durable recovery, native guards and one-attempt limit still apply.
+
+For a separately selected automatic diagnostic only, add `--trigger automatic`.
+The shortcut currently requests the **abort prerequisite**, not a completed
+battle-restart operation. The Windows API initialization was checked locally;
+the actual controller mapping/foreground activation still needs supervised
+verification.
 
 The client binds the first captured encounter and refuses a changed encounter or
 prior party action. It saves the opening and progression recovery before commit,

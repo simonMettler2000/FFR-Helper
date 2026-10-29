@@ -106,7 +106,7 @@ python tools/observe_runtime.py <FFRHelperRuntimeNative-folder> --native --outpu
 
 This module does not enable or depend on Saving anywhere.
 
-The next uninstalled source update also provides optional decision-handler entry
+The recorder also provides optional decision-handler entry
 history in `observer-status.json`. An exact full-function fingerprint gates a
 read-only detour of the native `OnExecuteDecideCommand` target. Counts start at
 native encounter entry and remain separate from the immutable opening. Lease
@@ -114,8 +114,10 @@ gaps/session changes invalidate history; foreign-thread calls and overflow are
 flagged. The collector preserves validated changes in `.ffrdecision.json` files.
 These count handler invocations, including rejected/null calls, rather than
 completed commands. Coverage and fresh game-thread verification remain false;
-this telemetry cannot authorize a retry or practice operation. It has not been
-installed or tested in FFR.
+this telemetry cannot authorize a retry. The supervised source31d test observed
+zero entries at the first menu and after submenu cancellation, one after a user
+command, and zero again in the next encounter. Automatic surprise/counter actions
+also left it at zero, demonstrating a coverage gap.
 
 The ordinary recorder also provides an independent optional `menuObservation`
 from the actual battle-manager tick, with its own sample timestamp. Exact code
@@ -125,16 +127,27 @@ per second and preserves the original tick's arguments and Win32 error state.
 The collector stores `.ffrmenu.json` evidence; worker heartbeats cannot refresh an
 old game-frame timestamp. Invalid context or unavailable code makes this optional
 component null. It is excluded from the practice build and cannot enable a
-practice command. Coverage remains unreviewed and non-atomic; actual FFR behavior
-still needs verification.
+practice command. Fresh battle-menu samples were verified in FFR; tabbing out
+left the game timestamp stale despite worker heartbeats. The latest source also
+recognizes inactive field state with both owned managers released, matching a
+read-only live diagnostic. This released-manager case still needs tick verification.
+
+An additional exact-callsite observer counts `Delegate.Battle.Skill.Begin`
+events, including paths that may bypass manual decision handling. It fingerprints
+the complete producer and dispatcher envelopes and observes only that producer's
+dispatch return address. No event-name decoding or event-data reads occur. It
+preserves the original arguments, call count and Win32 error state. The bounded,
+session-bound `.ffrskill.json` history has passed compiled-DLL tests; live coverage
+is not yet verified and cannot authorize a restart.
 
 A separate [opening-abort trial](ABORT_TRIAL.md) is compiled only when explicitly
 requested. Its game-thread command path is excluded from the ordinary observer.
 It is a mutation-capable experiment. Its first-menu import guard refused before
 any request in FFR; no import, abort or restoration operation ran. The FFR source
-profile disables practice dispatch pending boundary/freshness review, and the
-installed practice module is disabled. It does not yet perform restart or
-save-state restoration.
+profile keeps opening abort and normalization disabled. Detached import now uses
+a separate ordinary idle-menu policy with fresh context and unchanged-live-save
+checks; its revised engine test remains pending. It does not yet perform restart
+or save-state restoration.
 
 The desktop or CLI verifies the sidecar against the matched report, parses its
 GVAS class/engine/property layout and exports a `.ffropening` archive. The archive

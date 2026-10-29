@@ -12,7 +12,11 @@ bool recovery_field_boundary(void* context,const std::shared_ptr<const Observer:
         || guard.units!=0 || guard.waiting_jobs!=0 || guard.working_jobs!=0)return false;
     const auto address=reinterpret_cast<std::uint64_t>(context);if(address<0x10000)return false;
     std::uint64_t units{},selected{};ffr::RawArray targets{};
-    if(!read_value(address-0x30+0x48,units) || !valid_object(units) || !read_value(units+0x38,selected) || selected
+    if(!read_value(address-0x30+0x48,units))return false;
+    if(guard.managers_released) {
+        std::uint64_t jobs{};
+        if(units || !read_value(address-0x30+0x40,jobs) || jobs)return false;
+    }else if(!valid_object(units) || !read_value(units+0x38,selected) || selected
         || !read_value(units+0x48,targets) || !ffr::valid_array(targets,64) || targets.count!=0)return false;
     auto field=capture_live_field(reinterpret_cast<void*>(opening->context_identity));
     return field && field->map_id==opening->field_value->map_id;

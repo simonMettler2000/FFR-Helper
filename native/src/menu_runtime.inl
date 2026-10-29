@@ -29,7 +29,22 @@ std::string sample_menu(void* context,const Observer::Opening& opening) {
     const auto ui=reinterpret_cast<std::uint64_t>(get(ffr::menu_profile::get_ui_rva,world));
     std::uint8_t phase{},during{};std::uint64_t jobs{},units{},selected{};
     if(!menu_object(ui)||!menu_read(ui+0x50,phase)||!menu_read(ui+0x80,during)||during>1
-        ||!menu_read(manager+0x40,jobs)||!menu_read(manager+0x48,units)||!menu_object(jobs)||!menu_object(units))return "null";
+        ||!menu_read(manager+0x40,jobs)||!menu_read(manager+0x48,units))return "null";
+    const auto& entry=opening.encounter;
+    const bool ordinary=entry.event==-1 && entry.can_escape && !entry.skip_win_result && !entry.skip_lose_result
+        && !entry.bounty && !entry.battle_test && entry.preemption==0 && !entry.skip_intro;
+    auto flag=[](bool value){return value?"true":"false";};
+    auto prefix=[&] {return "{\"kind\":\"read-only-menu-frame\",\"readOnly\":true,\"restorable\":false,\"boundaryReviewed\":false,\"atomicSnapshot\":false,"
+        "\"openingSequence\":"+std::to_string(opening.sequence)+",\"sampleTime\":"+std::to_string(seconds())
+        +",\"gameThread\":true,\"matchingWorld\":true,\"ordinaryEncounter\":"+flag(ordinary);};
+    if(!jobs && !units) {
+        // Verified teardown case: both owned managers are released, rather than
+        // live objects containing empty arrays. Never infer this from one null.
+        if(active || during)return "null";
+        return prefix()+",\"battleActive\":false,\"commandMenu\":false,\"fieldReady\":true,\"managersReleased\":true,"
+            "\"units\":0,\"waitingJobs\":0,\"workingJobs\":0,\"turnBeginnings\":-1}";
+    }
+    if(!menu_object(jobs)||!menu_object(units))return "null";
     ffr::RawArray waiting{},working{},unit_list{};
     if(!menu_read(jobs+0x28,waiting)||!menu_read(jobs+0x38,working)||!ffr::valid_array(waiting,1024)
         ||!ffr::valid_array(working,1024)||!menu_read(units+0x28,unit_list)||!ffr::valid_array(unit_list,64)
@@ -47,16 +62,10 @@ std::string sample_menu(void* context,const Observer::Opening& opening) {
         turns+=count;if(actor==selected)selected_friendly=true;
     }
     const bool all_friends=found==expected;
-    const auto& entry=opening.encounter;
-    const bool ordinary=entry.event==-1 && entry.can_escape && !entry.skip_win_result && !entry.skip_lose_result
-        && !entry.bounty && !entry.battle_test && entry.preemption==0 && !entry.skip_intro;
-    auto flag=[](bool value){return value?"true":"false";};
-    return "{\"kind\":\"read-only-menu-frame\",\"readOnly\":true,\"restorable\":false,\"boundaryReviewed\":false,\"atomicSnapshot\":false,"
-        "\"openingSequence\":"+std::to_string(opening.sequence)+",\"sampleTime\":"+std::to_string(seconds())
-        +",\"gameThread\":true,\"matchingWorld\":true,\"ordinaryEncounter\":"+flag(ordinary)
+    return prefix()
         +",\"battleActive\":"+flag(active!=0)+",\"commandMenu\":"+flag(active && during==1 && phase==0 && selected_friendly && all_friends)
         +",\"fieldReady\":"+flag(during==0 && !active && unit_list.count==0 && waiting.count==0 && working.count==0)
-        +",\"units\":"+std::to_string(unit_list.count)+",\"waitingJobs\":"+std::to_string(waiting.count)
+        +",\"managersReleased\":false,\"units\":"+std::to_string(unit_list.count)+",\"waitingJobs\":"+std::to_string(waiting.count)
         +",\"workingJobs\":"+std::to_string(working.count)+",\"turnBeginnings\":"+std::to_string(all_friends?turns:-1)+'}';
 }
 void __fastcall menu_tick_hook(void* context,float delta) {

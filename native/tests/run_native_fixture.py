@@ -15,11 +15,11 @@ def main():
     parser.add_argument('--exe', required=True, type=Path)
     parser.add_argument('--loader', required=True, type=Path)
     parser.add_argument('--module', required=True, type=Path)
-    parser.add_argument('--mode', required=True, choices=['good', 'bad-game', 'bad-loader','bad-function','boundary-unreviewed','decision-history','decision-unavailable','menu-frame','menu-unavailable','abort','abort-denied',
-                                                       'clone','clone-unready','clone-mismatch','clone-mutates','clone-denied',
+    parser.add_argument('--mode', required=True, choices=['good', 'bad-game', 'bad-loader','bad-function','boundary-unreviewed','decision-history','decision-unavailable','menu-frame','menu-unavailable','skill-history','skill-unavailable','abort','abort-denied',
+                                                       'clone','clone-after-action','clone-import-only','clone-unready','clone-mismatch','clone-mutates','clone-denied',
                                                        'combat','combat-after-action','combat-denied','combat-stale','combat-effects-unavailable',
                                                        'normalize','normalize-unready','normalize-stale','normalize-template','normalize-write-failed',
-                                                       'recovery','recovery-denied','recovery-stale','recovery-drift','recovery-write-failed','recovery-map-changed'])
+                                                       'recovery','recovery-released','recovery-denied','recovery-stale','recovery-drift','recovery-write-failed','recovery-map-changed'])
     parser.add_argument('--work', required=True, type=Path)
     args = parser.parse_args()
     args.work.mkdir(parents=True, exist_ok=True)
@@ -31,6 +31,22 @@ def main():
         shutil.copy2(args.module, module)
         subprocess.run([str(args.exe.resolve()), str(module), str(args.loader.resolve()), str(root/'connection'), args.mode], check=True, timeout=30)
         if args.mode=='boundary-unreviewed':return
+        if args.mode=='clone-import-only':
+            policy=json.loads((root/'connection/import-only-policy-status.json').read_text())
+            assert policy['available'] is False and policy['phase']=='idle'
+            assert policy['importProbe']['available'] is True and policy['importProbe']['boundaryPolicy']=='ordinary-idle-menu'
+            assert policy['normalizationProbe']['available'] is False and policy['normalizationProbe']['attempted'] is False
+        if args.mode.startswith('skill-'):
+            if args.mode=='skill-history':
+                sys.path.insert(0,str(Path(__file__).resolve().parents[2]))
+                from ffr_helper.skill_history import validate_skill_history
+                first=json.loads((root/'connection/skill-first.json').read_text())
+                foreign=json.loads((root/'connection/skill-foreign.json').read_text())
+                a=validate_skill_history(first['skillHistory']);b=validate_skill_history(foreign['skillHistory'])
+                assert a['skillBeginEvents']==1 and a['foreignThreadObserved'] is False
+                assert first['decisionHistory']['handlerEntries']==0
+                assert b['skillBeginEvents']==2 and b['foreignThreadObserved'] is True
+            return
         if args.mode.startswith('menu-'):
             if args.mode=='menu-frame':
                 sys.path.insert(0,str(Path(__file__).resolve().parents[2]))
@@ -45,6 +61,8 @@ def main():
                 assert not menu_frame_is_recent(paused['menuObservation'],paused['time'])
                 assert menu_frame_is_recent(resumed['menuObservation'],resumed['time'])
                 assert resumed['decisionHistory']['handlerEntries']==1
+                released=validate_menu_frame(json.loads((root/'connection/menu-released.json').read_text())['menuObservation'])
+                assert released['managersReleased'] is True and released['fieldReady'] is True
             return
         if args.mode.startswith('decision-'):
             if args.mode=='decision-history':
@@ -98,7 +116,7 @@ def main():
                 recovery.validate_recovery_report(first);recovery.validate_recovery_report(final)
                 source_report=json.loads((root/'connection/recovery-source-report.json').read_text(encoding='utf8'))
                 source=opening.OpeningCapture(source_report['objects']['nativeEntry']['opening'],(root/'connection/recovery-source-progression.gvas').read_bytes()).validate()
-                if args.mode=='recovery':
+                if args.mode in ['recovery','recovery-released']:
                     original=recovery.PartialRecoveryCapture((root/'connection/recovery-first-metadata.json').read_bytes(),
                                                              (root/'connection/recovery-first-progression.gvas').read_bytes()).validate()
                     latest=recovery.read_live_recovery(root/'connection',final)
@@ -159,8 +177,9 @@ def main():
             assert status['readOnly'] is False and status['restorable'] is False and status['phase']=='idle'
             probe=status['importProbe']
             assert probe['available'] is True and probe['restorable'] is False and probe['pinsReleased'] is True
-            assert probe['phase']==('rejected' if args.mode in ['clone-unready','clone-denied'] else 'passed' if args.mode=='clone' else 'failed')
-            assert probe['passed']==(args.mode=='clone')
+            success=args.mode in ['clone','clone-after-action','clone-import-only']
+            assert probe['phase']==('rejected' if args.mode in ['clone-unready','clone-denied'] else 'passed' if success else 'failed')
+            assert probe['passed']==success
             if args.mode=='clone-mismatch':assert probe['cloneMatches'] is False and probe['liveUnchanged'] is True
             if args.mode=='clone-mutates':assert probe['cloneMatches'] is True and probe['liveUnchanged'] is False
             assert probe['loaderReady']==(args.mode!='clone-unready')

@@ -12,6 +12,8 @@ from ffr_helper.runtime import RuntimeRecorder, NativeEntryRecorder, export_repo
 from ffr_helper.opening import export_opening
 from ffr_helper.decision_history import validate_decision_history
 from ffr_helper.menu_frame import validate_menu_frame,menu_frame_is_recent
+from ffr_helper.skill_history import validate_skill_history
+from ffr_helper.abort_trial import AbortTrialBridge
 from ffr_helper.storage import atomic_write
 
 
@@ -22,11 +24,15 @@ def main():
     parser.add_argument('--duration', type=int, default=600)
     parser.add_argument('--stop-file', type=Path, help='Optional local marker file for graceful shutdown')
     parser.add_argument('--native', action='store_true', help='Connect the experimental native entry observer instead of the Lua recorder')
+    parser.add_argument('--practice-guard',action='store_true',help='Read practice readiness/status only; never send an import or abort command')
     args = parser.parse_args()
     if not 1 <= args.duration <= 1800:
         parser.error('--duration must be between 1 and 1800 seconds')
+    if args.practice_guard and (not args.native or args.recorder.name.casefold()!='ffrhelperbattlepractice'):
+        parser.error('--practice-guard requires the separate native FFRHelperBattlePractice component')
     args.output.mkdir(parents=True, exist_ok=True)
     recorder = (NativeEntryRecorder if args.native else RuntimeRecorder)(args.recorder)
+    practice=AbortTrialBridge(recorder) if args.practice_guard else None
     deadline = time.monotonic()+args.duration
     pending = None
     next_capture = 0
@@ -37,6 +43,9 @@ def main():
     last_decision = False
     last_menu = False
     last_menu_summary = None
+    last_skill = False
+    last_guard = False
+    last_guard_summary = None
     try:
         print('Read-only observation session started; waiting for the game recorder.', flush=True)
         while time.monotonic() < deadline and not (args.stop_file and args.stop_file.exists()):
@@ -52,6 +61,31 @@ def main():
                 continue
             first_io_error = None
             status = recorder.status()
+            if practice is not None:
+                guarded=practice.status()
+                if guarded is not None:
+                    if guarded!=last_guard:
+                        stamp=datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S-%f')
+                        atomic_write(args.output/(stamp+'.ffrguard.json'),json.dumps(guarded,indent=2).encode('utf8'))
+                        last_guard=guarded
+                    guard=guarded['guard'];probe=guarded.get('importProbe',{})
+                    summary=(guarded['available'],probe.get('available'),probe.get('loaderReady'),guard.get('ordinaryEncounter'),
+                        guard.get('commandMenu'),guard.get('friendlyActions'),guard.get('fieldReady'),
+                        -2<=time.time()-guarded.get('probeTime',0)<=2)
+                    if summary!=last_guard_summary:
+                        print(f'Practice readiness only: {summary}; abort, import, loader, ordinary, menu, turn beginnings, field, recent. No commands sent.',flush=True)
+                        last_guard_summary=summary
+            if args.native and status and 'skillHistory' in status:
+                try:
+                    history=validate_skill_history(status['skillHistory'])
+                    if history!=last_skill:
+                        stamp=datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S-%f')
+                        evidence=dict(format='ffr-helper-skill-history-observation',readOnly=True,restorable=False,
+                            session=recorder.session,time=status['time'],skillHistory=history)
+                        atomic_write(args.output/(stamp+'.ffrskill.json'),json.dumps(evidence,indent=2).encode('utf8'))
+                        last_skill=history
+                        if history is not None:print(f"Skill.Begin events observed: {history['skillBeginEvents']}; coverage remains unreviewed.",flush=True)
+                except (OSError,ValueError,TypeError,KeyError):pass
             if args.native and status and 'menuObservation' in status:
                 try:
                     menu=validate_menu_frame(status['menuObservation'])

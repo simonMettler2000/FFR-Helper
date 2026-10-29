@@ -43,5 +43,14 @@ void run_menu_fixture(const std::filesystem::path& connection,bool available) {
     put(fake_jobs,0x28,ffr::RawArray{});
     wait([&]{return read(connection/L"observer-status.json").find("\"commandMenu\":true")!=std::string::npos;});
     CHECK(abort_calls==0 && clone_loads==0 && serialized==1 && decision_calls==1);
+    // Actual FFR teardown releases these objects. One missing manager is not
+    // enough evidence; both must be null with inactive battle and UI flags.
+    put(fake_manager,0x40,std::uint64_t{0});fake_manager[0x1a9]=0;fake_ui[0x80]=0;
+    wait([&]{return read(connection/L"observer-status.json").find("\"menuObservation\":null")!=std::string::npos;});
+    put(fake_manager,0x48,std::uint64_t{0});
+    wait([&]{return read(connection/L"observer-status.json").find("\"managersReleased\":true")!=std::string::npos;});
+    write(connection/L"menu-released.json",read(connection/L"observer-status.json"));
+    fake_ui[0x80]=1;
+    wait([&]{return read(connection/L"observer-status.json").find("\"menuObservation\":null")!=std::string::npos;});
 }
 }

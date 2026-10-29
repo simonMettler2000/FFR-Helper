@@ -84,9 +84,14 @@ The 29 October supervised test fixed the loader's missing constructor lookup and
 verified two updated read-only opening captures, including rewards and detached
 field/clock/cache/RNG metadata. A separate import-only test refused before any
 import: the first-menu counter counts turn beginnings, not completed commands.
-The supported FFR practice dispatch is now disabled pending correction/review.
-The installed practice module is disabled and the working read-only setup was
-restored. Battle restart and save-state restoration remain unfinished.
+The subsequent read-only test verified fresh menu sampling, unchanged opening
+bytes, menu cancellation, one command and encounter-history reset. Surprise
+attacks demonstrated that automatic actions can bypass the decision-handler
+counter. Opening abort and normalization remain disabled. Detached import now
+has a separate ordinary idle-menu policy: it can compare a temporary object
+after earlier turns, while rechecking the current context and unchanged live
+progression. This revised policy still needs supervised engine verification.
+Battle restart and save-state restoration remain unfinished.
 
 ## Use
 

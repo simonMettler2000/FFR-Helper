@@ -2,9 +2,13 @@
 #include <cstdint>
 namespace ffr::abort_profile {
 // Live testing showed +0x4dc increments at Turn.Begin, before command entry.
-// Keep practice dispatch unavailable until the first-command boundary and
-// reliable idle-menu sampling have been independently reviewed.
+// Keep abort unavailable until the first-command boundary is reviewed.
+// Detached import has a separate idle-menu policy and never applies live state.
 inline constexpr bool opening_boundary_reviewed=false;
+// Independently reviewed against source31d's supervised idle-menu samples.
+// This only permits detached clone comparison; it does not apply live state.
+inline constexpr bool detached_import_menu_reviewed=true;
+inline constexpr bool normalization_field_reviewed=false;
 inline constexpr std::uintptr_t tick_rva=0x4f66930;
 inline constexpr char tick_sha256[]="aea50882c7c5ebfbfdbfdc67acb027058f860552ae780d662efb44395f4350d7";
 inline constexpr std::uintptr_t get_world_rva=0x42fb240;

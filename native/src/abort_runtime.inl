@@ -64,7 +64,11 @@ ffr::AbortGuard probe_abort(void* tick_context,const std::shared_ptr<const Obser
             && !entry.bounty && !entry.battle_test && entry.preemption==0 && !entry.skip_intro;
     }
     std::uint64_t jobs{},units{};
-    if(!read_value(manager+0x40,jobs)||!read_value(manager+0x48,units)||!valid_object(jobs)||!valid_object(units))return out;
+    if(!read_value(manager+0x40,jobs)||!read_value(manager+0x48,units))return out;
+    if(!jobs && !units && ui_known && during==0 && !out.battle_active) {
+        out.units=0;out.waiting_jobs=0;out.working_jobs=0;out.field_ready=true;out.managers_released=true;return out;
+    }
+    if(!valid_object(jobs)||!valid_object(units))return out;
     ffr::RawArray waiting{},working{},unit_list{};
     if(!read_value(jobs+0x28,waiting)||!read_value(jobs+0x38,working)
         ||!ffr::valid_array(waiting,1024)||!ffr::valid_array(working,1024))return out;
@@ -106,8 +110,9 @@ void abort_tick(void* context) {
     if(!current||current->quit.load())return;
     std::shared_ptr<const Observer::Opening> opening;
     std::string session,hash;std::optional<ffr::AbortRequest> request;bool available=false;
+    bool abort_permitted=false;
     {std::lock_guard lock(current->mutex);opening=current->opening;session=current->session;hash=current->opening_hash;
-        request=current->abort_request;available=current->abort_available;}
+        request=current->abort_request;available=current->dispatcher_available;abort_permitted=current->abort_available;}
     if(!available)return;
     const auto now=seconds();
     if(current->expires.load()<now) {
@@ -120,18 +125,18 @@ void abort_tick(void* context) {
     }
     run_combat_probe(current,context,guard,now);
     run_recovery_probe(current,context,opening,guard,now);
-    run_import_probe(current,opening,guard,request,now);
+    run_import_probe(current,context,opening,guard,request,now);
     run_normalization_probe(current,context,opening,guard,request,now);
     // The import-only and abort experiments cannot be combined in one launch.
     {std::lock_guard lock(current->mutex);if(current->import_attempted)return;}
-    if(request && request->phase=="prepare") {
+    if(abort_permitted && request && request->phase=="prepare") {
         std::lock_guard lock(current->mutex);
         current->trial.prepare(*request,guard,now,[&] {
             auto copied=ffr::capture_progression(read_memory,root_getter,save_memory,memory_free);
             return copied?std::move(*copied):std::vector<unsigned char>{};
         });
     }
-    if(request && request->phase=="commit") {
+    if(abort_permitted && request && request->phase=="commit") {
         bool send=false;
         {std::lock_guard lock(current->mutex);
             current->trial.commit(*request,guard,now,[&] {send=true;});
@@ -193,14 +198,16 @@ void Observer::publish_abort(const Lease& lease) {
             {"ordinaryEncounter",json_flag(g.ordinary_encounter)},{"battleActive",json_flag(g.battle_active)},
             {"commandMenu",json_flag(g.command_menu)},{"units",std::to_string(g.units)},{"waitingJobs",std::to_string(g.waiting_jobs)},
             {"workingJobs",std::to_string(g.working_jobs)},{"friendlyActions",std::to_string(g.friendly_actions)},
-            {"sequence",std::to_string(g.sequence)},{"openingHash",ffr::quote(g.opening_hash)},{"fieldReady",json_flag(g.field_ready)}});
+            {"sequence",std::to_string(g.sequence)},{"openingHash",ffr::quote(g.opening_hash)},{"fieldReady",json_flag(g.field_ready)},
+            {"managersReleased",json_flag(g.managers_released)},{"counterMeaning",ffr::quote("turn-beginnings")}});
         const auto recovery=json_object({{"kind",ffr::quote("progression-only")},{"restorable","false"},
             {"file",ffr::quote("abort-recovery.gvas")},{"sha256",ffr::quote(recovery_hash)},
             {"byteLength",std::to_string(trial.recovery_bytes().size())}});
         const auto after_metadata=json_object({{"kind",ffr::quote("progression-only")},{"restorable","false"},
             {"file",ffr::quote("abort-after.gvas")},{"sha256",ffr::quote(after_hash)},
             {"byteLength",std::to_string(after_progression.size())}});
-        const auto imported=json_object({{"available",json_flag(import_available && !normalization_attempted)},{"loaderReady",json_flag(import_loader_ready)},
+        const auto imported=json_object({{"available",json_flag(import_available && ffr::abort_profile::detached_import_menu_reviewed && !normalization_attempted)},{"loaderReady",json_flag(import_loader_ready)},
+            {"boundaryPolicy",ffr::quote("ordinary-idle-menu")},
             {"phase",ffr::quote(import_phase)},{"nonce",ffr::quote(import_nonce)},{"session",ffr::quote(import_session)},
             {"openingHash",ffr::quote(import_hash)},
             {"sequence",std::to_string(import_sequence)},{"passed",json_flag(import_result.passed)},
@@ -220,7 +227,8 @@ void Observer::publish_abort(const Lease& lease) {
 }
 
 void install_abort_tick_hook() {
-    if(!ffr::abort_profile::opening_boundary_reviewed) {
+    if(!ffr::abort_profile::opening_boundary_reviewed && !ffr::abort_profile::detached_import_menu_reviewed
+        && !ffr::abort_profile::normalization_field_reviewed) {
         std::lock_guard lock(observer->mutex);
         observer->abort_message="Opening command boundary is unreviewed; practice tick dispatch disabled";
         return;
@@ -236,13 +244,16 @@ void install_abort_tick_hook() {
         Sha256 hash;hash.add(code.data(),code.size());
         if(hash.finish()!=profile.second) {std::lock_guard lock(observer->mutex);observer->abort_message="Abort trial code profile mismatch; no tick hook installed";return;}
     }
-    initialize_import_probe();
+    if(ffr::abort_profile::detached_import_menu_reviewed || ffr::abort_profile::normalization_field_reviewed)initialize_import_probe();
     tick_address=reinterpret_cast<void*>(base+ffr::abort_profile::tick_rva);void* trampoline{};
     if(MH_CreateHook(tick_address,reinterpret_cast<void*>(&abort_tick_hook),&trampoline)!=MH_OK)return;
     original_tick.store(reinterpret_cast<TickFunction>(trampoline),std::memory_order_release);
     if(MH_EnableHook(tick_address)!=MH_OK){MH_RemoveHook(tick_address);return;}
     tick_installed.store(true);
-    std::lock_guard lock(observer->mutex);observer->abort_available=true;observer->abort_message="Experimental opening-abort trial available";
+    std::lock_guard lock(observer->mutex);observer->dispatcher_available=true;
+    observer->abort_available=ffr::abort_profile::opening_boundary_reviewed;
+    observer->abort_message=observer->abort_available?"Experimental opening-abort trial available":
+        "Opening abort remains unreviewed; only the separately reviewed detached-import idle menu is enabled";
 }
 void shutdown_abort_tick_hook() {
     if(tick_installed.exchange(false))MH_DisableHook(tick_address);

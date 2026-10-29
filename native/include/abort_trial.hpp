@@ -17,6 +17,7 @@ struct AbortGuard {
     std::string session, opening_hash;
     std::uint64_t sequence{};
     bool field_ready{};
+    bool managers_released{};
 };
 enum class AbortPhase { idle, recovery_pending, armed, abort_sent, manager_cleared, rejected, timed_out };
 inline const char* phase_name(AbortPhase phase) {

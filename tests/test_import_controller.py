@@ -9,6 +9,7 @@ import time
 import unittest
 from unittest.mock import patch
 from ffr_helper.abort_trial import AbortTrialBridge
+from ffr_helper.import_probe import ImportProbeBridge as RealImportProbeBridge
 from test_opening import sample_opening
 from tools import run_import_probe
 
@@ -18,7 +19,7 @@ class ImportControllerTests(unittest.TestCase):
         capture=sample_opening();capture.metadata['sequence']=2
         now=int(time.time());digest=capture.metadata['sha256'];sent=[];seen=[]
         ordinary=dict(gameThread=True,matchingWorld=True,ordinaryEncounter=True,battleActive=True,commandMenu=True,
-            units=10,waitingJobs=0,workingJobs=0,friendlyActions=0,sequence=2,openingHash=digest)
+            units=10,waitingJobs=0,workingJobs=0,friendlyActions=3,sequence=2,openingHash=digest)
         guards=[dict(ordinary,ordinaryEncounter=False,friendlyActions=1,sequence=1),
                 dict(ordinary,commandMenu=False,friendlyActions=1),ordinary]
         class Recorder:
@@ -27,10 +28,11 @@ class ImportControllerTests(unittest.TestCase):
             def report(self):return {'testSequence':2}
             def disconnect(self):self.closed=True
         class Bridge:
+            safe_guard=staticmethod(RealImportProbeBridge.safe_guard)
             def __init__(self,recorder):self.index=0;self.bridge=AbortTrialBridge(recorder)
             def status(self):
                 guard=copy.deepcopy(guards[min(self.index,len(guards)-1)]);self.index+=1
-                return dict(probeTime=now,guard=guard,importProbe=dict(available=True,loaderReady=True,phase='idle',message='Ready'))
+                return dict(probeTime=now,guard=guard,importProbe=dict(available=True,loaderReady=True,phase='idle',message='Ready',boundaryPolicy='ordinary-idle-menu'))
             def send(self,report):sent.append(report);return capture
             def receipt(self):return dict(passed=True,message='Matched') if sent else None
         with tempfile.TemporaryDirectory() as folder:
@@ -42,7 +44,7 @@ class ImportControllerTests(unittest.TestCase):
             self.assertEqual(json.loads((output/'import-receipt.json').read_text())['passed'],True)
             self.assertTrue((output/'opening.ffropening').exists())
 
-    def test_nonzero_counter_at_supported_menu_still_refuses_without_sending(self):
+    def test_unknown_policy_at_supported_menu_refuses_without_sending(self):
         capture=sample_opening();sent=[];closed=[]
         class Recorder:
             def __init__(self,directory):pass
@@ -51,7 +53,7 @@ class ImportControllerTests(unittest.TestCase):
         class Bridge:
             def __init__(self,recorder):pass
             def status(self):
-                return dict(importProbe=dict(available=True,loaderReady=True,phase='idle',message='Ready'),
+                return dict(importProbe=dict(available=True,loaderReady=True,phase='idle',message='Ready',boundaryPolicy='unsupported'),
                     guard=dict(ordinaryEncounter=True,commandMenu=True,sequence=1,openingHash=capture.metadata['sha256'],friendlyActions=1))
             def send(self,report):sent.append(report)
         with tempfile.TemporaryDirectory() as folder:

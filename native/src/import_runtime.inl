@@ -57,7 +57,7 @@ ffr::CloneProbeAPI make_import_api(const std::function<bool()>& readiness) {
     return api;
 }
 
-void run_import_probe(Observer* current,const std::shared_ptr<const Observer::Opening>& opening,
+void run_import_probe(Observer* current,void* context,const std::shared_ptr<const Observer::Opening>& opening,
                       const ffr::AbortGuard& guard,const std::optional<ffr::AbortRequest>& request,std::int64_t now) {
     bool available=false;
     {std::lock_guard lock(current->mutex);available=current->import_available;}
@@ -70,18 +70,21 @@ void run_import_probe(Observer* current,const std::shared_ptr<const Observer::Op
         if(current->import_attempted || current->trial.phase()!=ffr::AbortPhase::idle)return;
         current->import_attempted=true;current->import_nonce=request->nonce;current->import_session=request->session;
         current->import_sequence=request->sequence;current->import_hash=request->opening_hash;
-        permitted=initialized && opening && current->opening==opening && request->session==guard.session
+        permitted=ffr::abort_profile::detached_import_menu_reviewed && initialized && opening && current->opening==opening && request->session==guard.session
             && request->sequence==guard.sequence && request->opening_hash==guard.opening_hash
-            && request->deadline>=now && request->deadline<=now+8 && guard.matching_world && guard.ordinary_encounter
-            && guard.battle_active && guard.command_menu && guard.units>0 && guard.units<=64
-            && guard.friendly_actions==0 && guard.waiting_jobs==0 && guard.working_jobs==0;
+            && request->deadline>=now && request->deadline<=now+8 && ffr::ordinary_idle_import_menu(guard);
         current->import_phase=permitted?"running":"rejected";
-        current->import_result.message=permitted?"Detached import comparison running":"Import probe requires initialized loader and a matching ordinary opening command menu";
+        current->import_result.message=permitted?"Detached import comparison running":"Import probe requires initialized loader and a matching ordinary idle command menu";
     }
     if(!permitted)return;
     // No observer lock across UObject/allocator calls. All calls below are on the
     // encounter's recorded game thread and use only exact-profile primitive ABIs.
-    auto api=make_import_api([&] {return !current->quit.load() && current->expires.load()>=seconds() && import_loader_initialized();});
+    auto api=make_import_api([&] {
+        const auto fresh=seconds();
+        if(current->quit.load() || current->expires.load()<fresh || request->deadline<fresh || !import_loader_initialized())return false;
+        {std::lock_guard lock(current->mutex);if(current->opening!=opening || current->session!=request->session || current->opening_hash!=request->opening_hash)return false;}
+        return ffr::ordinary_idle_import_menu(probe_abort(context,opening,request->session,request->opening_hash));
+    });
     auto result=ffr::probe_progression_clone(opening->progression,api);
     std::lock_guard lock(current->mutex);
     current->import_phase=result.passed?"passed":"failed";current->import_result=std::move(result);

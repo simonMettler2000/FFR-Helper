@@ -12,6 +12,7 @@ class ImportProbeTests(unittest.TestCase):
         test_abort_trial.AbortClientTests.setUp(self)
         self.bridge = ImportProbeBridge(self.recorder)
         self.frame['importProbe'] = dict(available=True, loaderReady=True, phase='idle', nonce='', session='',
+                                         boundaryPolicy='ordinary-idle-menu',
                                          sequence=0, openingHash='', passed=False, cloneMatches=False,
                                          liveUnchanged=False, inputUnchanged=False, pinsReleased=True,
                                          byteLength=0, message='Fixture', restorable=False)
@@ -53,11 +54,18 @@ class ImportProbeTests(unittest.TestCase):
                 self.bridge.send(self.report)
             self.assertIsNone(self.bridge.request)
         self.frame = copy.deepcopy(original)
-        self.frame['guard']['friendlyActions'] = 1
+        self.frame['guard']['workingJobs'] = 1
         self.write_frame()
         with self.assertRaises(ValueError):
             self.bridge.send(self.report)
         self.assertFalse((self.root/'connection/abort-request.txt').exists())
+
+    def test_turn_beginnings_do_not_block_detached_import_or_enable_abort(self):
+        self.frame['guard']['friendlyActions']=3
+        self.write_frame();self.bridge.send(self.report)
+        self.assertEqual((self.root/'connection/abort-request.txt').read_text().splitlines()[-1],'probe-import')
+        with self.assertRaises(ValueError):test_abort_trial.AbortTrialBridge(self.recorder).prepare(self.report)
+        self.assertEqual((self.root/'connection/abort-request.txt').read_text().splitlines()[-1],'probe-import')
 
     def test_abort_and_import_probes_cannot_be_combined(self):
         self.frame['phase'] = 'armed'
@@ -74,7 +82,7 @@ class ImportProbeTests(unittest.TestCase):
     def test_malformed_or_misleading_probe_status_is_rejected(self):
         original = copy.deepcopy(self.frame)
         for key, value in [('restorable', True), ('passed', 1), ('pinsReleased', None),
-                           ('phase', 'restored'), ('byteLength', 16*1024*1024+1)]:
+                           ('phase', 'restored'), ('byteLength', 16*1024*1024+1),('boundaryPolicy','opening-untouched')]:
             self.frame = copy.deepcopy(original)
             self.frame['importProbe'][key] = value
             self.write_frame()

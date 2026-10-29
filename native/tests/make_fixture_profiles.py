@@ -15,6 +15,9 @@ class PE:
         assert self.u16(optional) == 0x20b and 0 < count < 128
         table = optional+size
         self.sections = [struct.unpack_from('<IIII', self.raw, table+40*i+8) for i in range(count)]
+        exception_rva,exception_size=struct.unpack_from('<II',self.raw,optional+112+3*8)
+        exception=self.offset(exception_rva)
+        self.functions={b:e for b,e,_ in (struct.unpack_from('<III',self.raw,exception+p) for p in range(0,exception_size,12))}
         export = self.offset(self.u32(optional+112))
         self.function_table = self.u32(export+28)
         names, ordinals = self.u32(export+32), self.u32(export+36)
@@ -46,19 +49,32 @@ def main():
     offset = game_pe.offset(entry)
     code_hash = hashlib.sha256(game_pe.raw[offset:offset+64]).hexdigest()
     output.mkdir(parents=True, exist_ok=True)
+    producer=game_pe.exports['ffr_test_skill_begin'];dispatcher=game_pe.exports['ffr_test_dispatch']
+    producer_size=game_pe.functions[producer]-producer;dispatcher_size=game_pe.functions[dispatcher]-dispatcher
+    p=game_pe.offset(producer);producer_bytes=game_pe.raw[p:p+producer_size]
+    calls=[producer+i for i in range(len(producer_bytes)-4) if producer_bytes[i]==0xe8
+           and producer+i+5+struct.unpack_from('<i',producer_bytes,i+1)[0]==dispatcher]
+    assert len(calls)==1,'Fixture must contain one direct, non-tail Skill.Begin dispatch call'
+    skill_text='#pragma once\n#include <cstdint>\n#include <cstddef>\nnamespace ffr::skill_event_profile {\n'
+    for key,rva,size in [('producer',producer,producer_size),('dispatcher',dispatcher,dispatcher_size)]:
+        start=game_pe.offset(rva);digest=hashlib.sha256(game_pe.raw[start:start+size]).hexdigest()
+        skill_text+=f'inline constexpr std::uintptr_t {key}_rva={rva};\ninline constexpr std::size_t {key}_size={size};\ninline constexpr char {key}_sha256[]="{digest}";\n'
+    skill_text+=f'inline constexpr std::uintptr_t callsite_rva={calls[0]};\n}}\n'
+    (output/'good_skill_event_profile.hpp').write_text(skill_text,encoding='utf8')
     decision_rva=game_pe.exports['ffr_test_decision'];decision_offset=game_pe.offset(decision_rva)
     decision_hash=hashlib.sha256(game_pe.raw[decision_offset:decision_offset+64]).hexdigest()
     (output/'good_decision_profile.hpp').write_text('#pragma once\n#include <cstddef>\n#include <cstdint>\nnamespace ffr::decision_profile {\n'
         +f'inline constexpr std::uintptr_t handler_rva={decision_rva};\ninline constexpr std::size_t handler_size=64;\n'
         +f'inline constexpr char handler_sha256[]="{decision_hash}";\n}}\n',encoding='utf8')
-    abort_text='#pragma once\n#include <cstdint>\nnamespace ffr::abort_profile {\ninline constexpr bool opening_boundary_reviewed=true;\n'
+    abort_text='#pragma once\n#include <cstdint>\nnamespace ffr::abort_profile {\ninline constexpr bool opening_boundary_reviewed=true;\ninline constexpr bool detached_import_menu_reviewed=true;\ninline constexpr bool normalization_field_reviewed=true;\n'
     for function in ['tick','get_world','get_map','get_ui','end_battle']:
         rva=game_pe.exports['ffr_test_abort_'+function];start=game_pe.offset(rva)
         digest=hashlib.sha256(game_pe.raw[start:start+64]).hexdigest()
         abort_text+=f'inline constexpr std::uintptr_t {function}_rva={rva};\ninline constexpr char {function}_sha256[]="{digest}";\n'
     abort_text+=f'inline constexpr std::uintptr_t manager_vtable_rva={game_pe.exports["ffr_test_btl_vtable"]};\n}}\n'
     (output/'good_abort_profile.hpp').write_text(abort_text,encoding='utf8')
-    (output/'unreviewed_abort_profile.hpp').write_text(abort_text.replace('opening_boundary_reviewed=true','opening_boundary_reviewed=false'),encoding='utf8')
+    (output/'unreviewed_abort_profile.hpp').write_text(abort_text.replace('_reviewed=true','_reviewed=false'),encoding='utf8')
+    (output/'import_only_abort_profile.hpp').write_text(abort_text.replace('opening_boundary_reviewed=true','opening_boundary_reviewed=false').replace('normalization_field_reviewed=true','normalization_field_reviewed=false'),encoding='utf8')
     menu_text='#pragma once\n#include <cstddef>\n#include <cstdint>\nnamespace ffr::menu_profile {\ninline constexpr std::size_t tick_size=64;\n'
     for function in ['tick','get_world','get_map','get_ui']:
         rva=game_pe.exports['ffr_test_abort_'+function];start=game_pe.offset(rva)

@@ -132,7 +132,7 @@ timed out rather than accepting a stale boundary.
 
 The practice component was disabled with the game closed and the tested
 read-only native setup restored. All observation leases were expired. The FFR
-source profile now sets `opening_boundary_reviewed=false` and refuses practice
+source profile at that checkpoint set `opening_boundary_reviewed=false` and refused practice
 tick-hook installation, including import/abort/normalization dispatch, until the
 boundary is corrected and reviewed. Controlled fixture profiles alone retain
 the test path. Do not substitute a threshold of one or waive freshness to make
@@ -200,6 +200,42 @@ and Win32 error behavior, and restored code at shutdown. This source passes the
 full 63-case native suite and 143 Python tests. Actual FFR menu sampling and
 command-handler coverage still need supervised verification; practice remains
 disabled.
+
+### Supervised menu/history test and independent import policy
+
+The installed source31d read-only recorder completed three opening captures with
+zero capture failures. Normal first-menu and cancelled-submenu samples kept the
+decision-handler count at zero; one user command advanced it to one. The next
+encounter reset history to zero. Opening metadata and progression bytes stayed
+unchanged through menu cancellation and commands. Fresh game-thread timestamps
+were distinguishable from stale frames while the observer worker kept publishing.
+
+A surprise encounter included automatic attacks and party counters while the
+manual decision-handler count stayed zero. It was correctly excluded as an
+ordinary encounter. Zero handler entries are therefore not proof of an untouched
+battle. The next source adds an optional exact-callsite `Skill.Begin` event
+counter, with bounded/session/thread flags and no event payload reads. Its live
+coverage remains unverified.
+
+In the overworld, a read-only host-memory diagnostic found both owned battle
+managers released (null), inactive battle/UI flags and the exact manager class.
+The updated sampler and practice guard accept this specific inactive case while
+refusing a single missing manager or active flags. The field tick behavior still
+requires live verification; the diagnostic alone does not prove tick coverage.
+
+Detached import now has an independent `ordinary-idle-menu` policy. This permits
+comparison after earlier turns because the clone is never applied. It rechecks
+the actual game thread, world, selected friendly unit, empty queues, current
+opening/session, deadline and initialized loader throughout the operation.
+The client retains its two-second game-thread freshness requirement. Opening
+abort and normalization remain disabled; their review flags are separate. The
+normal-load adapter remains excluded and live progression is never rebound.
+
+The updated source passes 148 Python tests and all 68 native cases, including
+post-action detached import, import-only refusal of abort/normalization, released
+manager handling, and optional skill-hook mismatch/session/thread behavior.
+These are isolated tests. No engine import, abort or live-state restoration has
+yet run in FFR. Supervised detached import is the next implementation milestone.
 
 ## In-memory progression and teardown findings
 

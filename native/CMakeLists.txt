@@ -126,6 +126,8 @@ if(FFR_BUILD_NATIVE_OBSERVER)
   set(profiles "${generated}/good_profile.hpp" "${generated}/bad_game_profile.hpp" "${generated}/bad_loader_profile.hpp" "${generated}/bad_function_profile.hpp" "${generated}/good_abort_profile.hpp" "${generated}/unreviewed_abort_profile.hpp" "${generated}/good_import_profile.hpp" "${generated}/good_field_profile.hpp" "${generated}/good_playtime_profile.hpp" "${generated}/good_crt_profile.hpp" "${generated}/good_engine_rng_profile.hpp")
   list(APPEND profiles "${generated}/good_decision_profile.hpp")
   list(APPEND profiles "${generated}/good_menu_profile.hpp")
+  list(APPEND profiles "${generated}/good_skill_event_profile.hpp")
+  list(APPEND profiles "${generated}/import_only_abort_profile.hpp")
   add_custom_command(OUTPUT ${profiles}
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/make_fixture_profiles.py"
       "$<TARGET_FILE:native_host_fixture>" "$<TARGET_FILE:native_mock_loader>" "${generated}"
@@ -150,7 +152,8 @@ if(FFR_BUILD_NATIVE_OBSERVER)
   endforeach()
   target_compile_definitions(fixture_observer_good PRIVATE "FFR_DECISION_PROFILE_HEADER=\"good_decision_profile.hpp\"")
   target_compile_definitions(fixture_observer_good PRIVATE "FFR_MENU_PROFILE_HEADER=\"good_menu_profile.hpp\"")
-  foreach(mode decision-history decision-unavailable menu-frame menu-unavailable)
+  target_compile_definitions(fixture_observer_good PRIVATE "FFR_SKILL_EVENT_PROFILE_HEADER=\"good_skill_event_profile.hpp\"")
+  foreach(mode decision-history decision-unavailable menu-frame menu-unavailable skill-history skill-unavailable)
     add_test(NAME native_${mode} COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/run_native_fixture.py"
       --exe "$<TARGET_FILE:native_host_fixture>" --loader "$<TARGET_FILE:native_mock_loader>"
       --module "$<TARGET_FILE:fixture_observer_good>" --mode "${mode}" --work "${CMAKE_CURRENT_BINARY_DIR}/test-work")
@@ -164,7 +167,7 @@ if(FFR_BUILD_NATIVE_OBSERVER)
     target_compile_definitions(fixture_observer_abort PRIVATE UNICODE _UNICODE FFR_PRACTICE_BUILD=1
       "FFR_CAPTURE_PROFILE_HEADER=\"good_profile.hpp\"" "FFR_ABORT_PROFILE_HEADER=\"good_abort_profile.hpp\"" "FFR_IMPORT_PROFILE_HEADER=\"good_import_profile.hpp\"" "FFR_FIELD_PROFILE_HEADER=\"good_field_profile.hpp\"" "FFR_PLAYTIME_PROFILE_HEADER=\"good_playtime_profile.hpp\"" "FFR_CRT_PROFILE_HEADER=\"good_crt_profile.hpp\"")
     target_compile_definitions(fixture_observer_abort PRIVATE "FFR_ENGINE_RNG_PROFILE_HEADER=\"good_engine_rng_profile.hpp\"")
-    foreach(mode abort abort-denied clone clone-unready clone-mismatch clone-mutates clone-denied combat combat-after-action combat-denied combat-stale combat-effects-unavailable recovery recovery-denied recovery-stale recovery-drift recovery-write-failed recovery-map-changed normalize normalize-unready normalize-stale normalize-template normalize-write-failed)
+    foreach(mode abort abort-denied clone clone-after-action clone-unready clone-mismatch clone-mutates clone-denied combat combat-after-action combat-denied combat-stale combat-effects-unavailable recovery recovery-released recovery-denied recovery-stale recovery-drift recovery-write-failed recovery-map-changed normalize normalize-unready normalize-stale normalize-template normalize-write-failed)
       add_test(NAME native_${mode} COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/run_native_fixture.py"
         --exe "$<TARGET_FILE:native_host_fixture>" --loader "$<TARGET_FILE:native_mock_loader>"
         --module "$<TARGET_FILE:fixture_observer_abort>" --mode "${mode}" --work "${CMAKE_CURRENT_BINARY_DIR}/test-work")
@@ -183,5 +186,19 @@ if(FFR_BUILD_NATIVE_OBSERVER)
     add_test(NAME native_unreviewed_boundary_refused COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/run_native_fixture.py"
       --exe "$<TARGET_FILE:native_host_fixture>" --loader "$<TARGET_FILE:native_mock_loader>"
       --module "$<TARGET_FILE:fixture_observer_unreviewed>" --mode boundary-unreviewed --work "${CMAKE_CURRENT_BINARY_DIR}/test-work")
+    add_library(fixture_observer_import_only SHARED src/native_observer.cpp)
+    add_dependencies(fixture_observer_import_only generate_fixture_profiles)
+    target_include_directories(fixture_observer_import_only PRIVATE include "${generated}")
+    target_link_libraries(fixture_observer_import_only PRIVATE minhook bcrypt)
+    target_compile_options(fixture_observer_import_only PRIVATE /W4 /EHsc /utf-8)
+    target_compile_definitions(fixture_observer_import_only PRIVATE UNICODE _UNICODE FFR_PRACTICE_BUILD=1
+      "FFR_CAPTURE_PROFILE_HEADER=\"good_profile.hpp\"" "FFR_ABORT_PROFILE_HEADER=\"import_only_abort_profile.hpp\""
+      "FFR_IMPORT_PROFILE_HEADER=\"good_import_profile.hpp\"" "FFR_FIELD_PROFILE_HEADER=\"good_field_profile.hpp\""
+      "FFR_PLAYTIME_PROFILE_HEADER=\"good_playtime_profile.hpp\"" "FFR_CRT_PROFILE_HEADER=\"good_crt_profile.hpp\""
+      "FFR_ENGINE_RNG_PROFILE_HEADER=\"good_engine_rng_profile.hpp\"" "FFR_SKILL_EVENT_PROFILE_HEADER=\"good_skill_event_profile.hpp\"")
+    set_property(TARGET fixture_observer_import_only PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
+    add_test(NAME native_import_only_scope COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/run_native_fixture.py"
+      --exe "$<TARGET_FILE:native_host_fixture>" --loader "$<TARGET_FILE:native_mock_loader>"
+      --module "$<TARGET_FILE:fixture_observer_import_only>" --mode clone-import-only --work "${CMAKE_CURRENT_BINARY_DIR}/test-work")
   endif()
 endif()

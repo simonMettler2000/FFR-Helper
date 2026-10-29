@@ -1,14 +1,15 @@
 # Experimental opening-abort trial
 
-**Current FFR dispatch is disabled.** The 29 October live import-only test sent
+**FFR opening abort and normalization remain disabled.** The 29 October live import-only test sent
 no import or abort request: a first-command menu already counted one turn start.
 The counter increment follows `Delegate.Battle.Unit.Turn.Begin`, so it cannot
 stand in for completed player commands. The supported FFR profile now sets
-`opening_boundary_reviewed=false` and installs no practice tick hook. Import,
-abort, normalization and command-state dispatch remain unavailable until the
-boundary and fresh idle-menu sampling are corrected and reviewed. Controlled
-dummy profiles alone enable the fixture tests. The installed practice component
-is disabled; the read-only recorder and loader lookup fix were restored.
+`opening_boundary_reviewed=false`. Subsequent supervised read-only tests verified
+fresh idle-menu sampling. Detached import has its own reviewed ordinary idle-menu
+policy and can install the practice tick dispatcher independently. It creates
+and compares a temporary object without applying it. This does not enable abort,
+normalization, live-root replacement or battle restart. The revised import policy
+has passed isolated DLL tests; engine verification is still pending.
 
 This is a separate, mutation-capable development component. It has passed
 isolated dummy-process tests. Its dispatch/import availability was observed in
@@ -107,8 +108,14 @@ observer's own retained opening bytes. It cannot accept a file path or bytes fro
 the client. The native header gate checks GVAS version, engine, save class and
 footer; the desktop additionally parses the complete captured object.
 
-The experiment requires the same ordinary first-command boundary as the abort
-trial, plus successful UE4SS engine initialization. If the loader's symbol scan
+The experiment requires an ordinary idle command menu and successful UE4SS
+engine initialization. Earlier actions do not exclude this detached comparison:
+it does not restore the opening or apply the clone. The game thread, world,
+active encounter, selected friendly unit, empty queues, opening identity, lease
+and request deadline are rechecked during comparison. The client requires a
+game-thread sample no more than two seconds old. This is a separate policy,
+not a reinterpretation of the turn-beginning counter as completed commands.
+If the loader's symbol scan
 failed, the command refuses to create an object. Its primitive rooting exports
 are resolved by exact name and RVA against the already verified loader hash.
 No loader C++ containers or SDK object layouts cross the DLL boundary.

@@ -45,6 +45,8 @@ std::array<std::array<unsigned char,0x560>,2> fake_parameters{};
 std::array<unsigned char,0x40> fake_scheduler{};
 unsigned abort_calls{},tick_calls{};
 unsigned decision_calls{};void* decision_context{};void* decision_data{};DWORD decision_input_error{};
+unsigned dispatch_calls{},skill_producer_calls{},unrelated_producer_calls{};
+void* dispatch_context{};void* dispatch_data{};std::uint64_t dispatch_name{};DWORD dispatch_input_error{};
 std::array<unsigned char,0x790> fake_rng_data{};
 unsigned rand_calls{},rng_helper_calls{};
 unsigned engine_rng_draw_calls{},engine_rng_initialize_calls{};
@@ -64,6 +66,19 @@ extern "C" __declspec(dllexport) __declspec(noinline) unsigned ffr_test_crt_rand
 extern "C" __declspec(dllexport) __declspec(noinline) void* ffr_test_crt_helper(){++rng_helper_calls;return nullptr;}
 extern "C" __declspec(dllexport) __declspec(noinline) unsigned ffr_test_engine_rng_draw(){++engine_rng_draw_calls;return ffr_test_engine_rng_seed;}
 extern "C" __declspec(dllexport) __declspec(noinline) void ffr_test_engine_rng_initialize(){++engine_rng_initialize_calls;}
+extern "C" __declspec(dllexport) __declspec(noinline)
+void __fastcall ffr_test_dispatch(void* context,std::uint64_t name,void* data) {
+    ++dispatch_calls;dispatch_context=context;dispatch_name=name;dispatch_data=data;dispatch_input_error=GetLastError();
+    SetLastError(8642);
+}
+extern "C" __declspec(dllexport) __declspec(noinline)
+void __fastcall ffr_test_skill_begin(void* context,std::uint64_t name,void* data) {
+    ffr_test_dispatch(context,name,data);++skill_producer_calls;
+}
+extern "C" __declspec(dllexport) __declspec(noinline)
+void __fastcall ffr_test_unrelated_event(void* context,std::uint64_t name,void* data) {
+    ffr_test_dispatch(context,name,data);++unrelated_producer_calls;
+}
 extern "C" __declspec(dllexport) __declspec(noinline)
 void __fastcall ffr_test_decision(void* context,void* data) {
     ++decision_calls;decision_context=context;decision_data=data;decision_input_error=GetLastError();
@@ -182,6 +197,7 @@ void run_combat_fixture(const std::filesystem::path& connection,const std::wstri
 void run_recovery_fixture(const std::filesystem::path& connection,const std::wstring& mode);
 void run_normalization_fixture(const std::filesystem::path& connection,const std::wstring& mode,HMODULE loader);
 void run_menu_fixture(const std::filesystem::path& connection,bool available);
+void run_skill_fixture(const std::filesystem::path& connection,bool available);
 }
 
 #include "abort_fixture.inl"
@@ -190,6 +206,7 @@ void run_menu_fixture(const std::filesystem::path& connection,bool available);
 #include "recovery_fixture.inl"
 #include "normalization_fixture.inl"
 #include "menu_fixture.inl"
+#include "skill_fixture.inl"
 int wmain(int argc, wchar_t** argv) {
     try {
         CHECK(argc == 5);
@@ -240,6 +257,14 @@ int wmain(int argc, wchar_t** argv) {
         std::memcpy(initial_code, reinterpret_cast<const void*>(entry_function), sizeof(initial_code));
         auto* fixture_tick=reinterpret_cast<const void*>(GetProcAddress(GetModuleHandleW(nullptr),"ffr_test_abort_tick"));CHECK(fixture_tick);
         std::array<unsigned char,64> initial_tick{};std::memcpy(initial_tick.data(),fixture_tick,initial_tick.size());
+        auto* producer_code=reinterpret_cast<unsigned char*>(&ffr_test_skill_begin);
+        const auto initial_producer=*producer_code;
+        auto* dispatch_code=reinterpret_cast<unsigned char*>(&ffr_test_dispatch);
+        std::array<unsigned char,64> initial_dispatch{};std::memcpy(initial_dispatch.data(),dispatch_code,64);
+        if(mode==L"skill-unavailable") {
+            DWORD protection{},unused{};CHECK(VirtualProtect(producer_code,1,PAGE_EXECUTE_READWRITE,&protection));
+            *producer_code^=1;CHECK(VirtualProtect(producer_code,1,protection,&unused));FlushInstructionCache(GetCurrentProcess(),producer_code,1);
+        }
         if(mode==L"menu-unavailable") {
             auto* code=const_cast<unsigned char*>(static_cast<const unsigned char*>(fixture_tick));
             DWORD protection{},unused{};CHECK(VirtualProtect(code,1,PAGE_EXECUTE_READWRITE,&protection));
@@ -254,6 +279,16 @@ int wmain(int argc, wchar_t** argv) {
         }
         CHECK(object != nullptr && host_count() == 1);
         CHECK(start() == nullptr); // Restart is required; no duplicate detour/worker.
+        if(mode.starts_with(L"skill-")) {
+            run_skill_fixture(connection,mode==L"skill-history");
+            if(mode==L"skill-unavailable") {
+                DWORD protection{},unused{};CHECK(VirtualProtect(producer_code,1,PAGE_EXECUTE_READWRITE,&protection));
+                *producer_code=initial_producer;CHECK(VirtualProtect(producer_code,1,protection,&unused));FlushInstructionCache(GetCurrentProcess(),producer_code,1);
+            }
+            stop(object);CHECK(host_count()==0 && host_errors()==0 && fixture_errors==0);
+            CHECK(std::memcmp(initial_dispatch.data(),dispatch_code,64)==0 && abort_calls==0 && clone_loads==0);
+            std::cout<<"Skill.Begin return-site history fixture passed without game actions.\n";return 0;
+        }
         if(mode.starts_with(L"menu-")) {
             run_menu_fixture(connection,mode==L"menu-frame");
             if(mode==L"menu-unavailable") {

@@ -24,6 +24,9 @@ void run_recovery_fixture(const std::filesystem::path& connection,const std::wst
     write(connection/L"recovery-source-progression.gvas",read(connection/L"opening-progression.gvas"));
     CHECK(serialized==1 && released==1);
     fake_manager[0x1a9]=0;fake_ui[0x80]=0;recovery_money=202;
+    if(mode==L"recovery-released") {
+        put(fake_manager,0x40,std::uint64_t{0});put(fake_manager,0x48,std::uint64_t{0});
+    }
     std::vector<std::uint64_t> queued{1};if(denied)put(fake_jobs,0x28,array(queued));
     if(map_changed)fixture_map_id=1001;
     if(write_failed)CHECK(CreateDirectoryW((connection/L"recovery-metadata.json").c_str(),nullptr));

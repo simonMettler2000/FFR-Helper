@@ -31,3 +31,6 @@ class MenuFrameTests(unittest.TestCase):
             with self.assertRaises(ValueError):validate_menu_frame(dict(sample(),**changes))
         field=dict(sample(),battleActive=False,commandMenu=False,fieldReady=True,units=0,turnBeginnings=-1)
         self.assertEqual(validate_menu_frame(field),field)
+        self.assertEqual(validate_menu_frame(dict(field,managersReleased=True)),dict(field,managersReleased=True))
+        for changes in [dict(managersReleased=1),dict(managersReleased=True),dict(managersReleased=True,fieldReady=False)]:
+            with self.assertRaises(ValueError):validate_menu_frame(dict(sample(),**changes))

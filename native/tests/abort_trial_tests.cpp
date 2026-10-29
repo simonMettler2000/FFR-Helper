@@ -1,4 +1,5 @@
 #include "abort_trial.hpp"
+#include "import_menu.hpp"
 #include <iostream>
 
 #define CHECK(x) do {if(!(x))throw std::runtime_error("Abort trial check failed at "+std::to_string(__LINE__));}while(false)
@@ -7,6 +8,9 @@ int main() {
         ffr::AbortRequest request{std::string(32,'a'),std::string(32,'b'),std::string(64,'c'),"prepare",105,1};
         ffr::AbortGuard good{true,true,true,true,true,0,0,0,4,request.session,request.opening_hash,1};
         unsigned captures=0,aborts=0;
+        auto advanced=good;advanced.friendly_actions=3;
+        CHECK(ffr::ordinary_idle_import_menu(advanced));
+        auto queued=advanced;queued.working_jobs=1;CHECK(!ffr::ordinary_idle_import_menu(queued));
         auto capture=[&] {++captures;return std::vector<unsigned char>{1,2,3};};
         auto end=[&] {++aborts;};
         for(unsigned failure=0;failure<10;++failure) {

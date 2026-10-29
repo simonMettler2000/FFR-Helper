@@ -8,6 +8,7 @@ bool normalization_boundary(Observer* current,void* context,const std::shared_pt
 }
 void run_normalization_probe(Observer* current,void* context,const std::shared_ptr<const Observer::Opening>& opening,
                              const ffr::AbortGuard& guard,const std::optional<ffr::AbortRequest>& request,std::int64_t now) {
+    if(!ffr::abort_profile::normalization_field_reviewed)return;
     bool available=false;
     {std::lock_guard lock(current->mutex);available=current->import_available;}
     const bool initialized=available && guard.game_thread && import_loader_initialized();
@@ -88,7 +89,7 @@ std::string normalization_status(const Observer& current,const Lease& lease) {
     };
     std::ostringstream scalar;scalar.imbue(std::locale::classic());scalar<<std::setprecision(17)<<(same?result.normalized_seconds:0.0f);
     return json_object({{"operation",ffr::quote("detached-playtime-normalization")},{"restorable","false"},
-        {"available",json_flag(current.import_available)},{"loaderReady",json_flag(current.normalization_loader_ready)},
+        {"available",json_flag(current.import_available && ffr::abort_profile::normalization_field_reviewed)},{"loaderReady",json_flag(current.normalization_loader_ready)},
         {"fieldReady",json_flag(current.normalization_field_ready)},{"attempted",json_flag(current.normalization_attempted || current.import_attempted)},
         {"phase",ffr::quote(same?current.normalization_phase:"idle")},{"nonce",ffr::quote(same?current.normalization_nonce:"")},
         {"session",ffr::quote(same?current.normalization_session:"")},{"openingHash",ffr::quote(same?current.normalization_hash:"")},

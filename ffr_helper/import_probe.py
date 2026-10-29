@@ -18,6 +18,7 @@ class ImportProbeBridge:
             return None
         probe = status.get('importProbe')
         if (not isinstance(probe, dict) or probe.get('restorable') is not False
+                or probe.get('boundaryPolicy') != 'ordinary-idle-menu'
                 or probe.get('phase') not in {'idle', 'running', 'rejected', 'passed', 'failed'}
                 or any(type(probe.get(key)) is not bool for key in
                        ['available', 'loaderReady', 'passed', 'cloneMatches', 'liveUnchanged', 'inputUnchanged', 'pinsReleased'])
@@ -25,6 +26,17 @@ class ImportProbeBridge:
                 or type(probe.get('byteLength')) is not int or not 0 <= probe['byteLength'] <= 16*1024*1024):
             return None
         return status
+
+    @staticmethod
+    def safe_guard(status,sequence,digest):
+        guard=status.get('guard',{})
+        return (status.get('importProbe',{}).get('boundaryPolicy')=='ordinary-idle-menu'
+            and type(status.get('probeTime')) is int and -2<=time.time()-status['probeTime']<=2
+            and all(guard.get(k) is True for k in ['gameThread','matchingWorld','ordinaryEncounter','battleActive','commandMenu'])
+            and type(guard.get('units')) is int and 0<guard['units']<=64
+            and all(type(guard.get(k)) is int and guard[k]==0 for k in ['waitingJobs','workingJobs'])
+            and type(guard.get('friendlyActions')) is int and guard['friendlyActions']>=0
+            and type(guard.get('sequence')) is int and guard['sequence']==sequence and guard.get('openingHash')==digest)
 
     def send(self, report):
         if self.request is not None:
@@ -37,8 +49,8 @@ class ImportProbeBridge:
         if not probe['available'] or not probe['loaderReady'] or probe['phase'] != 'idle':
             raise ValueError('The import probe requires the verified, initialized engine loader.')
         sequence, digest = capture.metadata['sequence'], capture.metadata['sha256']
-        if not self.bridge.safe_guard(status, sequence, digest):
-            raise ValueError('The import probe requires the matching ordinary opening command menu.')
+        if not self.safe_guard(status, sequence, digest):
+            raise ValueError('The import probe requires a fresh matching ordinary idle command menu.')
         # Store before I/O: an uncertain command write must not be resent.
         self.request = dict(nonce=uuid.uuid4().hex, deadline=int(time.time())+8, sequence=sequence, sha256=digest)
         self.bridge.request = self.request

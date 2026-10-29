@@ -50,15 +50,15 @@ def main():
             # frames on a user action or bind the probe to their encounter.
             if (args.probe_import and not sent and probe['phase'] == 'idle' and probe['loaderReady']
                     and guard.get('ordinaryEncounter') is True and guard.get('commandMenu') is True):
+                if probe.get('boundaryPolicy')!='ordinary-idle-menu':
+                    raise RuntimeError('The import boundary policy is unsupported; no import request was sent.')
                 sequence, digest = guard.get('sequence'), guard.get('openingHash')
                 if type(sequence) is int and sequence > 0 and isinstance(digest, str) and len(digest) == 64:
                     if target is None:
                         target = sequence
                     if sequence != target:
                         raise RuntimeError('The selected encounter changed; no import will be requested.')
-                    if type(guard.get('friendlyActions')) is int and guard['friendlyActions'] > 0:
-                        raise RuntimeError('Opening-boundary counter is not eligible; no import request was sent.')
-                    if bridge.bridge.safe_guard(status, sequence, digest):
+                    if bridge.safe_guard(status, sequence, digest):
                         if not pending:
                             recorder.request = uuid.uuid4().hex
                             pending = True

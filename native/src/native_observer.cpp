@@ -19,6 +19,11 @@
 #include "map_unit_cache.hpp"
 #include "crt_rand_capture.hpp"
 #include "engine_rng_capture.hpp"
+#ifdef FFR_SKILL_EVENT_PROFILE_HEADER
+#include FFR_SKILL_EVENT_PROFILE_HEADER
+#else
+#include "skill_event_profile.hpp"
+#endif
 #ifndef FFR_PRACTICE_BUILD
 #ifdef FFR_MENU_PROFILE_HEADER
 #include FFR_MENU_PROFILE_HEADER
@@ -53,6 +58,7 @@
 #endif
 #ifdef FFR_PRACTICE_BUILD
 #include "abort_trial.hpp"
+#include "import_menu.hpp"
 #include "progression_clone.hpp"
 #include "combat_transport.hpp"
 #include "recovery_transport.hpp"
@@ -80,6 +86,7 @@
 #include <string_view>
 #include <tuple>
 #include <intrin.h>
+#include <cstring>
 #include <set>
 
 namespace {
@@ -260,6 +267,7 @@ struct Observer {
     std::atomic<std::int64_t> expires{0};
     std::atomic<bool> quit{false}, ready{false};
     std::atomic<bool> menu_ready{false};
+    std::atomic<bool> skill_ready{false};
     std::atomic<unsigned> failures{0};
     std::atomic<unsigned> progression_failures{0};
     std::atomic<unsigned> field_failures{0};
@@ -268,6 +276,17 @@ struct Observer {
     std::atomic<unsigned> crt_rand_failures{0};
     std::atomic<unsigned> engine_rng_failures{0};
     std::shared_ptr<const Opening> opening;
+    std::uint64_t skill_sequence{};
+    DWORD skill_thread{};
+    unsigned skill_entries{};
+    bool skill_tracked=false,skill_foreign_thread=false,skill_overflow=false;
+    std::string skill_status() {
+        std::lock_guard lock(mutex);
+        if(!opening||opening->sequence!=skill_sequence||!skill_tracked)return "null";
+        return "{\"kind\":\"skill-begin-event-history\",\"readOnly\":true,\"restorable\":false,\"coverageReviewed\":false,"
+            "\"trackedFromNativeEntry\":true,\"sequence\":"+std::to_string(skill_sequence)+",\"skillBeginEvents\":"+std::to_string(skill_entries)
+            +",\"foreignThreadObserved\":"+(skill_foreign_thread?"true":"false")+",\"overflow\":"+(skill_overflow?"true":"false")+'}';
+    }
     std::string menu_frame="null";
     std::uint64_t menu_sequence{};
     ULONGLONG menu_sample_after{};
@@ -293,6 +312,7 @@ struct Observer {
     ffr::AbortGuard last_guard;
     std::optional<ffr::AbortRequest> abort_request;
     bool abort_available=false;
+    bool dispatcher_available=false;
     std::string abort_message="Abort trial has not initialized", opening_hash, recovery_hash;
     std::int64_t probe_time{};
     std::vector<unsigned char> after_progression;
@@ -331,7 +351,7 @@ struct Observer {
                 auto lease = read_lease(connection/L"observe.txt");
                 if (!lease) {
                     expires.store(0);
-                    {std::lock_guard lock(mutex);decision_sequence=0;decision_tracked_from_entry=false;menu_frame="null";}
+                    {std::lock_guard lock(mutex);decision_sequence=0;decision_tracked_from_entry=false;menu_frame="null";skill_sequence=0;skill_tracked=false;}
                     Sleep(250);continue;
                 }
                 std::deque<std::string> copied;
@@ -346,6 +366,7 @@ struct Observer {
                         menu_frame="null";menu_sequence=0;
                         menu_sample_after=0;
                         decision_sequence=0;decision_thread=0;decision_tracked_from_entry=false;
+                        skill_sequence=0;skill_tracked=false;
 #ifdef FFR_PRACTICE_BUILD
                         combat_request.reset();combat_controller.clear_latest();
                         recovery_request.reset();recovery_controller.clear_latest();recovery_boundary_ready=false;
@@ -386,8 +407,9 @@ struct Observer {
                 const auto base = envelope(*lease);
                 auto status = "{" + base + ",\"hooks\":{\"native-encounter-entry\":"
                     + ffr::quote(ready.load() ? "observing" : "unavailable")
-                    +",\"native-menu-frame\":"+ffr::quote(menu_ready.load()?"observing":"unavailable")+"},\"message\":"+ffr::quote(note)
-                    +",\"decisionHistory\":"+decision_status()+",\"menuObservation\":"+menu_status()+'}';
+                    +",\"native-menu-frame\":"+ffr::quote(menu_ready.load()?"observing":"unavailable")
+                    +",\"native-skill-begin\":"+ffr::quote(skill_ready.load()?"observing":"unavailable")+"},\"message\":"+ffr::quote(note)
+                    +",\"decisionHistory\":"+decision_status()+",\"menuObservation\":"+menu_status()+",\"skillHistory\":"+skill_status()+'}';
                 write_atomic(connection/L"observer-status.json", status);
                 if (requested) {
                     // Keep room for bounded opening metadata even when earlier
@@ -433,6 +455,7 @@ struct Observer {
 std::unique_ptr<Observer> observer;
 std::atomic<Observer*> published_observer{nullptr};
 #include "decision_runtime.inl"
+#include "skill_event_runtime.inl"
 #ifndef FFR_PRACTICE_BUILD
 #include "menu_runtime.inl"
 #endif
@@ -504,7 +527,7 @@ void __fastcall encounter_hook(void* context, const void* entry, bool skip_intro
             // An encounter entered while observation is off cannot inherit a
             // previous encounter's opening when the same session reconnects.
             std::lock_guard lock(current->mutex); current->opening.reset();
-            current->decision_sequence=0;current->decision_tracked_from_entry=false;return;
+            current->decision_sequence=0;current->decision_tracked_from_entry=false;current->skill_sequence=0;current->skill_tracked=false;return;
         }
         std::string capture_session;
         { std::lock_guard lock(current->mutex); capture_session=current->session; current->opening.reset();
@@ -512,7 +535,9 @@ void __fastcall encounter_hook(void* context, const void* entry, bool skip_intro
             current->menu_sample_after=0;
             current->decision_sequence=current->sequence+1;current->decision_thread=GetCurrentThreadId();
             current->decision_entries=0;current->decision_foreign_thread=false;current->decision_overflow=false;
-            current->decision_tracked_from_entry=decision_installed.load(std::memory_order_acquire); }
+            current->decision_tracked_from_entry=decision_installed.load(std::memory_order_acquire);
+            current->skill_sequence=current->sequence+1;current->skill_thread=GetCurrentThreadId();
+            current->skill_entries=0;current->skill_tracked=skill_dispatch_installed.load();current->skill_foreign_thread=false;current->skill_overflow=false;}
         auto copied = ffr::capture_entry(read_memory, reinterpret_cast<std::uint64_t>(entry), skip_intro);
         if (!copied) { current->failures.fetch_add(1); return; }
         auto json = ffr::to_json(*copied);
@@ -671,6 +696,7 @@ extern "C" __declspec(dllexport) void* start_mod() noexcept {
         const auto installed=install_entry_hook();
         if(installed) {
             try {install_decision_hook();}catch(...) {shutdown_decision_hook();}
+            try {install_skill_dispatch_hook();}catch(...) {shutdown_skill_dispatch_hook();}
         }
 #ifdef FFR_PRACTICE_BUILD
         if(installed)install_abort_tick_hook();
@@ -682,6 +708,7 @@ extern "C" __declspec(dllexport) void* start_mod() noexcept {
         if (observer) {
             observer->expires.store(0); observer->quit.store(true);
             shutdown_decision_hook();
+            shutdown_skill_dispatch_hook();
 #ifndef FFR_PRACTICE_BUILD
             shutdown_menu_hook();
 #endif
@@ -706,6 +733,7 @@ extern "C" __declspec(dllexport) void uninstall_mod(void* object) noexcept {
         if (observer) {
             observer->expires.store(0); observer->quit.store(true);
             shutdown_decision_hook();
+            shutdown_skill_dispatch_hook();
 #ifndef FFR_PRACTICE_BUILD
             shutdown_menu_hook();
 #endif

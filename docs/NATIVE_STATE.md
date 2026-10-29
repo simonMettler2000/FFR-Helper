@@ -311,6 +311,46 @@ progression bytes as well as named resources/rewards, and records whether the
 wait override and untouched history were observed. None of these receipts claims
 restoration or reconstruction.
 
+### Live wait guard held; native command-abort API identified
+
+Source8341b19 loaded normally, but its fresh wait guard stayed false at the
+untouched normal menu. No prepare, commit or ForceEnd request was sent. The
+verified controller launcher/worker pair was stopped and the owned observation
+lease expired. A bounded host-memory diagnostic used query/read-only rights,
+with no game function calls or writes. It found an initialized active battle,
+empty command-request array, zero jobs and no pending ForceEnd/completion flags.
+The scoped wait checks were therefore not the supported boundary for this menu.
+
+Static reflection/exec tracing identified the game's own
+`UI_BtlCmdManager::AbortCommand` at RVA 0x5136860. Its complete 69-byte body resolves
+the current World/battle and sets the separate command-completion flag. Both
+native input-wait states watch that flag; the real decision handler also sets it
+after input. The game's 43-byte command-manager getter returns the owned UI
+object at UI subsystem+0x70, and the native VM cancellation path calls this API.
+The generated function index is a discovery aid; its name/getter associations
+must be checked against actual reflection registration/exec targets.
+
+The next source removes the wait-result detours. It requires an untouched normal
+idle menu, the observed initialized/unpaused flags, no existing end/completion
+request, an empty command queue, owned UI manager and matching World through the
+same virtual getter used by the native API. Only executable code in the verified
+game image is accepted for that virtual getter. Complete API/getter/state-reader
+fingerprints gate availability and are checked again at commit. EndBattle runs
+once; only a read-back end flag permits one native AbortCommand call. Both calls
+are marked before invocation, and their flags are recorded separately from actual
+cleanup. No attack, command record, raw flag setter, wait override, root assignment
+or slot write is exposed. This API pair is not yet installed or live-verified.
+
+The native API source passes 151 Python tests and all 76 native cases. The dummy
+state holds ForceEnd until command selection is released, then verifies exactly
+one EndBattle and one native command-abort call on the captured thread, both flag
+readbacks, zero manual/skill events and ordinary/released-manager cleanup.
+Wrong-World ownership after preparation, queued commands, existing completion
+flags, event-history changes, profile mismatch and replay are refused before
+additional game calls. The virtual World getter is exercised through an actual
+dummy vtable and validated executable-image callback. These remain isolated
+tests; actual API-pair cleanup and progression equality require the next live test.
+
 ## In-memory progression and teardown findings
 
 On this exact binary, the ordinary encrypted save writer calls the engine's

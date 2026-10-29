@@ -32,9 +32,8 @@ bool recovery_fixture{},recovery_drift{};
 std::int32_t recovery_money=101,fixture_map_id=1000;
 std::array<unsigned char,0x280> fake_manager{};
 std::array<unsigned char,0x80> fake_jobs{},fake_units{};
-std::array<unsigned char,0x40> fake_command{},fake_command_request{};
-std::array<unsigned char,0x40> fake_other_command{};
-void* wait_argument{};
+std::array<unsigned char,0x40> fake_command{},fake_command_request{},fake_ui_command{},fake_other_ui_command{};
+std::array<unsigned char,32> fake_other_world{};
 std::array<unsigned char,0x90> fake_ui{};
 std::array<unsigned char,32> fake_world{};
 std::array<unsigned char,0x210> fake_map{};
@@ -48,8 +47,8 @@ std::array<std::array<unsigned char,0x560>,2> fake_parameters{};
 std::array<unsigned char,0x40> fake_scheduler{};
 unsigned abort_calls{},tick_calls{};
 DWORD abort_thread{};
-unsigned wait_gate_calls{};
-unsigned state_wait_calls{};
+unsigned ui_command_abort_calls{};DWORD ui_command_abort_thread{};
+DWORD command_profile_thread{};
 bool release_managers_on_abort{};
 unsigned decision_calls{};void* decision_context{};void* decision_data{};DWORD decision_input_error{};
 unsigned dispatch_calls{},skill_producer_calls{},unrelated_producer_calls{};
@@ -61,6 +60,8 @@ bool engine_rng_drift{};
 float last_delta{};
 }
 extern "C" {__declspec(dllexport) std::uint64_t ffr_test_btl_vtable[1]={0};}
+extern "C" {__declspec(dllexport) std::uint64_t ffr_test_ui_vtable[1]={0};}
+extern "C" {__declspec(dllexport) std::uint64_t ffr_test_ui_command_vtable[49]={0};}
 extern "C" {__declspec(dllexport) std::uint64_t ffr_test_save_vtable[1]={0};}
 extern "C" {__declspec(dllexport) std::uint64_t ffr_test_map_storage_vtable[1]={0};}
 extern "C" {
@@ -101,7 +102,8 @@ extern "C" __declspec(dllexport) __declspec(noinline)
 std::int32_t __fastcall ffr_test_field_get_map_id() {return fixture_map_id;}
 extern "C" __declspec(dllexport) __declspec(noinline)
 void* __fastcall ffr_test_abort_get_world(void* manager) {
-    if(manager!=fake_manager.data()){++fixture_errors;return nullptr;}return fake_world.data();
+    if(manager==fake_other_ui_command.data())return fake_other_world.data();
+    if(manager!=fake_manager.data() && manager!=fake_ui_command.data()){++fixture_errors;return nullptr;}return fake_world.data();
 }
 extern "C" __declspec(dllexport) __declspec(noinline)
 void* __fastcall ffr_test_abort_get_map(void* world) {
@@ -116,27 +118,27 @@ void __fastcall ffr_test_abort_end_battle() {
     abort_thread=GetCurrentThreadId();++abort_calls;fake_manager[0x222]=1;
 }
 extern "C" __declspec(dllexport) __declspec(noinline)
-bool __fastcall ffr_test_command_wait(void* command) {
-    ++wait_gate_calls;ffr::RawArray requests{};
-    std::memcpy(&requests,static_cast<unsigned char*>(command)+0x28,sizeof(requests));
-    bool waiting=false;
-    for(int i=0;i<requests.count;++i)
-        if(!*(reinterpret_cast<unsigned char*>(requests.data)+64*i+0x38))waiting=true;
-    SetLastError(6543);return waiting;
+void __fastcall ffr_test_ui_command_abort(void* command) {
+    ++ui_command_abort_calls;ui_command_abort_thread=GetCurrentThreadId();
+    if(command!=fake_ui_command.data()){++fixture_errors;return;}
+    fake_manager[0x223]=1;SetLastError(6543);
 }
 extern "C" __declspec(dllexport) __declspec(noinline)
-bool __fastcall ffr_test_state_wait(void* command) {
-    const auto waiting=ffr_test_command_wait(command);++state_wait_calls;return waiting;
+void* __fastcall ffr_test_ui_command_getter() {
+    command_profile_thread=GetCurrentThreadId();void* value{};std::memcpy(&value,fake_ui.data()+0x70,sizeof(value));return value;
 }
+extern "C" __declspec(dllexport) __declspec(noinline)
+bool __fastcall ffr_test_command_state_a() {command_profile_thread=GetCurrentThreadId();return fake_manager[0x223]!=0;}
+extern "C" __declspec(dllexport) __declspec(noinline)
+bool __fastcall ffr_test_command_state_b() {command_profile_thread=GetCurrentThreadId();return fake_manager[0x223]!=0 && fake_manager[0x1a9]!=0;}
 extern "C" __declspec(dllexport) __declspec(noinline)
 void __fastcall ffr_test_abort_tick(void* context,float delta) {
     ++tick_calls;last_delta=delta;
     if(context!=fake_manager.data()+0x30)++fixture_errors;
-    // Like FFR: the nested helper can return before the outer wait/ForceEnd check.
-    if(ffr_test_state_wait(wait_argument?wait_argument:fake_command.data())) {SetLastError(9876);return;}
-    const auto waiting=ffr_test_command_wait(wait_argument?wait_argument:fake_command.data());
-    if(fake_manager[0x222] && !waiting) {
-        fake_manager[0x222]=0;fake_manager[0x1a9]=0;fake_ui[0x80]=0;
+    // Like the actual first menu: ForceEnd alone stays pending until command
+    // selection is released. No synthetic player command is submitted.
+    if(fake_manager[0x222] && ffr_test_command_state_a()) {
+        fake_manager[0x222]=0;fake_manager[0x223]=0;fake_manager[0x1a9]=0;fake_ui[0x80]=0;
         const std::int32_t zero=0;std::memcpy(fake_units.data()+0x30,&zero,4);
         if(release_managers_on_abort) {
             const std::uint64_t none=0;std::memcpy(fake_manager.data()+0x40,&none,8);std::memcpy(fake_manager.data()+0x48,&none,8);
@@ -251,6 +253,7 @@ int wmain(int argc, wchar_t** argv) {
         const std::filesystem::path loader_path = argv[2];
         const std::filesystem::path connection = argv[3];
         const std::wstring mode = argv[4];
+        ffr_test_ui_command_vtable[48]=reinterpret_cast<std::uint64_t>(&ffr_test_abort_get_world);
         recovery_fixture=mode.starts_with(L"recovery");recovery_drift=mode==L"recovery-drift";
         normalization_fixture=mode.starts_with(L"normalize");normalization_template=mode==L"normalize-template";
         const std::uint64_t klass=1; std::memcpy(fake_root.data()+16,&klass,sizeof(klass));
@@ -383,15 +386,15 @@ int wmain(int argc, wchar_t** argv) {
             CHECK(std::memcmp(initial_decision.data(),decision_code,64)==0);
             std::cout<<"Read-only decision history fixture passed; no practice commands enabled.\n";return 0;
         }
-        if(mode==L"abort-wait-unavailable") {
+        if(mode==L"abort-command-unavailable") {
             write(connection/L"observe.txt","FFR_HELPER_OBSERVER_V1\n"+std::string(32,'a')+"\n"+std::to_string(now()+8)+"\n"+std::string(32,'b')+"\n");
-            wait_for([&]{return read(connection/L"abort-status.json").find("Scoped command wait profile unavailable")!=std::string::npos;});
+            wait_for([&]{return read(connection/L"abort-status.json").find("Native command abort profile unavailable")!=std::string::npos;});
             const auto status=read(connection/L"abort-status.json");
             CHECK(status.find("\"available\":false")!=std::string::npos);
-            CHECK(status.find("\"commandWaitReady\":false")!=std::string::npos);
+            CHECK(status.find("\"commandAbortReady\":false")!=std::string::npos);
             CHECK(abort_calls==0 && clone_loads==0 && serialized==0);
             stop(object);CHECK(host_count()==0 && host_errors()==0 && fixture_errors==0);
-            std::cout<<"Command wait mismatch disables abort before any game action.\n";return 0;
+            std::cout<<"Native command-abort mismatch disables abort before any game action.\n";return 0;
         }
         if(mode==L"boundary-unreviewed" || mode==L"abort-full-unavailable") {
             write(connection/L"observe.txt","FFR_HELPER_OBSERVER_V1\n"+std::string(32,'a')+"\n"+std::to_string(now()+8)+"\n"+std::string(32,'b')+"\n");

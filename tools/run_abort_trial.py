@@ -37,14 +37,14 @@ def main():
             guard=state['guard']
             summary=(state['available'],state['phase'],guard.get('battleActive'),guard.get('commandMenu'),
                      guard.get('friendlyActions'),guard.get('waitingJobs'),guard.get('workingJobs'),
-                     guard.get('openingHistoryUntouched'),guard.get('commandWaitReady'))
+                     guard.get('openingHistoryUntouched'),guard.get('commandAbortReady'))
             if summary!=last:
                 print(f'Available={summary[0]}; phase={summary[1]}; battle={summary[2]}; command menu={summary[3]}; '
                       f'party turn beginnings={summary[4]}; jobs={summary[5]}/{summary[6]}; '
-                      f'untouched history={summary[7]}; wait gate ready={summary[8]}. {state["message"]}',flush=True);last=summary
+                      f'untouched history={summary[7]}; native command abort ready={summary[8]}. {state["message"]}',flush=True);last=summary
             if (args.abort_at_opening and not prepared and state['phase']=='idle'
                     and guard.get('ordinaryEncounter') is True and guard.get('commandMenu') is True):
-                if state.get('openingBoundaryPolicy')!='ordinary-first-menu-event-history':
+                if state.get('openingBoundaryPolicy')!='ordinary-first-menu-native-command-abort':
                     raise RuntimeError('Unsupported opening-boundary policy; no abort request was sent.')
                 sequence,digest=guard.get('sequence'),guard.get('openingHash')
                 if (type(sequence) is int and sequence>0 and isinstance(digest,str) and len(digest)==64
@@ -71,7 +71,7 @@ def main():
                 after=bridge.progression(state,after=True)
                 atomic_write(args.output/'after-abort.gvas',after)
                 result=compare_progression(recovery,after)
-                result['commandWaitOverrideUsed']=state.get('commandWaitGate',{}).get('overrides') in (1,2)
+                result['nativeCommandAbortUsed']=all(state.get('nativeCommandAbort',{}).get(k) is True for k in ['issued','forceEndFlagObserved','commandAbortFlagObserved'])
                 result['openingHistoryUntouchedAfterCleanup']=state.get('guard',{}).get('openingHistoryUntouched') is True
                 atomic_write(args.output/'comparison.json',json.dumps(result,indent=2).encode('utf8'))
                 atomic_write(args.output/'abort-receipt.json',json.dumps(state,indent=2).encode('utf8'))

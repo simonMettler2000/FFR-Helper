@@ -10,11 +10,12 @@ void run_abort_fixture(const std::filesystem::path& connection,const std::wstrin
     const bool deny=mode.find(L"denied")!=std::wstring::npos;
     release_managers_on_abort=mode==L"abort-released";
     object(fake_manager,reinterpret_cast<std::uint64_t>(ffr_test_btl_vtable));
-    object(fake_jobs);object(fake_units);object(fake_ui);object(fake_world);object(fake_map);
-    object(fake_command);
-    put(fake_command,0x28,ffr::RawArray{reinterpret_cast<std::uint64_t>(fake_command_request.data()),1,1});
+    object(fake_jobs);object(fake_units);object(fake_ui,reinterpret_cast<std::uint64_t>(ffr_test_ui_vtable));object(fake_world);object(fake_map);
+    object(fake_command);object(fake_ui_command,reinterpret_cast<std::uint64_t>(ffr_test_ui_command_vtable));
+    put(fake_command,0x28,ffr::RawArray{});
     put(fake_manager,0xb0,reinterpret_cast<std::uint64_t>(fake_command.data()));
-    fake_manager[0x1a9]=1;fake_ui[0x80]=1;
+    put(fake_ui,0x70,reinterpret_cast<std::uint64_t>(fake_ui_command.data()));
+    fake_manager[0x1a9]=1;fake_manager[0x220]=1;fake_ui[0x80]=1;
     put(fake_manager,0x40,reinterpret_cast<std::uint64_t>(fake_jobs.data()));
     put(fake_manager,0x48,reinterpret_cast<std::uint64_t>(fake_units.data()));
     put(fake_jobs,0x28,ffr::RawArray{});put(fake_jobs,0x38,ffr::RawArray{});
@@ -48,14 +49,16 @@ void run_abort_fixture(const std::filesystem::path& connection,const std::wstrin
     const auto start=ready.find(key);CHECK(start!=std::string::npos);
     const auto hash=ready.substr(start+key.size(),64);CHECK(hash.size()==64 && hash.find('"')==std::string::npos);
     CHECK(ready.find("\"openingHistoryUntouched\":true")!=std::string::npos);
-    CHECK(ready.find("\"commandWaitReady\":true")!=std::string::npos);
-    // Other callers keep waiting even with the hook installed.
-    CHECK(ffr_test_command_wait(fake_command.data()) && GetLastError()==6543 && !fake_manager[0x222]);
+    CHECK(ready.find("\"commandAbortReady\":true")!=std::string::npos);
+    CHECK(abort_calls==0 && ui_command_abort_calls==0 && !fake_manager[0x222] && !fake_manager[0x223]);
     if(deny) {
-        if(mode==L"abort-skill-denied")ffr_test_skill_begin(nullptr,123,nullptr);
+        if(mode==L"abort-queued-command-denied")put(fake_command,0x28,ffr::RawArray{reinterpret_cast<std::uint64_t>(fake_command_request.data()),1,1});
+        else if(mode==L"abort-flagged-denied")fake_manager[0x223]=1;
+        else if(mode==L"abort-skill-denied")ffr_test_skill_begin(nullptr,123,nullptr);
         else if(mode==L"abort-foreign-denied") {std::thread other([]{ffr_test_decision(nullptr,nullptr);});other.join();}
         else ffr_test_decision(nullptr,nullptr);
-        wait([&] {return read(connection/L"abort-status.json").find("\"openingHistoryUntouched\":false")!=std::string::npos;});
+        const auto field=mode==L"abort-queued-command-denied"||mode==L"abort-flagged-denied"?"\"commandAbortReady\":false":"\"openingHistoryUntouched\":false";
+        wait([&] {return read(connection/L"abort-status.json").find(field)!=std::string::npos;});
     }
     const auto deadline=now()+8;
     auto request=[&](const std::string& phase) {
@@ -67,32 +70,31 @@ void run_abort_fixture(const std::filesystem::path& connection,const std::wstrin
     if(deny) {
         wait([&] {return read(connection/L"abort-status.json").find("\"phase\":\"rejected\"")!=std::string::npos;});
         request("commit");for(unsigned i=0;i<8;++i){pump();std::this_thread::sleep_for(std::chrono::milliseconds(50));}
-        CHECK(abort_calls==0 && !std::filesystem::exists(connection/L"abort-recovery.gvas"));
+        CHECK(abort_calls==0 && ui_command_abort_calls==0 && !std::filesystem::exists(connection/L"abort-recovery.gvas"));
     } else {
         wait([&] {return read(connection/L"abort-status.json").find("\"phase\":\"armed\"")!=std::string::npos;});
         CHECK(abort_calls==0 && std::filesystem::exists(connection/L"abort-recovery.gvas"));
         CHECK(serialized==released && serialized==2);
-        request("commit");
-        wait([&] {return abort_calls==1;});
-        CHECK(fake_manager[0x222] && ffr_test_command_wait(fake_command.data()) && GetLastError()==6543);
         if(mode==L"abort-wrong-owner") {
-            object(fake_other_command);
-            put(fake_other_command,0x28,ffr::RawArray{reinterpret_cast<std::uint64_t>(fake_command_request.data()),1,1});
-            wait_argument=fake_other_command.data();
-            for(unsigned i=0;i<16;++i){pump();std::this_thread::sleep_for(std::chrono::milliseconds(50));}
-            CHECK(abort_calls==1 && fake_manager[0x222] && fake_manager[0x1a9]==1 && serialized==2);
+            object(fake_other_ui_command,reinterpret_cast<std::uint64_t>(ffr_test_ui_command_vtable));object(fake_other_world);
+            put(fake_ui,0x70,reinterpret_cast<std::uint64_t>(fake_other_ui_command.data()));
+            request("commit");
+            wait([&] {return read(connection/L"abort-status.json").find("\"phase\":\"rejected\"")!=std::string::npos;});
+            CHECK(abort_calls==0 && ui_command_abort_calls==0 && fake_manager[0x222]==0 && fake_manager[0x1a9]==1 && serialized==2);
             std::string terminal;wait([&]{terminal=read(connection/L"abort-status.json");return !terminal.empty();});
-            CHECK(terminal.find("\"overrides\":0")!=std::string::npos);
             write(connection/L"abort-final-status.json",terminal);return;
         }
+        request("commit");
+        wait([&] {return abort_calls==1 && ui_command_abort_calls==1;});
+        CHECK(fake_manager[0x222] && fake_manager[0x223]);
+        CHECK(abort_thread==GetCurrentThreadId() && ui_command_abort_thread==GetCurrentThreadId());
         wait([&] {const auto s=read(connection/L"abort-status.json");return s.find("\"phase\":\"manager-cleared\"")!=std::string::npos
             && s.find("\"file\":\"abort-after.gvas\",\"sha256\":\"\"")==std::string::npos;});
-        CHECK(abort_calls==1 && serialized==released && serialized==3 && fake_manager[0x1a9]==0);
+        CHECK(abort_calls==1 && ui_command_abort_calls==1 && serialized==released && serialized==3 && fake_manager[0x1a9]==0);
         CHECK(decision_calls==0 && skill_producer_calls==0);
         CHECK(std::filesystem::exists(connection/L"abort-after.gvas"));
         for(unsigned i=0;i<12;++i){pump();std::this_thread::sleep_for(std::chrono::milliseconds(25));}
-        CHECK(abort_calls==1);
-        CHECK(read(connection/L"abort-status.json").find("\"overrides\":2")!=std::string::npos);
+        CHECK(abort_calls==1 && ui_command_abort_calls==1);
         if(mode==L"abort-released")CHECK(read(connection/L"abort-status.json").find("\"managersReleased\":true")!=std::string::npos);
     }
     write(connection/L"abort-final-status.json",read(connection/L"abort-status.json"));

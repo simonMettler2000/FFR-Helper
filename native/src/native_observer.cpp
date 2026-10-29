@@ -59,10 +59,10 @@
 #ifdef FFR_PRACTICE_BUILD
 #include "abort_trial.hpp"
 #include "import_menu.hpp"
-#ifdef FFR_COMMAND_WAIT_PROFILE_HEADER
-#include FFR_COMMAND_WAIT_PROFILE_HEADER
+#ifdef FFR_COMMAND_ABORT_PROFILE_HEADER
+#include FFR_COMMAND_ABORT_PROFILE_HEADER
 #else
-#include "command_wait_profile.hpp"
+#include "command_abort_profile.hpp"
 #endif
 #include "progression_clone.hpp"
 #include "combat_transport.hpp"
@@ -318,12 +318,8 @@ struct Observer {
     std::optional<ffr::AbortRequest> abort_request;
     bool abort_available=false;
     bool dispatcher_available=false;
-    std::uint64_t wait_sequence{};
-    unsigned wait_observations{};
-    std::int64_t wait_sample_time{};
-    bool wait_last_value=false;
-    unsigned wait_override_mask{};
-    std::uint64_t wait_owner{},last_tick_context{};
+    bool command_abort_issued=false,force_end_flag_observed=false,command_abort_flag_observed=false;
+    std::string command_abort_message="Native command abort has not been requested";
     std::string abort_message="Abort trial has not initialized", opening_hash, recovery_hash;
     std::int64_t probe_time{};
     std::vector<unsigned char> after_progression;
@@ -549,11 +545,6 @@ void __fastcall encounter_hook(void* context, const void* entry, bool skip_intro
             current->decision_tracked_from_entry=decision_installed.load(std::memory_order_acquire);
             current->skill_sequence=current->sequence+1;current->skill_thread=GetCurrentThreadId();
             current->skill_entries=0;current->skill_tracked=skill_dispatch_installed.load();current->skill_foreign_thread=false;current->skill_overflow=false;}
-#ifdef FFR_PRACTICE_BUILD
-        {std::lock_guard lock(current->mutex);current->wait_sequence=current->sequence+1;
-            current->wait_observations=0;current->wait_sample_time=0;current->wait_last_value=false;
-            current->wait_owner=0;current->last_tick_context=0;}
-#endif
         auto copied = ffr::capture_entry(read_memory, reinterpret_cast<std::uint64_t>(entry), skip_intro);
         if (!copied) { current->failures.fetch_add(1); return; }
         auto json = ffr::to_json(*copied);

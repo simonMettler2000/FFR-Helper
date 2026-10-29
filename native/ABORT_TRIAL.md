@@ -6,8 +6,9 @@ completed commands. Subsequent supervised tests verified fresh idle-menu samples
 and separate manual-command/Skill.Begin histories. The revised abort guard
 requires both same-thread histories untouched, with no coverage-loss flags,
 alongside the ordinary idle-menu checks. It does not accept a raw threshold of
-one. The supported source now enables this guard for a controlled ForceEnd test;
-installation and execution of that test require separate authorization.
+one. The current source pairs native EndBattle with the game's own
+`UI_BtlCmdManager::AbortCommand` to release command selection. This native API
+pair is prepared for a controlled test; live verification is pending.
 
 The independent detached-import policy was then exercised in FFR. A temporary
 object matched all 466,065 captured bytes; live progression and input remained
@@ -21,6 +22,9 @@ ForceEnd request stayed pending at the command menu and timed out; a subsequent
 user command was followed by field return without a result screen. Fresh read-only
 diagnostics verified that delayed cleanup. After-progression was not captured,
 so reward/resource equality is unverified. No restoration has run in FFR.
+The subsequent scoped-wait experiment sent no request: the real first-menu queue
+was empty and its required wait condition was absent. The controller was stopped
+and its lease expired. The wait-result detours have been removed from the source.
 It does not restart a battle, replace live progression or restore a save state.
 It now also has a separate, explicit **detached import comparison** described
 below. Creating a comparison UObject does not apply it to the running game.
@@ -34,7 +38,8 @@ a separately approved test with backed-up practice data.
 
 - Requires the exact game/UE4SS profiles used by the verified capture observer.
   Additional loaded code fingerprints cover the battle tick, world/subsystem
-  getters and the complete 112-byte EndBattle function.
+  getters, the complete 112-byte EndBattle function, 69-byte native AbortCommand,
+  43-byte UI command-manager getter and both native command-selection flag readers.
 - Uses a separate FFRHelperBattlePractice folder and two distinct channels:
   read-only capture reports and an explicitly mutation-capable abort status.
   The existing capture client cannot send abort requests.
@@ -48,18 +53,22 @@ a separately approved test with backed-up practice data.
   Non-default battle-event IDs, bounty/test/preemptive/result-skipping flags and
   disabled escape cause refusal. This does not identify every possible script context.
   Raw turn beginnings are reported separately and never interpreted as commands.
-- A fresh exact-callsite command-wait observation is also required before abort.
-  The follow-up source can let the native ForceEnd check run past this input wait
-  at two verified callsites, each at most once after an own committed abort.
-  Complete gate/state/helper fingerprints, both direct calls, the captured thread,
-  fresh revalidated tick context, delegate ownership, native ForceEnd flag, queues and
-  untouched histories are rechecked. Other calls keep their original results.
-  No attack or player-command record is submitted. Live verification is pending.
+- The native command-abort target must be owned at the exact UI subsystem's
+  profiled getter field, with the same World through the virtual getter used by
+  AbortCommand itself. The virtual method must belong to the game image. The
+  battle must be initialized, with no pending ForceEnd/command-completion flag,
+  an empty command-request array and no active pause flag. The client requires
+  the explicit `ordinary-first-menu-native-command-abort` policy. No attack or
+  player-command record is submitted; no raw game field or wait result is written.
 - Preparation serializes progression into a separate recovery buffer. The worker
   commits and reads back a private recovery file before reporting the trial armed.
   The client also checks its hash, GVAS class, engine, footer and required fields.
 - Only a matching explicit commit may call the verified EndBattle function.
-  State is marked before that call, and there is no automatic resend or retry.
+  After its flag is read back, the native command-abort API is called once on the
+  verified UI object; its completion flag is also read back. Code identity and
+  target readiness are checked again before commit. State is marked before each
+  call, and there is no automatic resend or retry. Flag readback is evidence of
+  the request only; field cleanup and progression comparison remain separate.
   One attempt per game launch is supported, including rejected attempts.
 - Cleanup observation requires the same encounter/session, empty unit/job queues,
   cleared battle-active flag and cleared battle UI flag. Both released managers

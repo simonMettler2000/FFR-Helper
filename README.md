@@ -95,8 +95,9 @@ unchanged live/input bytes, released temporary pins and a responsive game.
 The next source enables a separate first-menu event-history guard for a controlled
 ForceEnd test. That first live request remained pending until a user command,
 then returned to the field without a result screen; immediate cleanup and
-progression equality remain unverified. A scoped command-wait correction is in
-development. No restoration has run. Normalization remains disabled.
+progression equality remain unverified. The scoped-wait follow-up queued no
+request. The current source prepares the game's native command-abort API, with
+owned-object and empty-queue guards. No restoration has run. Normalization remains disabled.
 Battle restart and save-state restoration remain unfinished.
 
 ## Use

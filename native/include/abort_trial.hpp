@@ -21,7 +21,7 @@ struct AbortGuard {
     // Separate from the raw turn-beginning count. Both exact-profile journals
     // must cover this opening/thread with no entries or coverage-loss flags.
     bool opening_history_untouched{};
-    bool command_wait_ready{};
+    bool command_abort_ready{};
 };
 enum class AbortPhase { idle, recovery_pending, armed, abort_sent, manager_cleared, rejected, timed_out };
 inline const char* phase_name(AbortPhase phase) {
@@ -53,7 +53,7 @@ class AbortTrial {
         return guard.game_thread && guard.matching_world && guard.ordinary_encounter
             && guard.battle_active && guard.command_menu && guard.units>0 && guard.units<=64
             && guard.waiting_jobs==0 && guard.working_jobs==0 && guard.friendly_actions>=0
-            && guard.opening_history_untouched && guard.command_wait_ready;
+            && guard.opening_history_untouched && guard.command_abort_ready;
     }
 public:
     AbortPhase phase() const {return current;}

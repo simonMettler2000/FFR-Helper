@@ -15,7 +15,7 @@ def main():
     parser.add_argument('--exe', required=True, type=Path)
     parser.add_argument('--loader', required=True, type=Path)
     parser.add_argument('--module', required=True, type=Path)
-    parser.add_argument('--mode', required=True, choices=['good', 'bad-game', 'bad-loader','bad-function','boundary-unreviewed','decision-history','decision-unavailable','menu-frame','menu-unavailable','skill-history','skill-unavailable','abort','abort-released','abort-wrong-owner','abort-denied','abort-skill-denied','abort-foreign-denied','abort-full-unavailable','abort-wait-unavailable',
+    parser.add_argument('--mode', required=True, choices=['good', 'bad-game', 'bad-loader','bad-function','boundary-unreviewed','decision-history','decision-unavailable','menu-frame','menu-unavailable','skill-history','skill-unavailable','abort','abort-released','abort-wrong-owner','abort-queued-command-denied','abort-flagged-denied','abort-denied','abort-skill-denied','abort-foreign-denied','abort-full-unavailable','abort-command-unavailable',
                                                        'clone','clone-after-action','clone-import-only','clone-unready','clone-mismatch','clone-mutates','clone-denied',
                                                        'combat','combat-after-action','combat-denied','combat-stale','combat-effects-unavailable',
                                                        'normalize','normalize-unready','normalize-stale','normalize-template','normalize-write-failed',
@@ -30,7 +30,7 @@ def main():
         module = root/'dlls/main.dll'
         shutil.copy2(args.module, module)
         subprocess.run([str(args.exe.resolve()), str(module), str(args.loader.resolve()), str(root/'connection'), args.mode], check=True, timeout=30)
-        if args.mode in {'boundary-unreviewed','abort-full-unavailable','abort-wait-unavailable'}:return
+        if args.mode in {'boundary-unreviewed','abort-full-unavailable','abort-command-unavailable'}:return
         if args.mode=='clone-import-only':
             policy=json.loads((root/'connection/import-only-policy-status.json').read_text())
             assert policy['available'] is False and policy['phase']=='idle'
@@ -187,9 +187,10 @@ def main():
             status=json.loads((root/'connection/abort-final-status.json').read_text(encoding='utf8'))
             assert status['adapter']=='ffr-helper-opening-abort-trial' and status['readOnly'] is False
             assert status['restorable'] is False and status['runtimeMode']=='experimental-abort-test'
-            expected='abort-sent' if args.mode=='abort-wrong-owner' else 'rejected' if 'denied' in args.mode else 'manager-cleared'
+            expected='rejected' if args.mode=='abort-wrong-owner' or 'denied' in args.mode else 'manager-cleared'
             assert status['phase']==expected
-            assert status['commandWaitGate']['overrides']==(2 if expected=='manager-cleared' else 0)
+            assert status['nativeCommandAbort']['issued']==(expected=='manager-cleared')
+            if expected=='manager-cleared':assert status['nativeCommandAbort']['forceEndFlagObserved'] and status['nativeCommandAbort']['commandAbortFlagObserved']
             if expected=='manager-cleared':
                 for key,name in [('recovery','abort-recovery.gvas'),('after','abort-after.gvas')]:
                     raw=(root/'connection'/name).read_bytes()

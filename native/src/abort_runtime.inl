@@ -36,6 +36,8 @@ std::optional<ffr::AbortRequest> read_abort_request(const std::filesystem::path&
     return ffr::AbortRequest{session,nonce,hash,phase,deadline,number};
 }
 
+#include "command_abort_runtime.inl"
+
 ffr::AbortGuard probe_abort(void* tick_context,const std::shared_ptr<const Observer::Opening>& opening,
                            const std::string& session,const std::string& opening_hash) {
     ffr::AbortGuard out;out.session=session;out.opening_hash=opening_hash;
@@ -97,10 +99,10 @@ ffr::AbortGuard probe_abort(void* tick_context,const std::shared_ptr<const Obser
     if(found!=expected)return out;
     out.friendly_actions=actions;
     out.command_menu=ui_known && during==1 && phase==0 && selected_friendly;
+    out.command_abort_ready=native_command_abort_target(tick_context,out)!=nullptr;
     return out;
 }
 
-#include "command_wait_runtime.inl"
 #include "import_runtime.inl"
 #include "combat_runtime.inl"
 #include "recovery_runtime.inl"
@@ -122,17 +124,8 @@ void abort_tick(void* context) {
     }
     auto guard=probe_abort(context,opening,session,hash);
     {std::lock_guard lock(current->mutex);
-        current->last_tick_context=guard.game_thread && guard.matching_world?reinterpret_cast<std::uint64_t>(context):0;
         guard.opening_history_untouched=opening && current->opening==opening && current->session==session
             && untouched_history_locked(*current,*opening);
-        std::uint64_t command_owner{};ffr::RawArray command_requests{};
-        const bool matching_wait_owner=current->last_tick_context>=0x10000
-            && read_value(current->last_tick_context-0x30+0xb0,command_owner) && command_owner==current->wait_owner
-            && valid_object(command_owner) && read_value(command_owner+0x28,command_requests)
-            && ffr::valid_array(command_requests,64) && command_requests.count>0;
-        guard.command_wait_ready=opening && matching_wait_owner && command_wait_installed.load() && current->wait_sequence==opening->sequence
-            && current->wait_observations>0 && current->wait_last_value
-            && current->wait_sample_time>=now-2 && current->wait_sample_time<=now+2;
         current->last_guard=guard;current->probe_time=now;current->trial.observe(guard,now);
     }
     run_combat_probe(current,context,guard,now);
@@ -149,6 +142,8 @@ void abort_tick(void* context) {
         });
     }
     if(abort_permitted && request && request->phase=="commit") {
+        auto* command_target=native_command_abort_target(context,guard);
+        if(!command_target || !command_abort_code_matches())guard.command_abort_ready=false;
         bool send=false;
         {std::lock_guard lock(current->mutex);
             current->trial.commit(*request,guard,now,[&] {send=true;});
@@ -157,6 +152,21 @@ void abort_tick(void* context) {
         if(send) {
             const auto base=reinterpret_cast<std::uint64_t>(GetModuleHandleW(nullptr));
             reinterpret_cast<EndBattleFunction>(base+ffr::abort_profile::end_battle_rva)();
+            std::uint8_t end_flag{};
+            const auto manager=reinterpret_cast<std::uint64_t>(context)-0x30;
+            const bool end_seen=read_value(manager+0x222,end_flag) && end_flag==1;
+            {std::lock_guard lock(current->mutex);current->force_end_flag_observed=end_seen;
+                current->command_abort_message=end_seen?"ForceEnd flag verified; requesting native command abort":
+                    "ForceEnd flag was not verified; command abort was not requested. No retry";}
+            if(end_seen) {
+                // Mark before calling: a partial/reentrant call cannot repeat.
+                {std::lock_guard lock(current->mutex);current->command_abort_issued=true;}
+                reinterpret_cast<NativeCommandAbort>(base+ffr::command_abort_profile::abort_rva)(command_target);
+                std::uint8_t command_flag{};const bool command_seen=read_value(manager+0x223,command_flag) && command_flag==1;
+                std::lock_guard lock(current->mutex);current->command_abort_flag_observed=command_seen;
+                current->command_abort_message=command_seen?"Native command-abort flag verified; waiting for field cleanup":
+                    "Native command abort returned but its flag was not verified. No retry";
+            }
         }
     }
     bool capture_after=false;
@@ -212,7 +222,7 @@ void Observer::publish_abort(const Lease& lease) {
             {"workingJobs",std::to_string(g.working_jobs)},{"friendlyActions",std::to_string(g.friendly_actions)},
             {"sequence",std::to_string(g.sequence)},{"openingHash",ffr::quote(g.opening_hash)},{"fieldReady",json_flag(g.field_ready)},
             {"managersReleased",json_flag(g.managers_released)},{"counterMeaning",ffr::quote("turn-beginnings")},
-            {"openingHistoryUntouched",json_flag(g.opening_history_untouched)},{"commandWaitReady",json_flag(g.command_wait_ready)}});
+            {"openingHistoryUntouched",json_flag(g.opening_history_untouched)},{"commandAbortReady",json_flag(g.command_abort_ready)}});
         const auto recovery=json_object({{"kind",ffr::quote("progression-only")},{"restorable","false"},
             {"file",ffr::quote("abort-recovery.gvas")},{"sha256",ffr::quote(recovery_hash)},
             {"byteLength",std::to_string(trial.recovery_bytes().size())}});
@@ -231,11 +241,10 @@ void Observer::publish_abort(const Lease& lease) {
         status=json_object({{"protocol","1"},{"adapter",ffr::quote("ffr-helper-opening-abort-trial")},
             {"session",ffr::quote(lease.session)},{"time",std::to_string(seconds())},{"readOnly","false"},{"restorable","false"},
             {"format",ffr::quote("ffr-helper-abort-trial-status")},{"runtimeMode",ffr::quote("experimental-abort-test")},
-            {"available",json_flag(abort_available)},{"openingBoundaryPolicy",ffr::quote("ordinary-first-menu-event-history")},
-            {"commandWaitGate",json_object({{"available",json_flag(command_wait_installed.load())},
-                {"sequence",std::to_string(wait_sequence)},{"sampleTime",std::to_string(wait_sample_time)},
-                {"observations",std::to_string(wait_observations)},{"waiting",json_flag(wait_last_value)},
-                {"overrides",std::to_string((wait_override_mask&1u)+((wait_override_mask>>1u)&1u))}})},
+            {"available",json_flag(abort_available)},{"openingBoundaryPolicy",ffr::quote("ordinary-first-menu-native-command-abort")},
+            {"nativeCommandAbort",json_object({{"available",json_flag(command_abort_profile_ready.load())},
+                {"issued",json_flag(command_abort_issued)},{"forceEndFlagObserved",json_flag(force_end_flag_observed)},
+                {"commandAbortFlagObserved",json_flag(command_abort_flag_observed)},{"message",ffr::quote(command_abort_message)}})},
             {"nonce",ffr::quote(action.nonce)},{"trialSession",ffr::quote(action.session)},
             {"sequence",std::to_string(action.sequence)},{"phase",ffr::quote(ffr::phase_name(trial.phase()))},
             {"message",ffr::quote(abort_available?trial.message():abort_message)},{"probeTime",std::to_string(probe_time)},
@@ -273,19 +282,18 @@ void install_abort_tick_hook() {
         }
     }
     if(ffr::abort_profile::detached_import_menu_reviewed || ffr::abort_profile::normalization_field_reviewed)initialize_import_probe();
-    if(ffr::abort_profile::opening_boundary_reviewed)install_command_wait_hook();
+    if(ffr::abort_profile::opening_boundary_reviewed)command_abort_profile_ready.store(command_abort_code_matches());
     tick_address=reinterpret_cast<void*>(base+ffr::abort_profile::tick_rva);void* trampoline{};
     if(MH_CreateHook(tick_address,reinterpret_cast<void*>(&abort_tick_hook),&trampoline)!=MH_OK)return;
     original_tick.store(reinterpret_cast<TickFunction>(trampoline),std::memory_order_release);
     if(MH_EnableHook(tick_address)!=MH_OK){MH_RemoveHook(tick_address);return;}
     tick_installed.store(true);
     std::lock_guard lock(observer->mutex);observer->dispatcher_available=true;
-    observer->abort_available=ffr::abort_profile::opening_boundary_reviewed && command_wait_installed.load();
+    observer->abort_available=ffr::abort_profile::opening_boundary_reviewed && command_abort_profile_ready.load();
     observer->abort_message=observer->abort_available?"Experimental opening-abort trial available":
-        (ffr::abort_profile::opening_boundary_reviewed?"Scoped command wait profile unavailable; abort disabled":
+        (ffr::abort_profile::opening_boundary_reviewed?"Native command abort profile unavailable; abort disabled":
         "Opening abort remains unreviewed; only the separately reviewed detached-import idle menu is enabled");
 }
 void shutdown_abort_tick_hook() {
-    shutdown_command_wait_hook();
     if(tick_installed.exchange(false))MH_DisableHook(tick_address);
 }

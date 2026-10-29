@@ -26,9 +26,9 @@ class AbortClientTests(unittest.TestCase):
                         runtimeMode='experimental-abort-test',readOnly=False,restorable=False,
                         session=self.recorder.session,time=int(time.time()),probeTime=int(time.time()),
                         available=True,phase='idle',nonce='',trialSession='',sequence=0,message='Fixture',
-                        openingBoundaryPolicy='ordinary-first-menu-event-history',
+                        openingBoundaryPolicy='ordinary-first-menu-native-command-abort',
                         guard=dict(gameThread=True,matchingWorld=True,ordinaryEncounter=True,battleActive=True,
-                                   commandMenu=True,units=4,waitingJobs=0,workingJobs=0,friendlyActions=1,openingHistoryUntouched=True,commandWaitReady=True,
+                                   commandMenu=True,units=4,waitingJobs=0,workingJobs=0,friendlyActions=1,openingHistoryUntouched=True,commandAbortReady=True,
                                    sequence=1,openingHash=self.capture.metadata['sha256']))
         self.write_frame()
 
@@ -63,7 +63,7 @@ class AbortClientTests(unittest.TestCase):
         self.assertFalse((self.root/'connection/abort-request.txt').exists())
 
     def test_pending_actions_or_an_old_opening_prevent_preparation(self):
-        for key,value in [('workingJobs',1),('waitingJobs',1),('openingHistoryUntouched',False),('commandWaitReady',False),('friendlyActions',-1),
+        for key,value in [('workingJobs',1),('waitingJobs',1),('openingHistoryUntouched',False),('commandAbortReady',False),('friendlyActions',-1),
                           ('sequence',2),('openingHash','0'*64),('units',False)]:
             old=self.frame['guard'][key];self.frame['guard'][key]=value;self.write_frame()
             with self.assertRaises(ValueError):self.bridge.prepare(self.report)

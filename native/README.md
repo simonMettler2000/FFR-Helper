@@ -151,7 +151,10 @@ and temporary-pin release all passed, and the game stayed responsive. The next
 source enables a separate untouched event-history guard for a controlled ForceEnd
 test. Its first live request was deferred behind command input and only cleared
 after a user action; after-progression equality was not captured. The follow-up
-source has a scoped command-wait gate; immediate cleanup remains unverified.
+scoped-wait follow-up held without sending a request because the real queue was
+empty. The current source removes those detours and prepares the native
+EndBattle/AbortCommand pair with owned-object, same-World and empty-queue guards.
+Immediate cleanup remains unverified.
 No restoration has run. Normalization remains disabled; this
 does not yet perform restart or save-state restoration.
 

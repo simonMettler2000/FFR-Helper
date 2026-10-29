@@ -7,7 +7,7 @@ int main() {
     try {
         ffr::AbortRequest request{std::string(32,'a'),std::string(32,'b'),std::string(64,'c'),"prepare",105,1};
         ffr::AbortGuard good{true,true,true,true,true,0,0,0,4,request.session,request.opening_hash,1};
-        good.opening_history_untouched=true;good.command_wait_ready=true;good.friendly_actions=1;
+        good.opening_history_untouched=true;good.command_abort_ready=true;good.friendly_actions=1;
         unsigned captures=0,aborts=0;
         auto advanced=good;advanced.friendly_actions=3;
         CHECK(ffr::ordinary_idle_import_menu(advanced));
@@ -21,7 +21,7 @@ int main() {
             case 2:guard.ordinary_encounter=false;break;case 3:guard.battle_active=false;break;
             case 4:guard.command_menu=false;break;case 5:guard.waiting_jobs=1;break;
             case 6:guard.working_jobs=1;break;case 7:guard.opening_history_untouched=false;break;
-            case 8:guard.units=0;break;case 9:guard.sequence=2;break;case 10:guard.command_wait_ready=false;break;
+            case 8:guard.units=0;break;case 9:guard.sequence=2;break;case 10:guard.command_abort_ready=false;break;
             }
             ffr::AbortTrial trial;CHECK(!trial.prepare(request,guard,100,capture));CHECK(trial.phase()==ffr::AbortPhase::rejected);
         }

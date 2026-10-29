@@ -133,3 +133,22 @@ def load_opening(path: Path):
                 or manifest.get('restorable') is not False or manifest.get('missingState') != MISSING):
             raise ValueError('Opening captures are incomplete diagnostics, not restorable states.')
         return OpeningCapture(_metadata(manifest.get('opening')), archive.read('progression.gvas')).validate()
+
+
+def summarize_opening(capture: OpeningCapture):
+    """Describe validated coverage without exposing encounter IDs or save values."""
+    capture.validate()
+    metadata = capture.metadata
+    clock = metadata.get('playtimeBasis')
+    cache = metadata.get('mapUnitCache')
+    return '\n'.join([
+        f'Progression: checksum and save structure verified ({len(capture.progression):,} bytes).',
+        'Encounter setup: diagnostic metadata; full battle state is incomplete.',
+        'Field anchor: '+('present (position/direction only).' if metadata.get('fieldAnchor') is not None else 'unavailable.'),
+        'Live clock: '+(f'present (partial; rounding: {clock.get("roundingMode", "unknown")}).' if clock is not None else 'unavailable.'),
+        'Map-unit cache: '+(f'present ({len(cache["units"])} entries; progression coherence unverified).' if cache is not None else 'unavailable.'),
+        'CRT RNG: '+('present (one current-thread stream; other RNG missing).' if metadata.get('crtRandState') is not None else 'unavailable.'),
+        '',
+        'Availability does not establish complete coverage or live verification.',
+        'Restoration is not implemented. This capture is not a save state.',
+    ])

@@ -19,7 +19,7 @@ from .progression import INT_MAX, level_at, reference_data, route_totals
 from .storage import CheckpointStore, app_directory, discover_saves, write_save, atomic_write
 from .bridge import FieldSaveBridge, prepare_adapter
 from .runtime import RuntimeRecorder, NativeEntryRecorder, prepare_recorder, export_report
-from .opening import export_opening
+from .opening import export_opening, load_opening, summarize_opening
 
 
 STYLE = """QMainWindow,QWidget{background:#f4f5f3;color:#22353e;font-family:'Segoe UI';font-size:13px}
@@ -383,6 +383,7 @@ class MainWindow(QMainWindow):
         row.addWidget(self.runtime_capture)
         row.addWidget(self.runtime_export)
         row.addWidget(self.runtime_opening_export)
+        row.addWidget(button('Inspect saved capture…', self.inspect_runtime_opening))
         row.addStretch()
         box.addLayout(row)
         box.addWidget(text('An experimental FFRHelperRuntimeNative folder can also be connected. It captures serialized progression at encounter entry and exports .ffropening diagnostics. The native DLL requires a separate installation and live compatibility check; Prepare recorder installs the Lua recorder only.'))
@@ -483,6 +484,14 @@ class MainWindow(QMainWindow):
         name, _ = QFileDialog.getSaveFileName(self, 'Export an incomplete opening capture', 'opening.ffropening', 'Opening capture (*.ffropening)')
         if name:
             self.guard(lambda: export_opening(Path(name), self.runtime_opening))
+
+    def inspect_runtime_opening(self):
+        name, _ = QFileDialog.getOpenFileName(self, 'Inspect an opening capture offline', '', 'Opening capture (*.ffropening)')
+        if name:
+            def operation():
+                summary = summarize_opening(load_opening(Path(name)))
+                QMessageBox.information(self, 'Opening capture coverage', summary)
+            self.guard(operation)
 
     def connect_bridge(self):
         folder = QFileDialog.getExistingDirectory(self, 'Choose the installed FFRHelper adapter directory', self.settings.get('adapterFolder', ''))

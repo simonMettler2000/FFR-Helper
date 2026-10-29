@@ -14,6 +14,7 @@ from ffr_helper.editor import SaveEditor
 from test_core import synthetic_save
 from test_runtime import sample_report
 from test_opening import sample_opening
+from ffr_helper.opening import export_opening
 
 
 class GuiTests(unittest.TestCase):
@@ -155,6 +156,24 @@ class GuiTests(unittest.TestCase):
         w.poll_recorder();self.assertFalse(w.runtime_opening_export.isEnabled())
         self.assertIsNone(w.runtime_opening)
         w.disconnect_runtime();self.assertFalse(w.runtime_opening_export.isEnabled())
+
+    def test_offline_capture_inspection_preserves_save_and_connection_without_showing_ids(self):
+        w=self.window;original=w.editor.export();capture=sample_opening()
+        path=self.directory/'diagnostic.ffropening';export_opening(path,capture);before=path.read_bytes()
+        with patch('ffr_helper.app.QFileDialog.getOpenFileName',return_value=(str(path),'')),patch('ffr_helper.app.QMessageBox.information') as dialog:
+            w.inspect_runtime_opening()
+        summary=dialog.call_args.args[2]
+        self.assertIn('Field anchor: unavailable',summary)
+        self.assertIn('not a save state',summary)
+        self.assertNotIn('987654',summary)
+        self.assertNotIn(capture.metadata['sha256'],summary)
+        self.assertIsNone(w.recorder);self.assertIsNone(w.bridge);self.assertIsNone(w.runtime_opening)
+        self.assertFalse(w.restart_battle.isEnabled());self.assertFalse(w.save_anywhere.isEnabled())
+        self.assertEqual(w.editor.export(),original);self.assertEqual(self.source.read_bytes(),self.raw);self.assertEqual(path.read_bytes(),before)
+        path.write_bytes(b'not an archive')
+        with patch('ffr_helper.app.QFileDialog.getOpenFileName',return_value=(str(path),'')),patch('ffr_helper.app.QMessageBox.warning') as warning,patch('ffr_helper.app.QMessageBox.information') as dialog:
+            w.inspect_runtime_opening()
+        warning.assert_called_once();dialog.assert_not_called()
 
 
 if __name__ == '__main__':

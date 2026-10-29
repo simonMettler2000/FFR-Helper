@@ -619,6 +619,17 @@ remain separate from diagnostic reports and ordinary-save checkpoints.
 
 ## Future live verification
 
+The desktop's **Runtime research → Inspect saved capture** can review an existing
+`.ffropening` without a game connection or working-save change. It validates the
+full archive/progression, then shows partial field/clock/cache/CRT availability
+without encounter IDs, coordinates, seed values or progression contents. Missing
+legacy metadata stays unavailable. Presence never establishes completeness or
+live verification. The equivalent read-only command is:
+
+```sh
+python tools/inspect_opening.py local/source.ffropening
+```
+
 An offline opening-component comparator now validates every bounded encounter
 entry field, compares the complete serialized progression including unknown
 properties, and optionally compares the independent normalized playtime

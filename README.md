@@ -88,6 +88,12 @@ remains deliberately unavailable to runtime commands.
    game and use **Write to selected slot**. A verified backup is created first.
 4. Load that slot in the game.
 
+In **Runtime research**, **Inspect saved capture** opens a `.ffropening` diagnostic
+offline and summarizes which partial components are present. It checks the
+archive and progression first, hides encounter IDs and save values, and never
+connects to the game or changes the editor's working save. Missing legacy
+components stay unavailable; a capture is not a restorable save state.
+
 To restore a checkpoint, open it, use **Use selected as write target** to
 choose a detected slot without replacing the working checkpoint, then write
 and load that slot. Steam Cloud may synchronize replaced practice slots; the

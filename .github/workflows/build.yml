@@ -26,6 +26,9 @@ jobs:
       - name: Fetch verified native dependency
         if: runner.os == 'Windows'
         run: python tools/fetch_native_dependencies.py
+      - name: Install existing codec dependency for native recovery fixture validation
+        if: runner.os == 'Windows'
+        run: python -m pip install pycryptodome==4.2.0
       - name: Configure portable capture tests
         if: runner.os != 'Windows'
         run: cmake -S native -B local/native-ci

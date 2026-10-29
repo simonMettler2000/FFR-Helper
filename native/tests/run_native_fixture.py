@@ -17,18 +17,48 @@ def main():
     parser.add_argument('--module', required=True, type=Path)
     parser.add_argument('--mode', required=True, choices=['good', 'bad-game', 'bad-loader','bad-function','abort','abort-denied',
                                                        'clone','clone-unready','clone-mismatch','clone-mutates','clone-denied',
-                                                       'combat','combat-after-action','combat-denied','combat-stale'])
+                                                       'combat','combat-after-action','combat-denied','combat-stale',
+                                                       'recovery','recovery-denied','recovery-stale','recovery-drift','recovery-write-failed','recovery-map-changed'])
     parser.add_argument('--work', required=True, type=Path)
     args = parser.parse_args()
     args.work.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=args.work.resolve()) as folder:
-        root = Path(folder)/('FFRHelperBattlePractice' if args.mode.startswith(('abort','clone','combat')) else 'FFRHelperRuntimeNative')
+        root = Path(folder)/('FFRHelperBattlePractice' if args.mode.startswith(('abort','clone','combat','recovery')) else 'FFRHelperRuntimeNative')
         (root/'dlls').mkdir(parents=True)
         (root/'connection').mkdir()
         module = root/'dlls/main.dll'
         shutil.copy2(args.module, module)
         subprocess.run([str(args.exe.resolve()), str(module), str(args.loader.resolve()), str(root/'connection'), args.mode], check=True, timeout=30)
-        if args.mode.startswith('combat'):
+        if args.mode.startswith('recovery'):
+            sys.path.insert(0,str(Path(__file__).resolve().parents[2]))
+            from ffr_helper import recovery, opening
+            from ffr_helper.codec import SaveDocument
+            fixture_hash=hashlib.sha256(args.exe.read_bytes()).hexdigest()
+            first=json.loads((root/'connection/recovery-first-report.json').read_text(encoding='utf8'))
+            final=json.loads((root/'connection/recovery-final-report.json').read_text(encoding='utf8'))
+            assert first['gameSha256']==final['gameSha256']==fixture_hash
+            with patch.object(recovery,'GAME_SHA256',fixture_hash),patch.object(opening,'GAME_SHA256',fixture_hash):
+                recovery.validate_recovery_report(first);recovery.validate_recovery_report(final)
+                source_report=json.loads((root/'connection/recovery-source-report.json').read_text(encoding='utf8'))
+                source=opening.OpeningCapture(source_report['objects']['nativeEntry']['opening'],(root/'connection/recovery-source-progression.gvas').read_bytes()).validate()
+                if args.mode=='recovery':
+                    original=recovery.PartialRecoveryCapture((root/'connection/recovery-first-metadata.json').read_bytes(),
+                                                             (root/'connection/recovery-first-progression.gvas').read_bytes()).validate()
+                    latest=recovery.read_live_recovery(root/'connection',final)
+                    assert first['captureNumber']==1 and final['captureNumber']==2
+                    assert original.metadata['sourceOpeningHash']==latest.metadata['sourceOpeningHash']==source.metadata['sha256']
+                    assert SaveDocument.decode(original.progression).root['player'].struct()['currentMoney'].integer()==202
+                    assert SaveDocument.decode(latest.progression).root['player'].struct()['currentMoney'].integer()==303
+                    assert SaveDocument.decode(source.progression).root['player'].struct()['currentMoney'].integer()==101
+                    assert latest.metadata['playtimeBasis']['savedSeconds']==1000.25 and latest.metadata['sourceMapId']==1000
+                    target=root/'connection/verified.ffrrecovery';recovery.export_recovery(target,latest)
+                    restored=recovery.load_recovery(target)
+                    assert restored.progression==latest.progression and restored.metadata_raw==latest.metadata_raw
+                else:
+                    expected={'recovery-denied':'rejected','recovery-stale':'rejected','recovery-map-changed':'rejected',
+                              'recovery-drift':'failed','recovery-write-failed':'write-failed'}[args.mode]
+                    assert first['phase']==final['phase']==expected and final['metadata'] is None
+        elif args.mode.startswith('combat'):
             report=json.loads((root/'connection/combat-final-report.json').read_text(encoding='utf8'))
             # Test only: substitute the independently verified dummy EXE identity
             # while checking the actual DLL output with the production parser.

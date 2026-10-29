@@ -5,7 +5,6 @@ from dataclasses import dataclass
 import hashlib
 import io
 import json
-import math
 from pathlib import Path
 import re
 import struct
@@ -13,6 +12,7 @@ import zipfile
 
 from .codec import SaveDocument
 from .game_build import GAME_SHA256
+from .field_anchor import validate_field_anchor
 from .playtime import validate_playtime_basis
 from .storage import atomic_write
 
@@ -35,16 +35,7 @@ def _metadata(value):
         raise ValueError('Invalid encounter-opening metadata.')
     anchor = value.get('fieldAnchor')
     if anchor is not None:
-        if (not isinstance(anchor, dict)
-                or set(anchor) != {'kind', 'restorable', 'source', 'coverage', 'sameWorldChecked', 'mapId', 'position', 'direction'}
-                or anchor.get('kind') != 'partial-field-anchor' or anchor.get('restorable') is not False
-                or anchor.get('source') != 'live-player-root-transform' or anchor.get('coverage') != 'position-and-direction-only'
-                or anchor.get('sameWorldChecked') is not True or type(anchor.get('mapId')) is not int
-                or not 0 <= anchor['mapId'] < 2**31 or type(anchor.get('direction')) is not int
-                or not 0 <= anchor['direction'] <= 8 or not isinstance(anchor.get('position'), list)
-                or len(anchor['position']) != 3
-                or any(type(v) not in (int, float) or abs(v) > 1e12 or not math.isfinite(v) for v in anchor['position'])):
-            raise ValueError('Invalid partial field anchor; it cannot represent a complete world state.')
+        validate_field_anchor(anchor)
     if value.get('playtimeBasis') is not None:
         validate_playtime_basis(value['playtimeBasis'])
     raw = json.dumps(value, ensure_ascii=False, allow_nan=False).encode('utf8')

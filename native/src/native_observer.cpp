@@ -30,6 +30,7 @@
 #include "abort_trial.hpp"
 #include "progression_clone.hpp"
 #include "combat_transport.hpp"
+#include "recovery_transport.hpp"
 #ifdef FFR_IMPORT_PROFILE_HEADER
 #include FFR_IMPORT_PROFILE_HEADER
 #else
@@ -208,6 +209,8 @@ struct Observer {
         std::string session, entry;
         std::string field_anchor="null";
         std::string playtime_basis="null";
+        std::optional<ffr::FieldAnchor> field_value;
+        std::optional<ffr::PlaytimeBasis> clock_value;
         std::vector<unsigned char> progression;
 #ifdef FFR_PRACTICE_BUILD
         ffr::Encounter encounter;
@@ -243,8 +246,12 @@ struct Observer {
     ffr::CloneProbeResult import_result;
     std::optional<ffr::CombatReadRequest> combat_request;
     ffr::CombatReadController combat_controller;
+    std::optional<ffr::RecoveryReadRequest> recovery_request;
+    ffr::RecoveryReadController recovery_controller;
+    bool recovery_boundary_ready=false;
     void publish_abort(const Lease& lease);
     void publish_combat(const Lease& lease);
+    void publish_recovery(const Lease& lease);
 #endif
     std::thread worker;
 
@@ -270,6 +277,7 @@ struct Observer {
                         opening.reset(); published.reset(); opening_metadata="null";
 #ifdef FFR_PRACTICE_BUILD
                         combat_request.reset();combat_controller.clear_latest();
+                        recovery_request.reset();recovery_controller.clear_latest();recovery_boundary_ready=false;
 #endif
                     }
                     expires.store(lease->expiry);
@@ -325,6 +333,7 @@ struct Observer {
 #ifdef FFR_PRACTICE_BUILD
                 publish_abort(*lease);
                 publish_combat(*lease);
+                publish_recovery(*lease);
 #endif
             } catch (...) { /* Invalid input/I/O cannot affect the game's encounter call. */ }
             Sleep(250);
@@ -336,6 +345,8 @@ struct Observer {
 // until process exit so an in-flight callback cannot return into unloaded code.
 std::unique_ptr<Observer> observer;
 std::atomic<Observer*> published_observer{nullptr};
+std::optional<ffr::FieldAnchor> capture_live_field(void* context);
+std::optional<ffr::PlaytimeBasis> capture_live_playtime(void* root);
 #ifdef FFR_PRACTICE_BUILD
 #include "abort_runtime.inl"
 #endif
@@ -349,6 +360,14 @@ std::optional<ffr::FieldAnchor> capture_live_field(void* context) {
     if(!world || !read_memory(reinterpret_cast<std::uint64_t>(world),header.data(),sizeof(header))
         || !header[0] || !header[2] || (header[1]&0x40000000u) || field_map(world)!=context)return {};
     return ffr::capture_field_anchor(read_memory,field_map_id(),reinterpret_cast<std::uint64_t>(field_player()));
+}
+
+std::optional<ffr::PlaytimeBasis> capture_live_playtime(void* root) {
+    if(!playtime_profile_ready || !root)return {};
+    const auto rounding=_MM_GET_ROUNDING_MODE();
+    auto basis=ffr::capture_playtime_basis(read_memory,root,root_getter,playtime_clock,playtime_seconds);
+    if(basis && rounding==_MM_GET_ROUNDING_MODE())basis->rounding_mode=static_cast<std::uint8_t>(rounding>>13);
+    return basis;
 }
 
 void initialize_field_profile() {
@@ -405,7 +424,7 @@ void __fastcall encounter_hook(void* context, const void* entry, bool skip_intro
         opening->entry=json; opening->time=seconds(); opening->session=capture_session;
         try {
             auto anchor=capture_live_field(context);
-            if(anchor)opening->field_anchor=ffr::to_json(*anchor);
+            if(anchor){opening->field_anchor=ffr::to_json(*anchor);opening->field_value=*anchor;}
             else current->field_failures.fetch_add(1);
         }catch(...) {current->field_failures.fetch_add(1);}
 #ifdef FFR_PRACTICE_BUILD
@@ -418,10 +437,8 @@ void __fastcall encounter_hook(void* context, const void* entry, bool skip_intro
             if (progression) {
                 opening->progression=std::move(*progression);
                 try {
-                    const auto rounding=_MM_GET_ROUNDING_MODE();
-                    auto basis=playtime_profile_ready?ffr::capture_playtime_basis(read_memory,captured_root,root_getter,playtime_clock,playtime_seconds):std::nullopt;
-                    if(basis && rounding==_MM_GET_ROUNDING_MODE())basis->rounding_mode=static_cast<std::uint8_t>(rounding>>13);
-                    if(basis)opening->playtime_basis=ffr::to_json(*basis);
+                    auto basis=capture_live_playtime(captured_root);
+                    if(basis){opening->playtime_basis=ffr::to_json(*basis);opening->clock_value=*basis;}
                     else current->playtime_failures.fetch_add(1);
                 }catch(...) {current->playtime_failures.fetch_add(1);}
             }

@@ -98,6 +98,7 @@ ffr::AbortGuard probe_abort(void* tick_context,const std::shared_ptr<const Obser
 
 #include "import_runtime.inl"
 #include "combat_runtime.inl"
+#include "recovery_runtime.inl"
 
 void abort_tick(void* context) {
     auto* current=published_observer.load(std::memory_order_acquire);
@@ -117,6 +118,7 @@ void abort_tick(void* context) {
         current->last_guard=guard;current->probe_time=now;current->trial.observe(guard,now);
     }
     run_combat_probe(current,context,guard,now);
+    run_recovery_probe(current,context,opening,guard,now);
     run_import_probe(current,opening,guard,request,now);
     // The import-only and abort experiments cannot be combined in one launch.
     {std::lock_guard lock(current->mutex);if(current->import_attempted)return;}

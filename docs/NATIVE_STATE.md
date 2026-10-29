@@ -326,9 +326,12 @@ restorable output. None of this establishes live game compatibility by itself.
 
 The separate [partial recovery prerequisite](../native/PARTIAL_RECOVERY.md) now
 copies two matching serialized progression objects with three stable field/clock
-samples and repeated root/readiness checks. Its callback-driven core and portable
-tests are implemented; the request channel and durable bundle are still pending.
-It is read-only component evidence, not an atomic world snapshot or rollback.
+samples and repeated root/readiness checks. Its explicit read-only practice
+request, worker readback/hash gate, strict Python consumer and `.ffrrecovery`
+archive now pass compiled-DLL/consumer tests. Pending jobs, stale sources, changed
+maps, sampling drift, publication races and write failures cause refusal. The
+channel is uninstalled and awaits live field/clock verification. It is component
+evidence, not an atomic world snapshot, rollback or restorable battle state.
 
 ### Native load prerequisites verified offline
 

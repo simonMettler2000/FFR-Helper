@@ -171,3 +171,21 @@ work includes live progression rebinding and verified cache notifications, then
 reconstruction through the engine allocator.
 Full mid-battle states additionally require scheduler, AI, status, jobs, event and
 RNG reconstruction. Those operations are not exposed by this trial.
+
+## Read-only partial field recovery
+
+The separate [partial recovery channel](PARTIAL_RECOVERY.md) copies coherent
+progression/field/clock evidence after a captured ordinary encounter. It requires
+the actual matching game thread/map, cleared battle UI/manager and empty units,
+selection, targets and jobs. It never invokes abort, import, load, reset or a slot
+writer. Its worker commits and reads back both fixed files before publishing a
+receipt. The Python client validates full GVAS and metadata, checks publication
+races and exports only a non-restorable `.ffrrecovery` archive.
+
+Start before entering the encounter and use a fresh output directory:
+
+    python tools/observe_recovery.py <FFRHelperBattlePractice-folder> --output local/recovery-test --capture
+
+The collector never operates the game. It expires its lease on exit and sends
+at most one explicit request. Compiled-DLL/production-consumer tests pass; actual
+FFR verification remains pending. This adds no restore or automatic rollback.

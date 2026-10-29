@@ -3,6 +3,7 @@
 #include <windows.h>
 #include "encounter_capture.hpp"
 #include "clone_payload.hpp"
+#include "recovery_payload.hpp"
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -26,6 +27,8 @@ std::array<unsigned char,0x48> fake_playtime{};
 std::array<unsigned char,32> fake_clone{};
 bool clone_fixture{},clone_mismatch{},clone_mutates{};
 unsigned clone_loads{};
+bool recovery_fixture{},recovery_drift{};
+std::int32_t recovery_money=101,fixture_map_id=1000;
 std::array<unsigned char,0x280> fake_manager{};
 std::array<unsigned char,0x80> fake_jobs{},fake_units{};
 std::array<unsigned char,0x90> fake_ui{};
@@ -48,7 +51,7 @@ void* __fastcall ffr_test_field_get_world(void* map) {
 extern "C" __declspec(dllexport) __declspec(noinline)
 void* __fastcall ffr_test_field_get_player() {return fake_field_player.data();}
 extern "C" __declspec(dllexport) __declspec(noinline)
-std::int32_t __fastcall ffr_test_field_get_map_id() {return 1000;}
+std::int32_t __fastcall ffr_test_field_get_map_id() {return fixture_map_id;}
 extern "C" __declspec(dllexport) __declspec(noinline)
 void* __fastcall ffr_test_abort_get_world(void* manager) {
     if(manager!=fake_manager.data()){++fixture_errors;return nullptr;}return fake_world.data();
@@ -87,6 +90,7 @@ extern "C" __declspec(dllexport) __declspec(noinline)
 bool __fastcall ffr_test_save_memory(void* object, ffr::RawArray* output) {
     if (object!=fake_root.data() && !(clone_fixture && object==fake_clone.data())) { ++fixture_errors; return false; } ++serialized;
     auto bytes=clone_fixture?clone_fixture_payload():std::vector<unsigned char>{'G','V','A','S',3,0,0,0,static_cast<unsigned char>(41+serialized),7,9,0};
+    if(recovery_fixture) {float saved{};std::memcpy(&saved,fake_root.data()+0x38,4);bytes=recovery_fixture_data::payload(saved,recovery_money+(recovery_drift?static_cast<std::int32_t>(serialized):0));}
     if(clone_fixture && ((clone_mismatch && object==fake_clone.data()) || (clone_mutates && clone_loads && object==fake_root.data())))bytes[8]^=1;
     auto* data=HeapAlloc(GetProcessHeap(),0,bytes.size()); if (!data) return false;
     std::memcpy(data,bytes.data(),bytes.size());
@@ -144,11 +148,13 @@ template<class T> ffr::RawArray array(std::vector<T>& value) {
 void run_abort_fixture(const std::filesystem::path& connection,bool deny);
 void run_clone_fixture(const std::filesystem::path& connection,const std::wstring& mode,HMODULE loader);
 void run_combat_fixture(const std::filesystem::path& connection,const std::wstring& mode);
+void run_recovery_fixture(const std::filesystem::path& connection,const std::wstring& mode);
 }
 
 #include "abort_fixture.inl"
 #include "clone_fixture.inl"
 #include "combat_fixture.inl"
+#include "recovery_fixture.inl"
 int wmain(int argc, wchar_t** argv) {
     try {
         CHECK(argc == 5);
@@ -156,6 +162,7 @@ int wmain(int argc, wchar_t** argv) {
         const std::filesystem::path loader_path = argv[2];
         const std::filesystem::path connection = argv[3];
         const std::wstring mode = argv[4];
+        recovery_fixture=mode.starts_with(L"recovery");recovery_drift=mode==L"recovery-drift";
         const std::uint64_t klass=1; std::memcpy(fake_root.data()+16,&klass,sizeof(klass));
         object(fake_world);object(fake_map);object(fake_field_player);object(fake_field_component);object(fake_field_operation);
         object(fake_root);object(fake_playtime);
@@ -183,6 +190,12 @@ int wmain(int argc, wchar_t** argv) {
         }
         CHECK(object != nullptr && host_count() == 1);
         CHECK(start() == nullptr); // Restart is required; no duplicate detour/worker.
+        if(mode.starts_with(L"recovery")) {
+            run_recovery_fixture(connection,mode);stop(object);
+            CHECK(host_count()==0 && host_errors()==0 && fixture_errors==0);
+            CHECK(std::memcmp(initial_code,reinterpret_cast<const void*>(entry_function),sizeof(initial_code))==0);
+            std::cout<<"Read-only coherent recovery DLL fixture passed without FFR.\n";return 0;
+        }
         if(mode.starts_with(L"combat")) {
             run_combat_fixture(connection,mode);stop(object);
             CHECK(host_count()==0 && host_errors()==0 && fixture_errors==0);

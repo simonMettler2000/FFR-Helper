@@ -35,6 +35,9 @@ add_test(NAME offline_playtime_normalization COMMAND playtime_normalization_test
 add_executable(partial_recovery_tests tests/partial_recovery_tests.cpp)
 target_include_directories(partial_recovery_tests PRIVATE include)
 add_test(NAME coherent_partial_recovery_capture COMMAND partial_recovery_tests)
+add_executable(recovery_transport_tests tests/recovery_transport_tests.cpp)
+target_include_directories(recovery_transport_tests PRIVATE include)
+add_test(NAME read_only_partial_recovery_transport COMMAND recovery_transport_tests)
 add_executable(combat_observation_tests tests/combat_observation_tests.cpp)
 target_include_directories(combat_observation_tests PRIVATE include)
 add_test(NAME detached_partial_combat_observation COMMAND combat_observation_tests)
@@ -131,7 +134,7 @@ if(FFR_BUILD_NATIVE_OBSERVER)
     target_compile_options(fixture_observer_abort PRIVATE /W4 /EHsc /utf-8)
     target_compile_definitions(fixture_observer_abort PRIVATE UNICODE _UNICODE FFR_PRACTICE_BUILD=1
       "FFR_CAPTURE_PROFILE_HEADER=\"good_profile.hpp\"" "FFR_ABORT_PROFILE_HEADER=\"good_abort_profile.hpp\"" "FFR_IMPORT_PROFILE_HEADER=\"good_import_profile.hpp\"" "FFR_FIELD_PROFILE_HEADER=\"good_field_profile.hpp\"" "FFR_PLAYTIME_PROFILE_HEADER=\"good_playtime_profile.hpp\"")
-    foreach(mode abort abort-denied clone clone-unready clone-mismatch clone-mutates clone-denied combat combat-after-action combat-denied combat-stale)
+    foreach(mode abort abort-denied clone clone-unready clone-mismatch clone-mutates clone-denied combat combat-after-action combat-denied combat-stale recovery recovery-denied recovery-stale recovery-drift recovery-write-failed recovery-map-changed)
       add_test(NAME native_${mode} COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/run_native_fixture.py"
         --exe "$<TARGET_FILE:native_host_fixture>" --loader "$<TARGET_FILE:native_mock_loader>"
         --module "$<TARGET_FILE:fixture_observer_abort>" --mode "${mode}" --work "${CMAKE_CURRENT_BINARY_DIR}/test-work")

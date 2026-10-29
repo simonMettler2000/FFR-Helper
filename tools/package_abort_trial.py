@@ -22,6 +22,7 @@ prefix='FFRHelperBattlePractice/'
 with zipfile.ZipFile(target,'w',zipfile.ZIP_DEFLATED) as archive:
     archive.writestr(prefix+'dlls/main.dll',raw)
     archive.write(root/'native/ABORT_TRIAL.md',prefix+'README.md')
+    archive.write(root/'native/PARTIAL_RECOVERY.md',prefix+'PARTIAL_RECOVERY.md')
     archive.write(root/'native/licenses/MinHook.txt',prefix+'licenses/MinHook.txt')
     archive.write(root/'LICENSE',prefix+'LICENSE.txt')
     archive.writestr(prefix+'connection/',b'')

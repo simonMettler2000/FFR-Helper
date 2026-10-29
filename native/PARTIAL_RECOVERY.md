@@ -1,12 +1,13 @@
 # Partial recovery capture prerequisite
 
-Only the callback-driven copying core and portable tests are implemented here.
-**No runtime recovery request, durable bundle, restore command or GUI control is
-connected yet.** This is distinct from the existing abort experiment's durable
-progression-only file, which cannot resume a battle.
+The copying core, explicit read-only practice-runtime channel, durable file
+publication, strict Python consumer and `.ffrrecovery` archive are implemented
+and fixture-tested. **They are not installed or live-verified. No restore command
+or GUI control is connected.** This complements the abort experiment's separate
+durable progression-only file; neither format can resume a battle.
 
 `partial_recovery.hpp` requires a supported field boundary and the expected map
-ID. Its future native owner must prove the captured game thread, same world/map,
+ID. The native owner checks the captured game thread, same world/map,
 cleared battle manager/UI/units/targets/jobs and no pending mutation. It retains
 only detached progression bytes, a partial field anchor and a playtime basis.
 
@@ -24,29 +25,55 @@ Camera, streamed actors, events, RNG, native callbacks and a complete restore pa
 remain missing. Ongoing suspension can be retained as evidence, but the separate
 normalization planner refuses to apply assumptions to it.
 
-## Remaining integration
+## Capture protocol and validation
 
-1. Add a separate explicit read-only request in the uninstalled practice build,
-   bound to fresh session/nonce/deadline and the retained opening revision/hash.
-   No address, payload, path or value to write may come from that request.
-2. Carry the retained opening's typed field/clock metadata. Require matching map
-   ID and actual thread/world, empty selected/target state and idle jobs. Pending
-   abort/import work must block capture. Completed teardown needs its own checks.
-3. Copy through the existing bounded serialization/free and profiled read-only
-   getter paths. Consume a request identity before capture; replay must not take
-   another frame. Retain only the latest result with bounded request history.
-4. Have the worker atomically persist and read back fixed progression/metadata
-   files, verify both hashes, then publish a matching receipt. A failed write must
-   never become a committed recovery point.
-5. Validate the complete GVAS and metadata in Python, including saved playtime
-   correspondence, source identity, freshness and fixed filenames. Read the receipt
-   again after the files to reject publication races.
-6. Export only a separately named non-restorable diagnostic archive, with bounded
-   ZIP entries and explicit missing coverage. Never accept it as an ordinary save,
-   checkpoint or full gameplay state.
-7. Verify field captures after actual encounter exit and clock/display agreement
-   in a later opted-in live test. Normalized clone application and native load/cache/
-   clock/world verification remain subsequent experiments.
+The six-line `FFR_HELPER_PARTIAL_RECOVERY_V1` request carries session, nonce,
+expiry, opening revision and opening hash. It accepts no address, payload, path,
+slot or value to write. A request is consumed before copying, even on refusal;
+replay preserves the earlier result. History is bounded to 128 identities per
+process and only the latest detached result is retained. The default observer
+does not contain this channel.
+
+Typed opening field/clock metadata, matching map ID and actual thread/world are
+required. Selected unit, targets, units and jobs must be empty with battle UI and
+manager cleared. Pending abort/import work blocks capture. A completed own abort
+may be observed after these field checks pass; this does not prove a full rollback.
+
+The worker atomically writes fixed `recovery-progression.gvas` and
+`recovery-metadata.json`, verifies both files by reading them back, then advertises
+a committed descriptor in `recovery-report.json`. Write failure produces no
+committed receipt and never resnapshots the game automatically. Metadata carries
+the source identity, partial field/clock data, coherence counts and explicit gaps.
+
+Python validates the complete GVAS, its saved playtime correspondence, hashes,
+schema/types/bounds, source identity and fixed filenames. The live bridge rechecks
+the receipt after the files to reject publication races. The archive preserves
+the exact metadata/progression bytes with exactly two bounded ZIP entries. It
+cannot be exported under a game-save/checkpoint/opening extension. Missing or
+ambiguous serialized `Player.PlayTime` is currently refused rather than guessing
+that an omitted field has its default value.
+
+Compiled-DLL fixtures use original synthetic GVAS data and the production Python
+parser. They verify fresh values versus the opening, replay preservation, another
+explicit capture, pending jobs/stale openings/changed maps, serialization drift,
+write failure and buffer release. They invoke no abort, import or extra encounter.
+
+## Later live test
+
+Start the same recorder session before entering an ordinary encounter. Finish or
+flee through the normal game controls, then capture one supported field boundary:
+
+```sh
+python tools/observe_recovery.py <FFRHelperBattlePractice-folder> --output local/recovery-test --duration 600 --capture
+```
+
+Without `--capture`, the command only observes availability. Use a new output
+directory. Ctrl+C, timeout and `--stop-file` expire the lease. The command never
+launches or controls gameplay. Detailed game data is not printed automatically.
+
+Actual field/clock/display agreement remains unverified. Normalized clone
+application and native load/cache/clock/world verification remain subsequent
+experiments. This component is not a full save state or an automatic recovery path.
 
 Neither installed observer nor original save slots are changed by this work.
 Saving anywhere remains deferred and is not a prerequisite.

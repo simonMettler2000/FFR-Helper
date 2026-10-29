@@ -39,16 +39,17 @@ def main():
                      guard.get('friendlyActions'),guard.get('waitingJobs'),guard.get('workingJobs'))
             if summary!=last:
                 print(f'Available={summary[0]}; phase={summary[1]}; battle={summary[2]}; command menu={summary[3]}; '
-                      f'party actions={summary[4]}; jobs={summary[5]}/{summary[6]}. {state["message"]}',flush=True);last=summary
-            if args.abort_at_opening and not prepared and state['phase']=='idle':
+                      f'party turn beginnings={summary[4]}; jobs={summary[5]}/{summary[6]}. {state["message"]}',flush=True);last=summary
+            if (args.abort_at_opening and not prepared and state['phase']=='idle'
+                    and guard.get('ordinaryEncounter') is True and guard.get('commandMenu') is True):
+                if state.get('openingBoundaryPolicy')!='ordinary-first-menu-event-history':
+                    raise RuntimeError('Unsupported opening-boundary policy; no abort request was sent.')
                 sequence,digest=guard.get('sequence'),guard.get('openingHash')
                 if type(sequence) is int and sequence>0 and isinstance(digest,str) and len(digest)==64:
                     if target_sequence is None:
                         target_sequence=sequence
                     elif sequence!=target_sequence:
                         raise RuntimeError('The selected encounter changed; no abort will be requested.')
-                    if type(guard.get('friendlyActions')) is int and guard['friendlyActions']>0:
-                        raise RuntimeError('A party action already occurred; this trial only supports the opening menu.')
                 if isinstance(sequence,int) and sequence>0 and isinstance(digest,str) and len(digest)==64 and bridge.safe_guard(state,sequence,digest):
                     if not pending:
                         recorder.request=uuid.uuid4().hex;pending=True

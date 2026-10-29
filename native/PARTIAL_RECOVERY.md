@@ -2,9 +2,10 @@
 
 The copying core, explicit read-only practice-runtime channel, durable file
 publication, strict Python consumer and `.ffrrecovery` archive are implemented
-and fixture-tested. **They have not been exercised in FFR. The installed practice
-module is disabled, and its FFR source profile blocks dispatch pending boundary
-and fresh idle-menu review. No restore command or GUI control is connected.**
+and fixture-tested. **The recovery capture has not been exercised in FFR.** Fresh
+idle-menu and released-manager field boundaries have been observed in supervised
+tests. No recovery request has been sent and no restore command or GUI control
+is connected.
 This complements the abort experiment's separate
 durable progression-only file; neither format can resume a battle.
 

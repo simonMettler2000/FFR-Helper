@@ -50,8 +50,8 @@ installation and never enables Saving anywhere.
 Restart development now includes tested encounter reconstruction and a separate
 [opening-abort experiment](native/ABORT_TRIAL.md). The experiment can request the
 game's ForceEnd path once after a verified recovery write. It has passed dummy
-process tests, but has not been installed/tested in FFR and does not restore or
-restart battles. It is packaged separately and disabled by default.
+process tests; its ForceEnd operation has not been executed in FFR and it does
+not restore or restart battles. It is packaged separately and disabled by default.
 
 Further development/testing of **Saving anywhere** is deferred until battle
 restart, native save states and the other requested features are implemented,
@@ -68,8 +68,8 @@ save states are also unavailable. Named checkpoints currently restore the
 game's ordinary saved field position and progression through normal loading.
 The separate development practice module now includes guarded opening-abort and
 detached engine-import experiments, plus read-only command-state diagnostics.
-They pass isolated DLL tests but have not
-been installed or verified in FFR; they do not provide restoration. See
+Detached import has passed its supervised FFR test; the other experiments remain
+fixture-tested prerequisites. They do not provide restoration. See
 [native development status](docs/NATIVE_STATE.md).
 
 The separate practice component also includes a detached playtime normalization
@@ -87,10 +87,13 @@ import: the first-menu counter counts turn beginnings, not completed commands.
 The subsequent read-only test verified fresh menu sampling, unchanged opening
 bytes, menu cancellation, one command and encounter-history reset. Surprise
 attacks demonstrated that automatic actions can bypass the decision-handler
-counter. Opening abort and normalization remain disabled. Detached import now
+counter. At that checkpoint, opening abort and normalization remained disabled. Detached import now
 has a separate ordinary idle-menu policy: it can compare a temporary object
 after earlier turns, while rechecking the current context and unchanged live
-progression. This revised policy still needs supervised engine verification.
+progression. Its supervised engine test passed with all 466,065 bytes matching,
+unchanged live/input bytes, released temporary pins and a responsive game.
+The next source enables a separate first-menu event-history guard for a controlled
+ForceEnd test; no FFR abort or restoration has run. Normalization remains disabled.
 Battle restart and save-state restoration remain unfinished.
 
 ## Use

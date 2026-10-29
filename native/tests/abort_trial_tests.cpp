@@ -7,6 +7,7 @@ int main() {
     try {
         ffr::AbortRequest request{std::string(32,'a'),std::string(32,'b'),std::string(64,'c'),"prepare",105,1};
         ffr::AbortGuard good{true,true,true,true,true,0,0,0,4,request.session,request.opening_hash,1};
+        good.opening_history_untouched=true;good.friendly_actions=1;
         unsigned captures=0,aborts=0;
         auto advanced=good;advanced.friendly_actions=3;
         CHECK(ffr::ordinary_idle_import_menu(advanced));
@@ -19,7 +20,7 @@ int main() {
             case 0:guard.game_thread=false;break;case 1:guard.matching_world=false;break;
             case 2:guard.ordinary_encounter=false;break;case 3:guard.battle_active=false;break;
             case 4:guard.command_menu=false;break;case 5:guard.waiting_jobs=1;break;
-            case 6:guard.working_jobs=1;break;case 7:guard.friendly_actions=1;break;
+            case 6:guard.working_jobs=1;break;case 7:guard.opening_history_untouched=false;break;
             case 8:guard.units=0;break;case 9:guard.sequence=2;break;
             }
             ffr::AbortTrial trial;CHECK(!trial.prepare(request,guard,100,capture));CHECK(trial.phase()==ffr::AbortPhase::rejected);
@@ -39,7 +40,7 @@ int main() {
             ffr::AbortTrial denied;CHECK(denied.prepare(request,good,100,capture));denied.recovery_written(true);
             auto changed=commit;auto guard=good;auto now=101;
             switch(failure) {case 0:changed.nonce=std::string(32,'d');break;case 1:guard.sequence=2;break;
-            case 2:now=106;break;case 3:guard.friendly_actions=1;break;case 4:guard.matching_world=false;break;}
+            case 2:now=106;break;case 3:guard.opening_history_untouched=false;break;case 4:guard.matching_world=false;break;}
             CHECK(!denied.commit(changed,guard,now,end));CHECK(aborts==1);
         }
         ffr::AbortTrial write_failed;CHECK(write_failed.prepare(request,good,100,capture));write_failed.recovery_written(false);

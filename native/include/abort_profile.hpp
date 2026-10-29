@@ -1,10 +1,12 @@
 #pragma once
 #include <cstdint>
+#include <cstddef>
 namespace ffr::abort_profile {
 // Live testing showed +0x4dc increments at Turn.Begin, before command entry.
-// Keep abort unavailable until the first-command boundary is reviewed.
-// Detached import has a separate idle-menu policy and never applies live state.
-inline constexpr bool opening_boundary_reviewed=false;
+// Supervised normal-menu/cancel/action samples verified both event journals.
+// Abort also requires a fresh ordinary idle menu and untouched same-thread
+// histories. This permits the controlled ForceEnd test, not restoration.
+inline constexpr bool opening_boundary_reviewed=true;
 // Independently reviewed against source31d's supervised idle-menu samples.
 // This only permits detached clone comparison; it does not apply live state.
 inline constexpr bool detached_import_menu_reviewed=true;
@@ -19,5 +21,7 @@ inline constexpr std::uintptr_t get_ui_rva=0x4f9e330;
 inline constexpr char get_ui_sha256[]="b753124279be3841fc59198fb8f5d547361a2807bd82e7bcfbd317acc27fc709";
 inline constexpr std::uintptr_t end_battle_rva=0x4f4a520;
 inline constexpr char end_battle_sha256[]="024d0434363d426923fa8b711ba2d890c085b8b82347780bedf942b99f80b640";
+inline constexpr std::size_t end_battle_full_size=112;
+inline constexpr char end_battle_full_sha256[]="87ec212fc06b0a58329648d10c80a9febe058f3b707ad8e64178d8ae5de01c28";
 inline constexpr std::uintptr_t manager_vtable_rva=0x8643ba0;
 }

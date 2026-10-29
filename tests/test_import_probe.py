@@ -62,6 +62,7 @@ class ImportProbeTests(unittest.TestCase):
 
     def test_turn_beginnings_do_not_block_detached_import_or_enable_abort(self):
         self.frame['guard']['friendlyActions']=3
+        self.frame['guard']['openingHistoryUntouched']=False
         self.write_frame();self.bridge.send(self.report)
         self.assertEqual((self.root/'connection/abort-request.txt').read_text().splitlines()[-1],'probe-import')
         with self.assertRaises(ValueError):test_abort_trial.AbortTrialBridge(self.recorder).prepare(self.report)

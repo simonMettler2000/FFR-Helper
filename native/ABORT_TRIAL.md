@@ -1,19 +1,23 @@
 # Experimental opening-abort trial
 
-**FFR opening abort and normalization remain disabled.** The 29 October live import-only test sent
-no import or abort request: a first-command menu already counted one turn start.
-The counter increment follows `Delegate.Battle.Unit.Turn.Begin`, so it cannot
-stand in for completed player commands. The supported FFR profile now sets
-`opening_boundary_reviewed=false`. Subsequent supervised read-only tests verified
-fresh idle-menu sampling. Detached import has its own reviewed ordinary idle-menu
-policy and can install the practice tick dispatcher independently. It creates
-and compares a temporary object without applying it. This does not enable abort,
-normalization, live-root replacement or battle restart. The revised import policy
-has passed isolated DLL tests; engine verification is still pending.
+**Detached import is verified in FFR; ForceEnd remains untested.** The earlier
+first-menu check refused because the raw counter counts turn beginnings, not
+completed commands. Subsequent supervised tests verified fresh idle-menu samples
+and separate manual-command/Skill.Begin histories. The revised abort guard
+requires both same-thread histories untouched, with no coverage-loss flags,
+alongside the ordinary idle-menu checks. It does not accept a raw threshold of
+one. The supported source now enables this guard for a controlled ForceEnd test;
+installation and execution of that test require separate authorization.
+
+The independent detached-import policy was then exercised in FFR. A temporary
+object matched all 466,065 captured bytes; live progression and input remained
+unchanged and temporary pins were released. The user confirmed responsiveness.
+Detached normalization, live-root replacement and battle restart remain disabled
+or unimplemented.
 
 This is a separate, mutation-capable development component. It has passed
-isolated dummy-process tests. Its dispatch/import availability was observed in
-FFR, but no engine import, abort or restoration operation has been executed.
+isolated dummy-process tests and the supervised detached import. No abort or
+restoration operation has been executed in FFR.
 It does not restart a battle, replace live progression or restore a save state.
 It now also has a separate, explicit **detached import comparison** described
 below. Creating a comparison UObject does not apply it to the running game.
@@ -27,7 +31,7 @@ a separately approved test with backed-up practice data.
 
 - Requires the exact game/UE4SS profiles used by the verified capture observer.
   Additional loaded code fingerprints cover the battle tick, world/subsystem
-  getters and EndBattle function.
+  getters and the complete 112-byte EndBattle function.
 - Uses a separate FFRHelperBattlePractice folder and two distinct channels:
   read-only capture reports and an explicitly mutation-capable abort status.
   The existing capture client cannot send abort requests.
@@ -35,11 +39,12 @@ a separately approved test with backed-up practice data.
   unique nonce, with an expiry of at most eight seconds.
 - The game-thread guard requires a matching current world/map manager, ordinary
   escapable encounter flags, battle UI command phase, selected party unit,
-  all captured friendly units present, a zero raw turn-begin counter and idle job queues.
+  all captured friendly units present and idle job queues. Both exact-profile
+  histories must cover this opening and thread with zero entries, no foreign
+  thread and no overflow; a lease gap or unavailable hook prevents authorization.
   Non-default battle-event IDs, bounty/test/preemptive/result-skipping flags and
   disabled escape cause refusal. This does not identify every possible script context.
-  The live first menu already had a counter of one, so these guards are
-  insufficient and the supported profile disables dispatch pending correction.
+  Raw turn beginnings are reported separately and never interpreted as commands.
 - Preparation serializes progression into a separate recovery buffer. The worker
   commits and reads back a private recovery file before reporting the trial armed.
   The client also checks its hash, GVAS class, engine, footer and required fields.
@@ -47,7 +52,9 @@ a separately approved test with backed-up practice data.
   State is marked before that call, and there is no automatic resend or retry.
   One attempt per game launch is supported, including rejected attempts.
 - Cleanup observation requires the same encounter/session, empty unit/job queues,
-  cleared battle-active flag and cleared battle UI flag. A progression snapshot
+  cleared battle-active flag and cleared battle UI flag. Both released managers
+  are accepted only when both pointers are null and the inactive context matches.
+  A progression snapshot
   is then captured for comparison. The user still needs to confirm actual field
   return. A changed context or unverified cleanup is reported without a retry.
 - Recovery files contain progression only. They cannot resume an ongoing battle;

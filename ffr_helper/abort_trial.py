@@ -43,12 +43,14 @@ class AbortTrialBridge:
     @staticmethod
     def safe_guard(status, sequence, digest):
         guard = status.get('guard', {})
-        return (type(status.get('probeTime')) is int and -2 <= time.time()-status['probeTime'] <= 2
+        return (status.get('openingBoundaryPolicy')=='ordinary-first-menu-event-history'
+                and type(status.get('probeTime')) is int and -2 <= time.time()-status['probeTime'] <= 2
                 and all(guard.get(key) is True for key in
                         ['gameThread', 'matchingWorld', 'ordinaryEncounter', 'battleActive', 'commandMenu'])
                 and type(guard.get('units')) is int and 0 < guard['units'] <= 64
-                and all(type(guard.get(key)) is int and guard[key] == 0 for key in
-                        ['waitingJobs', 'workingJobs', 'friendlyActions'])
+                and all(type(guard.get(key)) is int and guard[key] == 0 for key in ['waitingJobs', 'workingJobs'])
+                and type(guard.get('friendlyActions')) is int and guard['friendlyActions']>=0
+                and guard.get('openingHistoryUntouched') is True
                 and type(guard.get('sequence')) is int and guard['sequence'] == sequence
                 and guard.get('openingHash') == digest)
 

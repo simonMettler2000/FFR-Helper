@@ -26,8 +26,9 @@ class AbortClientTests(unittest.TestCase):
                         runtimeMode='experimental-abort-test',readOnly=False,restorable=False,
                         session=self.recorder.session,time=int(time.time()),probeTime=int(time.time()),
                         available=True,phase='idle',nonce='',trialSession='',sequence=0,message='Fixture',
+                        openingBoundaryPolicy='ordinary-first-menu-event-history',
                         guard=dict(gameThread=True,matchingWorld=True,ordinaryEncounter=True,battleActive=True,
-                                   commandMenu=True,units=4,waitingJobs=0,workingJobs=0,friendlyActions=0,
+                                   commandMenu=True,units=4,waitingJobs=0,workingJobs=0,friendlyActions=1,openingHistoryUntouched=True,
                                    sequence=1,openingHash=self.capture.metadata['sha256']))
         self.write_frame()
 
@@ -62,7 +63,7 @@ class AbortClientTests(unittest.TestCase):
         self.assertFalse((self.root/'connection/abort-request.txt').exists())
 
     def test_pending_actions_or_an_old_opening_prevent_preparation(self):
-        for key,value in [('workingJobs',1),('waitingJobs',1),('friendlyActions',1),
+        for key,value in [('workingJobs',1),('waitingJobs',1),('openingHistoryUntouched',False),('friendlyActions',-1),
                           ('sequence',2),('openingHash','0'*64),('units',False)]:
             old=self.frame['guard'][key];self.frame['guard'][key]=value;self.write_frame()
             with self.assertRaises(ValueError):self.bridge.prepare(self.report)
@@ -84,12 +85,18 @@ class AbortClientTests(unittest.TestCase):
         frame=self.arm()
         self.frame['nonce']='d'*32;self.write_frame()
         with self.assertRaises(ValueError):self.bridge.commit(frame)
-        self.frame['nonce']=self.bridge.request['nonce'];self.frame['guard']['friendlyActions']=1;self.write_frame()
+        self.frame['nonce']=self.bridge.request['nonce'];self.frame['guard']['openingHistoryUntouched']=False;self.write_frame()
         with self.assertRaises(ValueError):self.bridge.commit(self.bridge.status())
-        self.frame['guard']['friendlyActions']=0;self.write_frame()
+        self.frame['guard']['openingHistoryUntouched']=True;self.write_frame()
         self.bridge.request['deadline']=int(time.time())-1
         with self.assertRaisesRegex(ValueError,'expired'):self.bridge.commit(self.bridge.status())
         self.assertFalse(self.bridge.commit_attempted)
+
+    def test_explicit_history_policy_is_required_before_prepare(self):
+        for value in [None,'legacy-zero-counter','ordinary-idle-menu']:
+            self.frame['openingBoundaryPolicy']=value;self.write_frame()
+            with self.assertRaises(ValueError):self.bridge.prepare(self.report)
+        self.assertFalse((self.root/'connection/abort-request.txt').exists())
 
     def test_uncertain_commit_io_is_never_retried(self):
         frame=self.arm()

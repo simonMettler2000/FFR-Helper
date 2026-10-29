@@ -71,10 +71,15 @@ def main():
         rva=game_pe.exports['ffr_test_abort_'+function];start=game_pe.offset(rva)
         digest=hashlib.sha256(game_pe.raw[start:start+64]).hexdigest()
         abort_text+=f'inline constexpr std::uintptr_t {function}_rva={rva};\ninline constexpr char {function}_sha256[]="{digest}";\n'
+    end_rva=game_pe.exports['ffr_test_abort_end_battle'];end_start=game_pe.offset(end_rva);end_size=game_pe.functions[end_rva]-end_rva
+    end_hash=hashlib.sha256(game_pe.raw[end_start:end_start+end_size]).hexdigest()
+    abort_text+=f'inline constexpr std::size_t end_battle_full_size={end_size};\ninline constexpr char end_battle_full_sha256[]="{end_hash}";\n'
+    abort_text=abort_text.replace('#include <cstdint>','#include <cstdint>\n#include <cstddef>')
     abort_text+=f'inline constexpr std::uintptr_t manager_vtable_rva={game_pe.exports["ffr_test_btl_vtable"]};\n}}\n'
     (output/'good_abort_profile.hpp').write_text(abort_text,encoding='utf8')
     (output/'unreviewed_abort_profile.hpp').write_text(abort_text.replace('_reviewed=true','_reviewed=false'),encoding='utf8')
     (output/'import_only_abort_profile.hpp').write_text(abort_text.replace('opening_boundary_reviewed=true','opening_boundary_reviewed=false').replace('normalization_field_reviewed=true','normalization_field_reviewed=false'),encoding='utf8')
+    (output/'bad_end_abort_profile.hpp').write_text(abort_text.replace(f'end_battle_full_sha256[]="{end_hash}"','end_battle_full_sha256[]="'+'0'*64+'"'),encoding='utf8')
     menu_text='#pragma once\n#include <cstddef>\n#include <cstdint>\nnamespace ffr::menu_profile {\ninline constexpr std::size_t tick_size=64;\n'
     for function in ['tick','get_world','get_map','get_ui']:
         rva=game_pe.exports['ffr_test_abort_'+function];start=game_pe.offset(rva)

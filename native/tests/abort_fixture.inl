@@ -6,7 +6,8 @@ template<class T,std::size_t N> void put(std::array<unsigned char,N>& memory,std
 template<std::size_t N> void object(std::array<unsigned char,N>& memory,std::uint64_t vtable=1) {
     put(memory,0,vtable);put(memory,16,std::uint64_t{1});
 }
-void run_abort_fixture(const std::filesystem::path& connection,bool deny) {
+void run_abort_fixture(const std::filesystem::path& connection,const std::wstring& mode) {
+    const bool deny=mode.find(L"denied")!=std::wstring::npos;
     object(fake_manager,reinterpret_cast<std::uint64_t>(ffr_test_btl_vtable));
     object(fake_jobs);object(fake_units);object(fake_ui);object(fake_world);object(fake_map);
     fake_manager[0x1a9]=1;fake_ui[0x80]=1;
@@ -18,7 +19,7 @@ void run_abort_fixture(const std::filesystem::path& connection,bool deny) {
         object(fake_actors[i]);object(fake_parameters[i]);
         put(fake_actors[i],0x838,reinterpret_cast<std::uint64_t>(fake_parameters[i].data()));
         put(fake_parameters[i],0xd0,std::int32_t{1001+static_cast<std::int32_t>(i)});
-        put(fake_parameters[i],0x4dc,std::int32_t{deny?1:0});
+        put(fake_parameters[i],0x4dc,std::int32_t{i==0?1:0});
         actors.push_back(reinterpret_cast<std::uint64_t>(fake_actors[i].data()));
     }
     put(fake_units,0x28,array(actors));put(fake_units,0x38,actors[0]);
@@ -42,6 +43,13 @@ void run_abort_fixture(const std::filesystem::path& connection,bool deny) {
     const auto ready=read(connection/L"abort-status.json");CHECK(ready.find("\"available\":true")!=std::string::npos);
     const auto start=ready.find(key);CHECK(start!=std::string::npos);
     const auto hash=ready.substr(start+key.size(),64);CHECK(hash.size()==64 && hash.find('"')==std::string::npos);
+    CHECK(ready.find("\"openingHistoryUntouched\":true")!=std::string::npos);
+    if(deny) {
+        if(mode==L"abort-skill-denied")ffr_test_skill_begin(nullptr,123,nullptr);
+        else if(mode==L"abort-foreign-denied") {std::thread other([]{ffr_test_decision(nullptr,nullptr);});other.join();}
+        else ffr_test_decision(nullptr,nullptr);
+        wait([&] {return read(connection/L"abort-status.json").find("\"openingHistoryUntouched\":false")!=std::string::npos;});
+    }
     const auto deadline=now()+8;
     auto request=[&](const std::string& phase) {
         write(connection/L"abort-request.txt","FFR_HELPER_ABORT_OPENING_V1\n"+session+"\n"+nonce+"\n"+std::to_string(deadline)+"\n1\n"+hash+"\n"+phase+"\n");
@@ -58,6 +66,11 @@ void run_abort_fixture(const std::filesystem::path& connection,bool deny) {
         CHECK(abort_calls==0 && std::filesystem::exists(connection/L"abort-recovery.gvas"));
         CHECK(serialized==released && serialized==2);
         request("commit");
+        if(mode==L"abort-released") {
+            // The game's field teardown releases both owned managers.
+            wait([&] {return abort_calls==1;});
+            put(fake_manager,0x40,std::uint64_t{});put(fake_manager,0x48,std::uint64_t{});
+        }
         wait([&] {const auto s=read(connection/L"abort-status.json");return s.find("\"phase\":\"manager-cleared\"")!=std::string::npos
             && s.find("\"file\":\"abort-after.gvas\",\"sha256\":\"\"")==std::string::npos;});
         CHECK(abort_calls==1 && serialized==released && serialized==3 && fake_manager[0x1a9]==0);

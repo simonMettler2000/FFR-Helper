@@ -18,6 +18,9 @@ struct AbortGuard {
     std::uint64_t sequence{};
     bool field_ready{};
     bool managers_released{};
+    // Separate from the raw turn-beginning count. Both exact-profile journals
+    // must cover this opening/thread with no entries or coverage-loss flags.
+    bool opening_history_untouched{};
 };
 enum class AbortPhase { idle, recovery_pending, armed, abort_sent, manager_cleared, rejected, timed_out };
 inline const char* phase_name(AbortPhase phase) {
@@ -48,7 +51,8 @@ class AbortTrial {
     bool safe(const AbortGuard& guard) const {
         return guard.game_thread && guard.matching_world && guard.ordinary_encounter
             && guard.battle_active && guard.command_menu && guard.units>0 && guard.units<=64
-            && guard.waiting_jobs==0 && guard.working_jobs==0 && guard.friendly_actions==0;
+            && guard.waiting_jobs==0 && guard.working_jobs==0 && guard.friendly_actions>=0
+            && guard.opening_history_untouched;
     }
 public:
     AbortPhase phase() const {return current;}

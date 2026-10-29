@@ -121,6 +121,13 @@ void abort_tick(void* context) {
     }
     auto guard=probe_abort(context,opening,session,hash);
     {std::lock_guard lock(current->mutex);
+        guard.opening_history_untouched=opening && current->opening==opening && current->session==session
+            && current->decision_tracked_from_entry && current->decision_sequence==opening->sequence
+            && current->decision_thread==GetCurrentThreadId() && current->decision_entries==0
+            && !current->decision_foreign_thread && !current->decision_overflow
+            && current->skill_tracked && current->skill_sequence==opening->sequence
+            && current->skill_thread==GetCurrentThreadId() && current->skill_entries==0
+            && !current->skill_foreign_thread && !current->skill_overflow;
         current->last_guard=guard;current->probe_time=now;current->trial.observe(guard,now);
     }
     run_combat_probe(current,context,guard,now);
@@ -199,7 +206,8 @@ void Observer::publish_abort(const Lease& lease) {
             {"commandMenu",json_flag(g.command_menu)},{"units",std::to_string(g.units)},{"waitingJobs",std::to_string(g.waiting_jobs)},
             {"workingJobs",std::to_string(g.working_jobs)},{"friendlyActions",std::to_string(g.friendly_actions)},
             {"sequence",std::to_string(g.sequence)},{"openingHash",ffr::quote(g.opening_hash)},{"fieldReady",json_flag(g.field_ready)},
-            {"managersReleased",json_flag(g.managers_released)},{"counterMeaning",ffr::quote("turn-beginnings")}});
+            {"managersReleased",json_flag(g.managers_released)},{"counterMeaning",ffr::quote("turn-beginnings")},
+            {"openingHistoryUntouched",json_flag(g.opening_history_untouched)}});
         const auto recovery=json_object({{"kind",ffr::quote("progression-only")},{"restorable","false"},
             {"file",ffr::quote("abort-recovery.gvas")},{"sha256",ffr::quote(recovery_hash)},
             {"byteLength",std::to_string(trial.recovery_bytes().size())}});
@@ -218,7 +226,8 @@ void Observer::publish_abort(const Lease& lease) {
         status=json_object({{"protocol","1"},{"adapter",ffr::quote("ffr-helper-opening-abort-trial")},
             {"session",ffr::quote(lease.session)},{"time",std::to_string(seconds())},{"readOnly","false"},{"restorable","false"},
             {"format",ffr::quote("ffr-helper-abort-trial-status")},{"runtimeMode",ffr::quote("experimental-abort-test")},
-            {"available",json_flag(abort_available)},{"nonce",ffr::quote(action.nonce)},{"trialSession",ffr::quote(action.session)},
+            {"available",json_flag(abort_available)},{"openingBoundaryPolicy",ffr::quote("ordinary-first-menu-event-history")},
+            {"nonce",ffr::quote(action.nonce)},{"trialSession",ffr::quote(action.session)},
             {"sequence",std::to_string(action.sequence)},{"phase",ffr::quote(ffr::phase_name(trial.phase()))},
             {"message",ffr::quote(abort_available?trial.message():abort_message)},{"probeTime",std::to_string(probe_time)},
             {"guard",guard},{"recovery",recovery},{"after",after_metadata},{"importProbe",imported},{"normalizationProbe",normalization_status(*this,lease)}});
@@ -243,6 +252,16 @@ void install_abort_tick_hook() {
         if(!read_memory(base+profile.first,code.data(),code.size()))return;
         Sha256 hash;hash.add(code.data(),code.size());
         if(hash.finish()!=profile.second) {std::lock_guard lock(observer->mutex);observer->abort_message="Abort trial code profile mismatch; no tick hook installed";return;}
+    }
+    if(ffr::abort_profile::opening_boundary_reviewed) {
+        const auto size=ffr::abort_profile::end_battle_full_size;
+        if(!size || size>16384)return;
+        std::vector<unsigned char> code(size);
+        if(!read_memory(base+ffr::abort_profile::end_battle_rva,code.data(),code.size()))return;
+        Sha256 hash;hash.add(code.data(),code.size());
+        if(hash.finish()!=ffr::abort_profile::end_battle_full_sha256) {
+            std::lock_guard lock(observer->mutex);observer->abort_message="Full EndBattle envelope mismatch; no tick hook installed";return;
+        }
     }
     if(ffr::abort_profile::detached_import_menu_reviewed || ffr::abort_profile::normalization_field_reviewed)initialize_import_probe();
     tick_address=reinterpret_cast<void*>(base+ffr::abort_profile::tick_rva);void* trampoline{};

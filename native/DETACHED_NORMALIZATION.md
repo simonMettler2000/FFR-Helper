@@ -2,8 +2,8 @@
 
 The optional `FFRHelperBattlePractice` component can explicitly compare one
 detached normalized progression object. **No normalization operation has been
-tested in FFR.** The installed practice module is disabled and the FFR source
-profile blocks dispatch pending boundary and fresh idle-menu review.
+tested in FFR.** The FFR source explicitly sets `normalization_field_reviewed=false`;
+its normalization dispatcher remains disabled independently of import/abort review.
 This prerequisite does not restore a save state or restart a battle.
 The ordinary read-only observer excludes its request and writer paths.
 

@@ -53,6 +53,8 @@ void run_clone_fixture(const std::filesystem::path& connection,const std::wstrin
     lease();write(connection/L"abort-request.txt","FFR_HELPER_ABORT_OPENING_V1\n"+session+"\n"+nonce+"\n"+std::to_string(now()+8)+"\n1\n"+hash+"\nprepare\n");
     for(unsigned i=0;i<10;++i){pump();std::this_thread::sleep_for(std::chrono::milliseconds(50));}
     CHECK(clone_loads==((unready||deny)?0u:1u) && abort_calls==0 && root_count()==0);
-    write(connection/L"clone-final-status.json",read(connection/L"abort-status.json"));
+    std::string terminal;
+    wait([&]{terminal=read(connection/L"abort-status.json");return !terminal.empty();});
+    write(connection/L"clone-final-status.json",terminal);
 }
 }

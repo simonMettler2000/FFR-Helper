@@ -44,6 +44,7 @@ std::array<std::array<unsigned char,0x880>,2> fake_actors{};
 std::array<std::array<unsigned char,0x560>,2> fake_parameters{};
 std::array<unsigned char,0x40> fake_scheduler{};
 unsigned abort_calls{},tick_calls{};
+DWORD abort_thread{};
 unsigned decision_calls{};void* decision_context{};void* decision_data{};DWORD decision_input_error{};
 unsigned dispatch_calls{},skill_producer_calls{},unrelated_producer_calls{};
 void* dispatch_context{};void* dispatch_data{};std::uint64_t dispatch_name{};DWORD dispatch_input_error{};
@@ -106,7 +107,7 @@ void* __fastcall ffr_test_abort_get_ui(void* world) {
 }
 extern "C" __declspec(dllexport) __declspec(noinline)
 void __fastcall ffr_test_abort_end_battle() {
-    ++abort_calls;fake_manager[0x222]=1;
+    abort_thread=GetCurrentThreadId();++abort_calls;fake_manager[0x222]=1;
 }
 extern "C" __declspec(dllexport) __declspec(noinline)
 void __fastcall ffr_test_abort_tick(void* context,float delta) {
@@ -169,8 +170,19 @@ void __fastcall ffr_test_encounter(void* context, const void* data, bool skip) {
 
 namespace {
 std::string read(const std::filesystem::path& path) {
-    std::ifstream input(path, std::ios::binary);
-    return std::string(std::istreambuf_iterator<char>(input), {});
+    // Match the production reader's delete sharing: status publication replaces
+    // files atomically and must not race a fixture's CRT sharing mode.
+    const auto error=GetLastError();
+    struct Restore {DWORD value;~Restore(){SetLastError(value);}} restore{error};
+    const auto file=CreateFileW(path.c_str(),GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,
+        nullptr,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,nullptr);
+    if(file==INVALID_HANDLE_VALUE)return {};
+    struct Close {HANDLE value;~Close(){CloseHandle(value);}} close{file};
+    LARGE_INTEGER size{};
+    if(!GetFileSizeEx(file,&size)||size.QuadPart<0||size.QuadPart>32*1024*1024)return {};
+    std::string raw(static_cast<std::size_t>(size.QuadPart),'\0');DWORD count{};
+    if(!ReadFile(file,raw.data(),static_cast<DWORD>(raw.size()),&count,nullptr)||count!=raw.size())return {};
+    return raw;
 }
 void write(const std::filesystem::path& path, const std::string& value) {
     auto temporary=path;temporary+=L".fixture-tmp";
@@ -191,7 +203,7 @@ template<class Condition> void wait_for(Condition condition) {
 template<class T> ffr::RawArray array(std::vector<T>& value) {
     return {reinterpret_cast<std::uint64_t>(value.data()), static_cast<std::int32_t>(value.size()), static_cast<std::int32_t>(value.size())};
 }
-void run_abort_fixture(const std::filesystem::path& connection,bool deny);
+void run_abort_fixture(const std::filesystem::path& connection,const std::wstring& mode);
 void run_clone_fixture(const std::filesystem::path& connection,const std::wstring& mode,HMODULE loader);
 void run_combat_fixture(const std::filesystem::path& connection,const std::wstring& mode);
 void run_recovery_fixture(const std::filesystem::path& connection,const std::wstring& mode);
@@ -346,9 +358,10 @@ int wmain(int argc, wchar_t** argv) {
             CHECK(std::memcmp(initial_decision.data(),decision_code,64)==0);
             std::cout<<"Read-only decision history fixture passed; no practice commands enabled.\n";return 0;
         }
-        if(mode==L"boundary-unreviewed") {
+        if(mode==L"boundary-unreviewed" || mode==L"abort-full-unavailable") {
             write(connection/L"observe.txt","FFR_HELPER_OBSERVER_V1\n"+std::string(32,'a')+"\n"+std::to_string(now()+8)+"\n"+std::string(32,'b')+"\n");
-            wait_for([&]{return read(connection/L"abort-status.json").find("Opening command boundary is unreviewed")!=std::string::npos;});
+            const auto expected=mode==L"boundary-unreviewed"?"Opening command boundary is unreviewed":"Full EndBattle envelope mismatch";
+            wait_for([&]{return read(connection/L"abort-status.json").find(expected)!=std::string::npos;});
             const auto status=read(connection/L"abort-status.json");
             CHECK(status.find("\"available\":false")!=std::string::npos);
             CHECK(std::memcmp(initial_tick.data(),fixture_tick,initial_tick.size())==0);
@@ -381,8 +394,8 @@ int wmain(int argc, wchar_t** argv) {
             CHECK(std::memcmp(initial_code,reinterpret_cast<const void*>(entry_function),sizeof(initial_code))==0);
             std::cout<<"Detached import DLL fixture passed without FFR.\n";return 0;
         }
-        if(mode==L"abort"||mode==L"abort-denied") {
-            run_abort_fixture(connection,mode==L"abort-denied");stop(object);
+        if(mode.starts_with(L"abort")) {
+            run_abort_fixture(connection,mode);stop(object);
             CHECK(host_count()==0 && host_errors()==0 && fixture_errors==0);
             CHECK(std::memcmp(initial_code,reinterpret_cast<const void*>(entry_function),sizeof(initial_code))==0);
             std::cout<<"Experimental abort DLL fixture passed without FFR.\n";return 0;

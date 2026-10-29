@@ -237,6 +237,39 @@ manager handling, and optional skill-hook mismatch/session/thread behavior.
 These are isolated tests. No engine import, abort or live-state restoration has
 yet run in FFR. Supervised detached import is the next implementation milestone.
 
+### Detached import verified in FFR; controlled abort prepared
+
+The supervised source0e6678b test verified Skill.Begin zero at a normal first menu
+and one after one user command, alongside the manual-handler count. On returning
+to the overworld, actual ticks reported matching thread/world, inactive battle/UI,
+both owned managers released and zero units/jobs. Two earlier preemptive encounters
+were excluded. These observations verify these tested paths, not complete action
+or state coverage.
+
+The read-only collector was stopped before starting a fresh one-shot import
+session. At the next ordinary first menu, native LoadGameFromMemory created a
+separate object which serialized to exactly the opening's 466,065 bytes. Input
+and live progression were unchanged; all temporary pins were verified released.
+The bound receipt passed and the user confirmed a responsive game. No abort,
+normalization, live-root assignment, save-slot write or restoration was performed.
+
+The next source enables the controlled opening-abort trial with a new explicit
+`ordinary-first-menu-event-history` policy. Both same-opening/thread histories
+must be available and untouched, without foreign-thread or overflow flags.
+Fresh native idle-menu/context/queue checks remain required at prepare and commit.
+Raw turn beginnings are only reported; a value of one is not used as a substitute
+for completed actions. The entire 112-byte EndBattle envelope is fingerprinted,
+including the flag write beyond its old prefix check. Normalization stays disabled.
+This is a prepared experiment, not a verified abort or a battle restart.
+
+Validation now passes 151 Python tests and all 72 native cases. The added native
+cases refuse manual/skill/foreign-thread activity and an incorrect complete
+EndBattle fingerprint, and accept inactive teardown with both managers released.
+The CLI lifecycle test skips preemptive/setup frames before exactly one durable
+prepare/commit. A full-run fixture receipt-copy race was corrected by using
+Windows delete-sharing reads and bounded nonempty terminal readback; the fresh
+complete run passed. No FFR ForceEnd call has been made.
+
 ## In-memory progression and teardown findings
 
 On this exact binary, the ordinary encrypted save writer calls the engine's

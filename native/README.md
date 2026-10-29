@@ -130,24 +130,27 @@ component null. It is excluded from the practice build and cannot enable a
 practice command. Fresh battle-menu samples were verified in FFR; tabbing out
 left the game timestamp stale despite worker heartbeats. The latest source also
 recognizes inactive field state with both owned managers released, matching a
-read-only live diagnostic. This released-manager case still needs tick verification.
+read-only live diagnostic. A subsequent supervised field return verified that
+actual ticks report this inactive released-manager case with matching context.
 
 An additional exact-callsite observer counts `Delegate.Battle.Skill.Begin`
 events, including paths that may bypass manual decision handling. It fingerprints
 the complete producer and dispatcher envelopes and observes only that producer's
 dispatch return address. No event-name decoding or event-data reads occur. It
 preserves the original arguments, call count and Win32 error state. The bounded,
-session-bound `.ffrskill.json` history has passed compiled-DLL tests; live coverage
-is not yet verified and cannot authorize a restart.
+session-bound `.ffrskill.json` history has passed compiled-DLL tests. A supervised
+normal encounter verified zero at its first menu and one after one command.
+Broader coverage remains unreviewed; it cannot authorize a restart.
 
 A separate [opening-abort trial](ABORT_TRIAL.md) is compiled only when explicitly
 requested. Its game-thread command path is excluded from the ordinary observer.
 It is a mutation-capable experiment. Its first-menu import guard refused before
-any request in FFR; no import, abort or restoration operation ran. The FFR source
-profile keeps opening abort and normalization disabled. Detached import now uses
-a separate ordinary idle-menu policy with fresh context and unchanged-live-save
-checks; its revised engine test remains pending. It does not yet perform restart
-or save-state restoration.
+any request in the earlier FFR test. Its independent ordinary idle-menu import
+policy subsequently passed a supervised test: clone/input/live-save comparisons
+and temporary-pin release all passed, and the game stayed responsive. The next
+source enables a separate untouched event-history guard for a controlled ForceEnd
+test. No FFR abort or restoration has run. Normalization remains disabled; this
+does not yet perform restart or save-state restoration.
 
 The desktop or CLI verifies the sidecar against the matched report, parses its
 GVAS class/engine/property layout and exports a `.ffropening` archive. The archive

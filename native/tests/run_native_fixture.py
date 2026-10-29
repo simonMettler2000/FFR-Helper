@@ -32,7 +32,7 @@ def main():
         subprocess.run([str(args.exe.resolve()), str(module), str(args.loader.resolve()), str(root/'connection'), args.mode], check=True, timeout=30)
         if args.mode.startswith('normalize'):
             sys.path.insert(0,str(Path(__file__).resolve().parents[2]))
-            from ffr_helper import opening
+            from ffr_helper import opening, crt_rng
             from ffr_helper.normalization_probe import NormalizationProbeBridge, validate_normalization_probe
             from ffr_helper.playtime_plan import plan_opening_playtime
             from ffr_helper.runtime import NativeEntryRecorder
@@ -41,7 +41,7 @@ def main():
             fixture_hash=hashlib.sha256(args.exe.read_bytes()).hexdigest()
             source_report=json.loads((root/'connection/normalization-source-report.json').read_text(encoding='utf8'))
             assert source_report['objects']['nativeEntry']['opening']['gameSha256']==fixture_hash
-            with patch.object(opening,'GAME_SHA256',fixture_hash):
+            with patch.object(opening,'GAME_SHA256',fixture_hash),patch.object(crt_rng,'SUPPORTED_CRT_SHA256',fixture_hash):
                 source=opening.OpeningCapture(source_report['objects']['nativeEntry']['opening'],(root/'connection/normalization-source-progression.gvas').read_bytes()).validate()
                 assert source.metadata['playtimeBasis']['savedSeconds']==1000.25
                 expected_phase=('rejected' if args.mode in ['normalize-unready','normalize-stale'] else 'passed' if args.mode=='normalize' else 'failed')
@@ -63,13 +63,13 @@ def main():
                     assert probe['enginePassed'] and not probe['filesCommitted']
         elif args.mode.startswith('recovery'):
             sys.path.insert(0,str(Path(__file__).resolve().parents[2]))
-            from ffr_helper import recovery, opening
+            from ffr_helper import recovery, opening, crt_rng
             from ffr_helper.codec import SaveDocument
             fixture_hash=hashlib.sha256(args.exe.read_bytes()).hexdigest()
             first=json.loads((root/'connection/recovery-first-report.json').read_text(encoding='utf8'))
             final=json.loads((root/'connection/recovery-final-report.json').read_text(encoding='utf8'))
             assert first['gameSha256']==final['gameSha256']==fixture_hash
-            with patch.object(recovery,'GAME_SHA256',fixture_hash),patch.object(opening,'GAME_SHA256',fixture_hash):
+            with patch.object(recovery,'GAME_SHA256',fixture_hash),patch.object(opening,'GAME_SHA256',fixture_hash),patch.object(crt_rng,'SUPPORTED_CRT_SHA256',fixture_hash):
                 recovery.validate_recovery_report(first);recovery.validate_recovery_report(final)
                 source_report=json.loads((root/'connection/recovery-source-report.json').read_text(encoding='utf8'))
                 source=opening.OpeningCapture(source_report['objects']['nativeEntry']['opening'],(root/'connection/recovery-source-progression.gvas').read_bytes()).validate()
@@ -186,6 +186,11 @@ def main():
                 assert cache['units'][0]['raw']['hpBase']==150 and cache['units'][0]['raw']['mp']==-20
                 assert len(cache['units'])==2 and cache['units'][0]['raw']['unitId']==cache['units'][1]['raw']['unitId']
                 assert cache['coherentWithProgression'] is False and report['objects']['nativeEntry']['mapUnitCacheFailures']==0
+                from ffr_helper import crt_rng
+                fixture_hash=hashlib.sha256(args.exe.read_bytes()).hexdigest()
+                with patch.object(crt_rng,'SUPPORTED_CRT_SHA256',fixture_hash):rng=crt_rng.validate_crt_rand_state(metadata['crtRandState'])
+                assert rng['seed']==1234567 and rng['stateIndex']==0 and report['objects']['nativeEntry']['crtRandReady'] is True
+                assert report['objects']['nativeEntry']['crtRandFailures']==0
                 replacement=json.loads((root/'connection/replacement-report.json').read_text(encoding='utf8'))
                 second=replacement['objects']['nativeEntry']['opening']
                 second_raw=(root/'connection/replacement-progression.gvas').read_bytes()
@@ -193,6 +198,7 @@ def main():
                 assert second['sha256']==hashlib.sha256(second_raw).hexdigest() and second_raw[8]==43
                 assert second['playtimeBasis'] is None and replacement['objects']['nativeEntry']['playtimeBasisFailures']==1
                 assert second['mapUnitCache'] is None and replacement['objects']['nativeEntry']['mapUnitCacheFailures']==1
+                assert second['crtRandState'] is None and replacement['objects']['nativeEntry']['crtRandFailures']==1
                 assert progression[8]==42 and metadata['entry']['friendliesUnitIdList']==[1001,1002]
                 after=json.loads((root/'connection/after-expiry-report.json').read_text(encoding='utf8'))
                 assert len(after['events'])==2 and after['objects']['nativeEntry']['captureFailures']==1
@@ -203,6 +209,8 @@ def main():
                 assert large['objects']['nativeEntry']['eventsOmittedForSize']>0 and len(large['events'])<5
                 latest_cache=validate_map_unit_cache(large['objects']['nativeEntry']['opening']['mapUnitCache'])
                 assert latest_cache['units'][0]['raw']['hpBase']==7 and cache['units'][0]['raw']['hpBase']==150
+                with patch.object(crt_rng,'SUPPORTED_CRT_SHA256',fixture_hash):latest_rng=crt_rng.validate_crt_rand_state(large['objects']['nativeEntry']['opening']['crtRandState'])
+                assert latest_rng['seed']==99 and rng['seed']==1234567
             else:
                 assert report['events']==[] and report['objects']['nativeEntry']['ready'] is False
 

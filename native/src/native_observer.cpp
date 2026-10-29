@@ -17,6 +17,12 @@
 #include "field_anchor.hpp"
 #include "playtime_capture.hpp"
 #include "map_unit_cache.hpp"
+#include "crt_rand_capture.hpp"
+#ifdef FFR_CRT_PROFILE_HEADER
+#include FFR_CRT_PROFILE_HEADER
+#else
+#include "crt_profile.hpp"
+#endif
 #ifdef FFR_PLAYTIME_PROFILE_HEADER
 #include FFR_PLAYTIME_PROFILE_HEADER
 #else
@@ -54,6 +60,8 @@
 #include <mutex>
 #include <thread>
 #include <string_view>
+#include <tuple>
+#include <intrin.h>
 
 namespace {
 using Clock = std::chrono::system_clock;
@@ -154,6 +162,8 @@ bool read_memory(std::uint64_t address, void* destination, std::size_t length) {
         && copied == length;
 }
 
+#include "crt_runtime.inl"
+
 bool read_small(const std::filesystem::path& path, std::string& out, DWORD maximum) {
     Handle file(CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
                             nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr));
@@ -212,6 +222,7 @@ struct Observer {
         std::string field_anchor="null";
         std::string playtime_basis="null";
         std::string map_unit_cache="null";
+        std::string crt_rand_state="null";
         std::optional<ffr::FieldAnchor> field_value;
         std::optional<ffr::PlaytimeBasis> clock_value;
         std::vector<unsigned char> progression;
@@ -234,6 +245,7 @@ struct Observer {
     std::atomic<unsigned> field_failures{0};
     std::atomic<unsigned> playtime_failures{0};
     std::atomic<unsigned> map_cache_failures{0};
+    std::atomic<unsigned> crt_rand_failures{0};
     std::shared_ptr<const Opening> opening;
 #ifdef FFR_PRACTICE_BUILD
     ffr::AbortTrial trial;
@@ -313,6 +325,7 @@ struct Observer {
                                 +",\"sha256\":"+ffr::quote(digest)+",\"entry\":"+current_opening->entry
                                 +",\"fieldAnchor\":"+current_opening->field_anchor
                                 +",\"mapUnitCache\":"+current_opening->map_unit_cache
+                                +",\"crtRandState\":"+current_opening->crt_rand_state
                                 +",\"playtimeBasis\":"+current_opening->playtime_basis+'}';
                             published=current_opening;
 #ifdef FFR_PRACTICE_BUILD
@@ -342,6 +355,8 @@ struct Observer {
                         + ",\"playtimeBasisFailures\":"+std::to_string(playtime_failures.load())
                         + ",\"mapUnitCacheFailures\":"+std::to_string(map_cache_failures.load())
                         + ",\"eventsOmittedForSize\":"+std::to_string(omitted)
+                        + ",\"crtRandReady\":"+(crt_profile_ready.load()?"true":"false")
+                        + ",\"crtRandFailures\":"+std::to_string(crt_rand_failures.load())
                         + ",\"opening\":"+opening_metadata+"}},\"events\":[";
                     for (std::size_t i=0; i<copied.size(); ++i) { if (i) report += ','; report += copied[i]; }
                     report += "],\"missingState\":[\"Live verification of serialized progression/resource coverage\",\"Full combat and RNG state\",\"Verified restore path\"]}";
@@ -457,6 +472,8 @@ void __fastcall encounter_hook(void* context, const void* entry, bool skip_intro
         opening->encounter=std::move(*copied); opening->context_identity=reinterpret_cast<std::uint64_t>(context);
         opening->thread=GetCurrentThreadId();
 #endif
+        const auto rng_thread=GetCurrentThreadId();std::optional<ffr::CrtRandSample> rng_before;
+        try {rng_before=capture_live_crt_rand(rng_thread);}catch(...){}
         try {
             void* captured_root=nullptr;
             auto progression=ffr::capture_progression(read_memory,[&] {captured_root=root_getter();return captured_root;},save_memory,memory_free);
@@ -467,6 +484,11 @@ void __fastcall encounter_hook(void* context, const void* entry, bool skip_intro
                     if(basis){opening->playtime_basis=ffr::to_json(*basis);opening->clock_value=*basis;}
                     else current->playtime_failures.fetch_add(1);
                 }catch(...) {current->playtime_failures.fetch_add(1);}
+                try {
+                    auto rng_after=capture_live_crt_rand(rng_thread);
+                    if(rng_before && rng_after && *rng_before==*rng_after)opening->crt_rand_state=ffr::crt_rand_json(*rng_before,ffr::crt_profile::module_sha256);
+                    else current->crt_rand_failures.fetch_add(1);
+                }catch(...) {current->crt_rand_failures.fetch_add(1);}
             }
             else current->progression_failures.fetch_add(1);
         } catch (...) { current->progression_failures.fetch_add(1); }
@@ -502,6 +524,7 @@ bool install_entry_hook() {
     auto base = reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr));
     initialize_field_profile();
     initialize_playtime_profile();
+    try {initialize_crt_profile();}catch(...) {crt_profile_ready=false;}
     for (const auto& profile : {std::pair{ffr::profile::root_getter_rva,ffr::profile::root_getter_sha256},
                                std::pair{ffr::profile::save_memory_rva,ffr::profile::save_memory_sha256},
                                std::pair{ffr::profile::memory_free_rva,ffr::profile::memory_free_sha256}}) {

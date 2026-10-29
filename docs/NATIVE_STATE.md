@@ -550,6 +550,36 @@ This path is uninstalled and awaits actual engine verification. See
 [detached normalization](../native/DETACHED_NORMALIZATION.md). It performs no live
 load, clock reset or battle recreation; the ordinary observer excludes the path.
 
+### Partial Windows CRT RNG capture
+
+Static inspection identifies a weighted-skill selector calling the game's
+imported Windows CRT `rand`. The new observer can optionally read that stream's
+existing per-thread/fiber state at encounter entry without advancing it. An exact
+system DLL hash, loaded `rand`/PTD getter bodies and the game's import target gate
+the feature. Existing FLS slots and a verified state-selection layout locate the
+seed; the observer never calls `rand`, `srand`, the allocating PTD getter, a slot
+allocator/setter or an RNG setter. It preserves Win32 error state. The public
+[FlsGetValue API](https://learn.microsoft.com/en-us/windows/win32/api/fibersapi/nf-fibersapi-flsgetvalue)
+only reads an existing calling-fiber slot value.
+
+Both reads around progression serialization must agree on thread, selected
+state object/index and seed. Unknown CRT versions, getter selections, missing
+thread state or changed samples leave `crtRandState` null without suppressing
+progression. Exported metadata contains the unsigned 32-bit seed and selected
+state index, no addresses, and explicitly claims only the current game thread's
+CRT stream. Other threads and engine/plugin RNG sources remain uncovered.
+
+Portable tests and the compiled observer's own dummy executable verify bounds,
+selection, detached metadata and optional failure. An additional Windows test
+reads this same profiled system CRT in its own executable and checks the
+observed state against controlled draws; unsupported system versions skip that
+test. A separate private helper-process audit checked 4,128 transitions and
+distinct concurrent-thread state. These are isolated-process tests, not live FFR
+verification. No CRT binary is distributed. The new reader remains uninstalled,
+and seed restoration or complete gameplay RNG coverage is not implemented.
+
+### Remaining restart acceptance requirements
+
 Before enabling a restart button, an implementation must demonstrate:
 
 1. Capture occurs before party resources or encounter flags change, including

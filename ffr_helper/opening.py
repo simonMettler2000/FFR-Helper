@@ -15,6 +15,7 @@ from .game_build import GAME_SHA256
 from .field_anchor import validate_field_anchor
 from .playtime import validate_playtime_basis
 from .map_cache import validate_map_unit_cache
+from .crt_rng import validate_crt_rand_state
 from .storage import atomic_write
 
 MAX_PROGRESSION = 16 * 1024 * 1024
@@ -41,6 +42,8 @@ def _metadata(value):
         validate_playtime_basis(value['playtimeBasis'])
     if value.get('mapUnitCache') is not None:
         validate_map_unit_cache(value['mapUnitCache'])
+    if value.get('crtRandState') is not None:
+        validate_crt_rand_state(value['crtRandState'])
     raw = json.dumps(value, ensure_ascii=False, allow_nan=False).encode('utf8')
     if len(raw) > MAX_METADATA:
         raise ValueError('Encounter-opening metadata exceeds its limit.')

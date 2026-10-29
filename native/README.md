@@ -120,6 +120,14 @@ suppressing progression. It preserves duplicate IDs as distinct indices and is
 explicitly not coherent with serialized progression or restorable. This helps
 investigate cache/resource coverage before any root rebinding. No cache setter,
 refresh or clear function is called. The addition is not installed/live-verified.
+Optional `crtRandState` reads only the existing encounter thread's Windows CRT
+seed through exact DLL/code/import and FLS-layout checks. It never advances or
+sets that RNG, calls its allocating PTD getter or exports addresses. Stable
+samples around progression copying are required; unavailable/changed state
+becomes null independently. Other threads and RNG sources are uncovered, and
+restoration is not implemented. Portable, compiled-fixture and supported-system
+helper-process tests do not establish live FFR coverage; this reader remains
+uninstalled. No Windows system DLL is included in packages.
 When a large retained event history needs truncation for a bounded report,
 `eventsOmittedForSize` states how many oldest events were omitted from that report.
 

@@ -71,6 +71,15 @@ def main():
         rva=game_pe.exports['ffr_test_playtime_'+function];start=game_pe.offset(rva)
         clock_text+=f'inline constexpr std::uintptr_t {function}_rva={rva};\ninline constexpr char {function}_sha256[]="{hashlib.sha256(game_pe.raw[start:start+64]).hexdigest()}";\n'
     (output/'good_playtime_profile.hpp').write_text(clock_text+'}\n',encoding='utf8')
+    rng_text='#pragma once\n#include <cstdint>\n#include <cstddef>\nnamespace ffr::crt_profile {\n'
+    rng_text+=f'inline constexpr wchar_t module_name[]=L"";\ninline constexpr char module_sha256[]="{game_hash}";\n'
+    rng_text+=f'inline constexpr std::uintptr_t import_rva={game_pe.exports["ffr_test_rand_import"]};\n'
+    for key,name in [('rand','ffr_test_crt_rand'),('helper','ffr_test_crt_helper')]:
+        rva=game_pe.exports[name];start=game_pe.offset(rva)
+        rng_text+=f'inline constexpr std::uintptr_t {key}_rva={rva};\ninline constexpr std::size_t {key}_size=64;\ninline constexpr char {key}_sha256[]="{hashlib.sha256(game_pe.raw[start:start+64]).hexdigest()}";\n'
+    for key,name in [('ready','ffr_test_rng_ready'),('fast','ffr_test_rng_fast'),('data_slot','ffr_test_rng_data_slot'),('state_slot','ffr_test_rng_state_slot'),('getter','ffr_test_rng_getter')]:
+        rng_text+=f'inline constexpr std::uintptr_t {key}_rva={game_pe.exports[name]};\n'
+    (output/'good_crt_profile.hpp').write_text(rng_text+'}\n',encoding='utf8')
     extra_functions = {name: game_pe.exports['ffr_test_'+name] for name in ['root_getter','save_memory','memory_free']}
     for name in ['good', 'bad_game', 'bad_loader', 'bad_function']:
         text = f'''#pragma once

@@ -44,11 +44,20 @@ std::array<std::array<unsigned char,0x880>,2> fake_actors{};
 std::array<std::array<unsigned char,0x560>,2> fake_parameters{};
 std::array<unsigned char,0x40> fake_scheduler{};
 unsigned abort_calls{},tick_calls{};
+std::array<unsigned char,0x790> fake_rng_data{};
+unsigned rand_calls{},rng_helper_calls{};
 float last_delta{};
 }
 extern "C" {__declspec(dllexport) std::uint64_t ffr_test_btl_vtable[1]={0};}
 extern "C" {__declspec(dllexport) std::uint64_t ffr_test_save_vtable[1]={0};}
 extern "C" {__declspec(dllexport) std::uint64_t ffr_test_map_storage_vtable[1]={0};}
+extern "C" {
+__declspec(dllexport) std::uint8_t ffr_test_rng_ready=1,ffr_test_rng_fast=0;
+__declspec(dllexport) std::uint32_t ffr_test_rng_data_slot=0xffffffffu,ffr_test_rng_state_slot=0xffffffffu;
+__declspec(dllexport) std::uint64_t ffr_test_rng_getter=0,ffr_test_rand_import=0;
+}
+extern "C" __declspec(dllexport) __declspec(noinline) unsigned ffr_test_crt_rand(){++rand_calls;return 1;}
+extern "C" __declspec(dllexport) __declspec(noinline) void* ffr_test_crt_helper(){++rng_helper_calls;return nullptr;}
 extern "C" __declspec(dllexport) __declspec(noinline)
 void* __fastcall ffr_test_field_get_world(void* map) {
     if(map!=fake_map.data()){++fixture_errors;return nullptr;}return fake_world.data();
@@ -188,6 +197,11 @@ int wmain(int argc, wchar_t** argv) {
             put(fake_map_parameters[i],0x110,std::int32_t{-20});map_parameters.push_back(reinterpret_cast<std::uint64_t>(fake_map_parameters[i].data()));
         }
         put(fake_map_storage,0x28,array(map_parameters));
+        ffr_test_rng_data_slot=FlsAlloc(nullptr);ffr_test_rng_state_slot=FlsAlloc(nullptr);
+        CHECK(ffr_test_rng_data_slot!=FLS_OUT_OF_INDEXES && ffr_test_rng_state_slot!=FLS_OUT_OF_INDEXES);
+        CHECK(FlsSetValue(ffr_test_rng_data_slot,fake_rng_data.data()) && FlsSetValue(ffr_test_rng_state_slot,nullptr));
+        ffr_test_rng_getter=reinterpret_cast<std::uint64_t>(GetProcAddress(GetModuleHandleW(L"kernel32.dll"),"FlsGetValue"));
+        ffr_test_rand_import=reinterpret_cast<std::uint64_t>(&ffr_test_crt_rand);put(fake_rng_data,0x28,std::uint32_t{1234567});
         put(fake_root,0x38,1000.25f);
         put(fake_playtime,0x30,std::array<std::int64_t,3>{9000,0,30});
         put(fake_field_player,0x1b8,reinterpret_cast<std::uint64_t>(fake_field_component.data()));
@@ -273,6 +287,7 @@ int wmain(int argc, wchar_t** argv) {
         put(fake_root,0x38,2000.5f);
         put(fake_playtime,0x30,std::array<std::int64_t,3>{9500,0,40});
         put(fake_map_parameters[0],0x10c,std::int32_t{7});
+        put(fake_rng_data,0x28,std::uint32_t{99});
         friends[0] = 9999; enemies[0] = 999; skills[0] = 999; bgm[0] = u'X';
         lease(std::string(32,'b'), now()+8);
         wait_for([&] { return read(connection/L"runtime-report.json").find(std::string(32,'b')) != std::string::npos; });
@@ -297,6 +312,7 @@ int wmain(int argc, wchar_t** argv) {
             // progression/encounter capture or invent a restorable timer.
             put(fake_playtime,0x30,std::int64_t{20000});
             put(fake_map_storage,0,std::uint64_t{1}); // Unsupported optional cache must not suppress progression.
+            ffr_test_rand_import=1; // A changed game import invalidates optional seed coverage.
             entry_function(context,&entry,false); CHECK(calls==4 && serialized==2 && released==2);
             lease(std::string(32,'d'),now()+8);
             wait_for([&] { return read(connection/L"runtime-report.json").find(std::string(32,'d')) != std::string::npos; });
@@ -311,6 +327,7 @@ int wmain(int argc, wchar_t** argv) {
             write(connection/L"after-expiry-report.json", read(connection/L"runtime-report.json"));
             CHECK(abort_calls==0 && clone_loads==0 && serialized==2 && released==2);
             put(fake_map_storage,0,reinterpret_cast<std::uint64_t>(ffr_test_map_storage_vtable));
+            ffr_test_rand_import=reinterpret_cast<std::uint64_t>(&ffr_test_crt_rand);
             std::vector<std::int32_t> many_skills(128,2147483647);std::vector<ffr::RawArray> many_passives(64,array(many_skills));
             auto large_entry=entry;large_entry.passives=array(many_passives);
             for(unsigned i=0;i<3;++i)entry_function(context,&large_entry,false);
@@ -322,7 +339,7 @@ int wmain(int argc, wchar_t** argv) {
         } else CHECK(snapshot.find("encounter-opening-native") == std::string::npos);
         stop(object);
         CHECK(host_count() == 0 && host_errors() == 0);
-        CHECK(fixture_errors==0);
+        CHECK(fixture_errors==0 && rand_calls==0 && rng_helper_calls==0);
         CHECK(std::memcmp(initial_code, reinterpret_cast<const void*>(entry_function), sizeof(initial_code)) == 0);
         const auto before = calls;
         entry_function(context, &entry, false); CHECK(calls == before+1);

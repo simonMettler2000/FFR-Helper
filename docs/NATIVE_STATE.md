@@ -68,6 +68,48 @@ Local validation remains 112 passing native cases and 185 Python tests run
 remain blocked by the account billing/spending limit. Private captures, saves,
 process pointers and game data must stay outside Git.
 
+## Installation review and requested status indicator — 30 October 2026
+
+Read-only inspection confirmed that the approved loader and practice DLL remain
+installed with the same hashes as the last supervised test. UE4SS is enabled via
+the proxy loader; `FFRHelperBattlePractice : 1` and its enabled marker are present.
+The Lua recorder and separate read-only native recorder are disabled and retained.
+The game was closed, no helper controller/recorder process was running, and all
+installed modules' observation leases and abort requests were expired. No installed
+file was changed during this review. Enabled/loading is distinct from an armed
+mutation request: the current hooks still load with the game, but a controller's
+fresh lease and separately guarded explicit request are needed for an experiment.
+
+Ordinary story progression does not itself invalidate the mod's exact-build
+bindings. Future testing needs fresh backups/opening captures from that progress;
+old test snapshots are historical evidence. Experimental loaded hooks still carry
+compatibility/crash risk even while unarmed. Prefer disabling the loader before
+unmodded story play; stopping the desktop helper alone does not unload UE4SS.
+No claim of guaranteed safe normal play or complete uninstallation is made.
+
+Requested for a future implementation: small green **FFR Helper Active** text in
+the game's rendered viewport, above the command-menu area during battle and in a
+consistent unobtrusive position outside battle. Keep it visible while the runtime
+module is initialized even if the desktop app disconnects; distinguish loaded,
+ready, connected and armed states rather than implying every unfinished feature
+works. A failed/unsupported initialization must show an honest warning state.
+The standard build should not offer a hide toggle if this is intended as visible
+practice disclosure. Rendering must not capture input or change gameplay.
+
+Text rendering is substantially smaller work than restoration. Integrating the
+widget with this packaged game's viewport, safe object lifetime, resolution/UI
+scaling, map/battle/menu transitions and actual capture output still needs an
+implementation and supervised verification. Unreal's
+[viewport widget support](https://dev.epicgames.com/documentation/unreal-engine/BlueprintAPI/UserInterface/Viewport/AddtoViewport)
+provides a candidate mechanism; no FFR-specific overlay binding is implemented.
+Do not introduce a raw graphics hook solely to avoid that lifecycle audit.
+
+This is a disclosure watermark, **not anti-cheat attestation**: a modified build
+can remove it, a recording can hide it, and edited saves can later be used without
+the module. Its absence cannot prove an unmodified run or clean save. Keep this
+limitation explicit in the UI documentation and any speedrunning claims.
+Battle-restart development remains paused while the user asks these questions.
+
 ## Current command-menu exit candidate
 
 The latest supervised native EndBattle + UI-manager AbortCommand pair set both

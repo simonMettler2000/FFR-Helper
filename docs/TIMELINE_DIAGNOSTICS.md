@@ -119,7 +119,7 @@ headers are counted.
 
 This remains private research evidence: enumeration is incomplete and non-atomic,
 and a retained widget need not belong to the visible viewport. Neither stored
-vector certifies actual pixels. Twenty-three synthetic cases cover reflected-member
+vector certifies actual pixels. Twenty-four synthetic cases cover reflected-member
 discovery, template exclusion, weak-identity/property/anchor drift, stale links,
 typed bounds and distinct widget/Slate values. The extended Windows collector is
 syntax-checked only and has not been run in FFR.
@@ -151,6 +151,17 @@ values could still reference an earlier fight's VM. It is **not yet the confirme
 cause**. The new lookup-key, turn-membership and entry/widget comparisons are
 prepared to check it. The two entry-kind bytes must not be interpreted as faction.
 No entry-update, assignment or UI-reset function has been invoked as a repair.
+
+`ffr_helper.timeline_findings.analyze_timeline_widgets` reduces a retained pair
+of link/widget reports to address-free findings. It keeps registry/cache,
+entry/portrait, raw-relation/widget and widget/Slate disagreements separate.
+Only entries whose turn, index and identity match current timeline data become
+current-turn candidates; old or unclassified retained widgets remain separate
+and cannot manufacture a current layout fault. Missing coverage stays unavailable.
+Even a matching candidate does not establish viewport visibility or authorize a
+repair. Seven reducer cases and an actual synthetic-reader integration case
+cover these distinctions. The private collector now retains this summary beside
+the raw evidence; the extended collector remains untested in FFR.
 
 ## Next supervised comparison
 

@@ -325,3 +325,21 @@ class WidgetDiagnosticsTests(unittest.TestCase):
         self.assertTrue(row['turnMatchesCurrentTimeline']);self.assertIsNone(row['identityMatchesCurrentTurn'])
         for context in [{True:[]},{turn:[b'bad']},{turn:'bad'}]:
             with self.subTest(context=context),self.assertRaises(WidgetSnapshotError):self.snapshot(current_segments=context)
+
+    def test_stored_findings_consume_actual_reader_schema_without_promoting_old_turns(self):
+        from ffr_helper.timeline_findings import analyze_timeline_widgets
+        turn,raw=self.add_turn_members()
+        retired=self.object('RetiredVM',klass=self.vm_class);self.sync_objects()
+        self.put(self.entry+0x90,'<Q',retired);self.put(self.widget+0x400,'<Q',retired)
+        links=dict(format='ffr-helper-timeline-links',protocol=1,readOnly=True,
+            gameCalls=False,gameWrites=False,atomicSnapshot=False,restorable=False,
+            units=[dict(index=0,expectedParty=True,storedRelationByte=1)],unitViewModels=[])
+        current=self.snapshot(current_segments={turn:[raw]})
+        findings=analyze_timeline_widgets(links,current)['widgetFindings'][0]
+        self.assertEqual(findings['membership'],'current-turn-candidate')
+        self.assertEqual(findings['findings'],['entry-cache-disagrees-with-current-registry',
+                                             'portrait-vm-not-current'])
+        old=self.snapshot(current_segments={})
+        findings=analyze_timeline_widgets(links,old)['widgetFindings'][0]
+        self.assertEqual(findings['membership'],'outside-current-turns')
+        self.assertEqual(findings['findings'],[])

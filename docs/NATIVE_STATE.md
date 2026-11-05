@@ -43,10 +43,13 @@ the child and then completes the remaining cycles without another import call.
 There is still no recreated **FFR** link/widget sample. A separate bounded
 read-only widget reader now discovers the live reflected VM-member offset and
 can compare retained entry/widget source links and profiled Slate anchor storage.
-Twenty-three synthetic cases pass; it neither invokes UI functions nor certifies visible pixels. The
+Twenty-four synthetic reader cases and seven finding-reducer cases pass. The
+reducer keeps old retained widgets separate from current-turn candidates and
+emits address-free disagreements without authorizing a repair. Neither component
+invokes UI functions or certifies visible pixels. The
 extended external Windows collector is syntax-checked only and has not run in FFR.
 
-The full Python suite ran 253 tests (252 passed, one skipped). All 128 native
+The full Python suite ran 261 tests (260 passed, one skipped). All 128 native
 regression cases passed after rebuilding every fixture/profile for the current
 test host; native source is unchanged by the subsequent external widget reader.
 A [partial backup reader](NATIVE_BACKUP.md) also preserves duplicate

@@ -339,6 +339,10 @@ struct Observer {
     bool recreation_menu_progression_unchanged=false;
     std::optional<ffr::FieldAnchor> recreation_entry_field;
     unsigned recreation_field_stable_samples{};
+    std::optional<ffr::AbortRequest> rearm_request;
+    std::string rearm_phase="idle",rearm_message="Waiting for a verified child and a new deliberate request";
+    std::uint64_t rearm_previous_generation{},rearm_generation{},cycle_archive_generation{};
+    std::string cycle_archive_hash,cycle_archive_error;
     std::string abort_message="Abort trial has not initialized", opening_hash, recovery_hash;
     std::int64_t probe_time{};
     std::vector<unsigned char> after_progression;

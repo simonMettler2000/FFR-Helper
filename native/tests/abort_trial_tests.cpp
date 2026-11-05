@@ -67,6 +67,50 @@ int main() {
         ffr::AbortTrial invalid_time;CHECK(invalid_time.prepare(request,good,100,capture));invalid_time.recovery_written(true);
         CHECK(invalid_time.commit(commit,good,101,end));invalid_time.observe(good,102,-1.f);
         CHECK(invalid_time.phase()==ffr::AbortPhase::timed_out);
+        // Verify rearm only after a completed exit and independently accepted
+        // next child; no cleanup observation by itself grants another abort.
+        auto completed=[&] {
+            ffr::AbortTrial value;CHECK(value.prepare(request,good,100,capture));
+            value.recovery_written(true);CHECK(value.commit(commit,good,101,end));
+            auto field=good;field.battle_active=false;field.units=0;field.field_ready=true;
+            value.observe(field,102,0.016f);CHECK(value.phase()==ffr::AbortPhase::manager_cleared);
+            return value;
+        };
+        auto child=good;child.sequence=2;
+        auto rearm=request;rearm.phase="rearm";rearm.nonce=std::string(32,'d');rearm.sequence=2;rearm.deadline=109;
+        const auto aborts_before_rearm=aborts;
+        for(unsigned failure=0;failure<16;++failure) {
+            auto value=completed();auto changed_rearm=rearm;auto changed_child=child;unsigned verification=0;
+            switch(failure) {
+            case 0:changed_rearm.nonce=request.nonce;break;case 1:changed_rearm.nonce.clear();break;
+            case 2:changed_rearm.session=std::string(32,'e');break;case 3:changed_rearm.opening_hash=std::string(64,'f');break;
+            case 4:changed_rearm.sequence=1;changed_child.sequence=1;break;case 5:changed_rearm.sequence=3;changed_child.sequence=3;break;
+            case 6:changed_rearm.deadline=102;break;case 7:changed_child.opening_history_untouched=false;break;
+            case 8:changed_child.command_abort_ready=false;break;case 9:changed_child.ordinary_encounter=false;break;
+            case 10:changed_child.working_jobs=1;break;case 11:changed_child.game_thread=false;break;
+            case 12:changed_child.command_menu=false;break;case 13:changed_rearm.phase="prepare";break;
+            }
+            const auto count=aborts;
+            CHECK(!value.rearm_verified_child(changed_rearm,changed_child,103,[&] {
+                ++verification;if(failure==15)throw std::runtime_error("Fixture child read failed");return false;
+            }));
+            CHECK(value.phase()==ffr::AbortPhase::manager_cleared && value.active_request().nonce==request.nonce);
+            CHECK(!value.recovery_bytes().empty() && aborts==count);
+            CHECK(verification==(failure>=14?1u:0u));
+        }
+        for(auto* failed:{&invalid_time,&timeout,&changed,&expires,&write_failed,&throws})
+            CHECK(!failed->rearm_verified_child(rearm,child,103,[]{return true;}));
+        auto repeated=completed();unsigned verified=0;
+        CHECK(repeated.rearm_verified_child(rearm,child,103,[&] {
+            ++verified;CHECK(!repeated.rearm_verified_child(rearm,child,103,[]{return true;}));return true;
+        }));
+        CHECK(verified==1 && repeated.phase()==ffr::AbortPhase::idle && repeated.recovery_bytes().empty());
+        CHECK(repeated.active_request().sequence==0 && repeated.cleanup_active_millis()==0);
+        CHECK(!repeated.commit(commit,good,103,end)); // Prior commit cannot replay.
+        auto next_prepare=rearm;next_prepare.phase="prepare";next_prepare.nonce=std::string(32,'e');
+        CHECK(repeated.prepare(next_prepare,child,103,capture));repeated.recovery_written(true);
+        auto next_commit=next_prepare;next_commit.phase="commit";CHECK(repeated.commit(next_commit,child,104,end));
+        CHECK(aborts==aborts_before_rearm+18); // 16 isolated completions plus this two-cycle trial.
         std::cout<<"Opening-abort guard, durable recovery gate, expiry and exactly-once checks passed.\n";
     }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}
 }

@@ -74,13 +74,20 @@ void run_abort_fixture(const std::filesystem::path& connection,const std::wstrin
         actors.push_back(reinterpret_cast<std::uint64_t>(fake_actors[i].data()));
     }
     put(fake_units,0x28,array(actors));put(fake_units,0x38,actors[0]);
+    const bool archive_blocked=mode==L"abort-recreate-archive-conflict" || mode==L"abort-recreate-archive-directory";
+    const bool rearm_fixture=mode==L"abort-recreate-repeat" || mode.starts_with(L"abort-recreate-rearm-") || archive_blocked;
+    const auto session=std::string(32,'a'),nonce=std::string(32,'b');
+    std::int64_t lease_refreshed{};
     const auto tick=reinterpret_cast<void(__fastcall*)(void*,float)>(GetProcAddress(GetModuleHandleW(nullptr),"ffr_test_abort_tick"));
     auto pump=[&] {
+        if(rearm_fixture && lease_refreshed!=now()) {
+            lease_refreshed=now();
+            write(connection/L"observe.txt","FFR_HELPER_OBSERVER_V1\n"+session+"\n"+std::to_string(now()+8)+"\n"+std::string(32,'0')+"\n");
+        }
         const auto count=tick_calls;tick(fake_manager.data()+0x30,0.125f);
         CHECK(tick_calls==count+1 && last_delta==0.125f && GetLastError()==9876);
     };
     auto wait=[&](auto condition) {wait_for([&] {pump();return condition();});};
-    const auto session=std::string(32,'a'),nonce=std::string(32,'b');
     write(connection/L"observe.txt","FFR_HELPER_OBSERVER_V1\n"+session+"\n"+std::to_string(now()+8)+"\n"+std::string(32,'0')+"\n");
     wait([&] {return !read(connection/L"observer-status.json").empty();});
     std::vector<std::int32_t> friends{1001,1002},enemies{11},positions{0,1};
@@ -174,8 +181,14 @@ void run_abort_fixture(const std::filesystem::path& connection,const std::wstrin
             if(mode==L"abort-recreate-field-drift")put(fake_field_component,0x200,999.0);
             if(mode==L"abort-recreate-cache-drift")put(fake_map_parameters[0],0x10c,std::int32_t{999});
             recreation_allocate_drift=mode==L"abort-recreate-allocate-drift";
+            if(archive_blocked) {
+                const auto directory=connection/L"cycle-history"/std::filesystem::path(session)/L"generation-1";
+                std::filesystem::create_directories(directory);
+                if(mode==L"abort-recreate-archive-conflict")write(directory/L"manifest.json","prior unrelated evidence");
+                else std::filesystem::create_directory(directory/L"manifest.json");
+            }
             recreate("commit-recreate");
-            const bool success=mode==L"abort-recreate" || mode==L"abort-recreate-effects" || mode==L"abort-recreate-exit-anchor";
+            const bool success=mode==L"abort-recreate" || mode==L"abort-recreate-effects" || mode==L"abort-recreate-exit-anchor" || rearm_fixture;
             const bool entered=success || recreation_menu_drift;
             const auto expected=success?"\"phase\":\"verified\"":recreation_menu_drift?"\"phase\":\"uncertain\"":"\"phase\":\"refused\"";
             wait([&] {return read(connection/L"abort-status.json").find(expected)!=std::string::npos;});
@@ -184,6 +197,71 @@ void run_abort_fixture(const std::filesystem::path& connection,const std::wstrin
             for(unsigned i=0;i<8;++i){pump();std::this_thread::sleep_for(std::chrono::milliseconds(25));}
             CHECK(calls==(entered?2u:1u));
             write(connection/L"recreation-final-status.json",read(connection/L"abort-status.json"));
+            if(rearm_fixture) {
+                if(archive_blocked) {
+                    wait([&] {const auto s=read(connection/L"abort-status.json");return s.find("Immutable cycle evidence write/readback failed")!=std::string::npos;});
+                    write(connection/L"abort-request.txt","FFR_HELPER_ABORT_OPENING_V1\n"+session+"\n"+std::string(32,'d')+"\n"
+                        +std::to_string(now()+8)+"\n2\n"+hash+"\nrearm\n");
+                    wait([&] {return read(connection/L"abort-status.json").find("\"phase\":\"refused\",\"nonce\":\""+std::string(32,'d')+"\"")!=std::string::npos;});
+                    CHECK(calls==2 && abort_calls==1 && vm_end_calls==1 && finish_check_calls==1);
+                    const auto manifest=connection/L"cycle-history"/std::filesystem::path(session)/L"generation-1"/L"manifest.json";
+                    if(mode==L"abort-recreate-archive-conflict")CHECK(read(manifest)=="prior unrelated evidence");
+                    else CHECK(std::filesystem::is_directory(manifest));
+                    write(connection/L"rearm-2-status.json",read(connection/L"abort-status.json"));
+                    write(connection/L"abort-final-status.json",read(connection/L"abort-status.json"));return;
+                }
+                wait([&] {return read(connection/L"abort-status.json").find("\"archiveGeneration\":1")!=std::string::npos;});
+                const auto history=connection/L"cycle-history"/std::filesystem::path(session);
+                const auto original_manifest=read(history/L"generation-1"/L"manifest.json");
+                CHECK(!original_manifest.empty());
+                write(connection/L"cycle-1-status.json",read(connection/L"abort-status.json"));
+                for(unsigned cycle=2;cycle<=3;++cycle) {
+                    const auto rearm_nonce=std::string(32,cycle==2?'d':'1');
+                    const auto deadline=now()+8;
+                    auto send=[&](const std::string& phase,const std::string& id) {
+                        write(connection/L"abort-request.txt","FFR_HELPER_ABORT_OPENING_V1\n"+session+"\n"+id+"\n"
+                            +std::to_string(deadline)+"\n"+std::to_string(cycle)+"\n"+hash+"\n"+phase+"\n");
+                    };
+                    if(mode==L"abort-recreate-rearm-history")ffr_test_decision(nullptr,nullptr);
+                    if(mode==L"abort-recreate-rearm-progress")recreation_progression_drift=true;
+                    if(mode==L"abort-recreate-rearm-archive")write(history/L"generation-1"/L"manifest.json",original_manifest+" ");
+                    if(mode==L"abort-recreate-rearm-step")put(fake_step,0xc0,std::int32_t{3});
+                    send("rearm",mode==L"abort-recreate-rearm-nonce"?recreate_nonce:rearm_nonce);
+                    const bool refused=mode!=L"abort-recreate-repeat";
+                    const auto requested_rearm_nonce=mode==L"abort-recreate-rearm-nonce"?recreate_nonce:rearm_nonce;
+                    wait([&] {const auto s=read(connection/L"abort-status.json");return s.find(std::string(refused?"\"phase\":\"refused\",\"nonce\":\"":"\"phase\":\"accepted\",\"nonce\":\"")+requested_rearm_nonce+"\"")!=std::string::npos;});
+                    CHECK(calls==cycle && abort_calls==cycle-1 && vm_end_calls==cycle-1 && finish_check_calls==cycle-1);
+                    write(connection/(L"rearm-"+std::to_wstring(cycle)+L"-status.json"),read(connection/L"abort-status.json"));
+                    if(refused) {
+                        // Neither repeating an uncertain request nor replaying an old commit may exit again.
+                        for(unsigned i=0;i<8;++i){pump();std::this_thread::sleep_for(std::chrono::milliseconds(25));}
+                        request("commit");for(unsigned i=0;i<8;++i){pump();std::this_thread::sleep_for(std::chrono::milliseconds(25));}
+                        CHECK(calls==2 && abort_calls==1 && vm_end_calls==1 && finish_check_calls==1);
+                        break;
+                    }
+                    const auto reset=read(connection/L"abort-status.json");
+                    CHECK(reset.find("\"trialSession\":\"\"")!=std::string::npos && reset.find("\"phase\":\"idle\"")!=std::string::npos);
+                    send("rearm",rearm_nonce);for(unsigned i=0;i<5;++i){pump();std::this_thread::sleep_for(std::chrono::milliseconds(25));}
+                    CHECK(calls==cycle && abort_calls==cycle-1);
+                    const auto next_abort=std::string(32,cycle==2?'e':'2');
+                    send("prepare",next_abort);
+                    wait([&] {return read(connection/L"abort-status.json").find("\"phase\":\"armed\"")!=std::string::npos;});
+                    send("commit",next_abort);
+                    wait([&] {const auto s=read(connection/L"abort-status.json");return s.find("\"phase\":\"manager-cleared\"")!=std::string::npos
+                        && s.find("\"file\":\"abort-after.gvas\",\"sha256\":\"\"")==std::string::npos;});
+                    CHECK(abort_calls==cycle && vm_end_calls==cycle && finish_check_calls==cycle && calls==cycle);
+                    const auto next_recreate=std::string(32,cycle==2?'f':'3');
+                    send("prepare-recreate",next_recreate);
+                    wait([&] {return read(connection/L"abort-status.json").find("\"phase\":\"armed\"")!=std::string::npos;});
+                    send("commit-recreate",next_recreate);
+                    wait([&] {const auto s=read(connection/L"abort-status.json");return s.find("\"phase\":\"verified\"")!=std::string::npos
+                        && s.find("\"archiveGeneration\":"+std::to_string(cycle))!=std::string::npos
+                        && s.find("\"sequence\":"+std::to_string(cycle+1)+",\"openingHash\":\""+hash+"\"")!=std::string::npos;});
+                    CHECK(calls==cycle+1 && recreation_blocks.empty() && recreation_allocations==recreation_frees);
+                    CHECK(read(history/L"generation-1"/L"manifest.json")==original_manifest);
+                    write(connection/(L"cycle-"+std::to_wstring(cycle)+L"-status.json"),read(connection/L"abort-status.json"));
+                }
+            }
         }
     }
     write(connection/L"abort-final-status.json",read(connection/L"abort-status.json"));

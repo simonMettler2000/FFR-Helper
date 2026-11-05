@@ -18,6 +18,24 @@ the target build. Restoration has not been tested or implemented.
 
 ## Resume handoff — 29 October 2026
 
+**5 November offline continuation:** work resumed at the user's request; live
+testing is unavailable before 13:00 Europe/Zurich. UE4SS remains disabled and no
+installed component, save or gameplay was changed. The development source now
+has explicit verified-child rearm and a persistent `--cycles N` manual controller,
+with immutable session/generation evidence and separate per-cycle desktop output.
+The compiled mock-host DLL completed three cycles; negative cases refused changed
+history/progression/task/archive data and a reused nonce. This is uninstalled and
+not live verified. The installed one-shot behavior described below is unchanged.
+See [the protocol notes](../native/ENCOUNTER_RECREATION.md#repeated-untouched-opening-cycles-offline-development-5-november).
+Static UI inspection now ties portrait placement to `GetRelation` and the unit-VM
+parameter link. A bounded read-only diagnostic distinguishes current/null/stale
+links without invoking a getter; see [the investigation notes](TIMELINE_DIAGNOSTICS.md).
+It has nine synthetic-memory checks, but no recreated live sample yet. The full
+Python suite ran 206 tests (205 passed, one skipped). All 127 native regression
+cases passed, followed by 16 recreation checks after bounded archive readback was
+tightened. Timeline classification, post-action rollback and full save states
+remain open.
+
 Work is paused at the user's request before shutting down the computer. Resume
 battle-restart development when the user returns; do not start gameplay or a
 mutation controller merely because the helper is installed. Read the private
@@ -69,6 +87,14 @@ remain blocked by the account billing/spending limit. Private captures, saves,
 process pointers and game data must stay outside Git.
 
 ## Installation review and requested status indicator — 30 October 2026
+
+**Latest state:** later on 30 October, the user requested normal story play with
+UE4SS disabled. With the game closed, the verified proxy was renamed from
+`dwmapi.dll` to `dwmapi.dll.ffr-helper-disabled`; its hash is unchanged. UE4SS and
+all mod files/markers remain preserved but cannot load through that disabled
+proxy. Saves were untouched. Before testing resumes, inspect the private local
+plan's `currentLoaderState`; do not silently re-enable the loader. The following
+review describes the installation before that reversible disable action.
 
 Read-only inspection confirmed that the approved loader and practice DLL remain
 installed with the same hashes as the last supervised test. UE4SS is enabled via

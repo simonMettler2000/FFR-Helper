@@ -31,7 +31,7 @@ std::optional<ffr::AbortRequest> read_abort_request(const std::filesystem::path&
         ||sequence.empty()||sequence.size()>18||sequence.find_first_not_of("0123456789")!=std::string::npos
         ||hash.size()!=64||hash.find_first_not_of("0123456789abcdef")!=std::string::npos
         ||(phase!="prepare"&&phase!="commit"&&phase!="probe-import"&&phase!="probe-normalize"
-            &&phase!="prepare-recreate"&&phase!="commit-recreate"))return {};
+            &&phase!="prepare-recreate"&&phase!="commit-recreate"&&phase!="rearm"))return {};
     const auto deadline=std::stoll(expiry);const auto number=std::stoull(sequence);
     if(deadline<seconds()||deadline>seconds()+8||number==0)return {};
     return ffr::AbortRequest{session,nonce,hash,phase,deadline,number};
@@ -109,6 +109,7 @@ ffr::AbortGuard probe_abort(void* tick_context,const std::shared_ptr<const Obser
 #include "recovery_runtime.inl"
 #include "normalization_runtime.inl"
 #include "recreation_runtime.inl"
+#include "rearm_runtime.inl"
 
 void abort_tick(void* context,float delta) {
     auto* current=published_observer.load(std::memory_order_acquire);
@@ -136,6 +137,7 @@ void abort_tick(void* context,float delta) {
     run_normalization_probe(current,context,opening,guard,request,now);
     // The import-only and abort experiments cannot be combined in one launch.
     {std::lock_guard lock(current->mutex);if(current->import_attempted)return;}
+    run_recreation_rearm(current,context,opening,guard,request,now);
     if(abort_permitted && request && request->phase=="prepare") {
         const auto targets=task_abort_targets(context,guard);
         if(!targets || !task_abort_code_matches())guard.command_abort_ready=false;
@@ -205,15 +207,18 @@ void Observer::publish_abort(const Lease& lease) {
             trial.recovery_written(saved);if(saved)recovery_hash=digest;
         }
     }
-    std::vector<unsigned char> after;
-    {std::lock_guard lock(mutex);if(after_hash.empty())after=after_progression;}
+    std::vector<unsigned char> after;ffr::AbortRequest after_action;
+    {std::lock_guard lock(mutex);if(after_hash.empty()){after=after_progression;after_action=trial.active_request();}}
     if(!after.empty()) {
         Sha256 hash;hash.add(after.data(),after.size());const auto digest=hash.finish();
         const auto path=connection/L"abort-after.gvas";
         if(write_atomic(path,std::string_view(reinterpret_cast<const char*>(after.data()),after.size()),ffr::max_progression_bytes)
-            && file_hash(path)==digest) {std::lock_guard lock(mutex);after_hash=digest;}
+            && file_hash(path)==digest) {std::lock_guard lock(mutex);
+                if(trial.active_request().nonce==after_action.nonce && trial.active_request().sequence==after_action.sequence
+                    && after_progression==after)after_hash=digest;}
     }
     publish_normalization_files(this,lease);
+    publish_cycle_history(this);
     std::string status;
     {std::lock_guard lock(mutex);
         const auto& action=trial.active_request();const auto& g=last_guard;
@@ -258,7 +263,8 @@ void Observer::publish_abort(const Lease& lease) {
             {"sequence",std::to_string(action.sequence)},{"phase",ffr::quote(ffr::phase_name(trial.phase()))},
             {"message",ffr::quote(abort_available?trial.message():abort_message)},{"probeTime",std::to_string(probe_time)},
             {"guard",guard},{"recovery",recovery},{"after",after_metadata},{"importProbe",imported},
-            {"recreationTrial",recreation_status(*this)},{"normalizationProbe",normalization_status(*this,lease)}});
+            {"recreationTrial",recreation_status(*this)},{"rearmTrial",rearm_status(*this)},
+            {"normalizationProbe",normalization_status(*this,lease)}});
     }
     write_atomic(connection/L"abort-status.json",status);
 }

@@ -309,7 +309,16 @@ void write(const std::filesystem::path& path, const std::string& value) {
     auto temporary=path;temporary+=L".fixture-tmp";
     std::ofstream out(temporary, std::ios::binary | std::ios::trunc);
     out << value; out.close(); CHECK(out.good());
-    CHECK(MoveFileExW(temporary.c_str(),path.c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH));
+    // A lease/status reader may briefly hold the destination without delete
+    // sharing. Retry only this fixture's atomic file replacement, never a game
+    // API or protocol action. The temporary payload remains unchanged.
+    bool moved=false;
+    for(unsigned attempt=0;attempt<25;++attempt) {
+        if(MoveFileExW(temporary.c_str(),path.c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH)){moved=true;break;}
+        const auto error=GetLastError();if(error!=ERROR_ACCESS_DENIED && error!=ERROR_SHARING_VIOLATION)break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    CHECK(moved);
 }
 std::int64_t now() {
     return std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();

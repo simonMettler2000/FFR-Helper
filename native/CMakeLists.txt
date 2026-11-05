@@ -98,7 +98,7 @@ if(FFR_BUILD_NATIVE_OBSERVER)
   target_include_directories(native_encounter_binding_tests PRIVATE include)
   target_link_libraries(native_encounter_binding_tests PRIVATE minhook bcrypt Threads::Threads)
   target_compile_options(native_encounter_binding_tests PRIVATE /W4 /EHsc /utf-8)
-  foreach(mode good allocation-failed wrong-context context-drift build-mismatch ownership-unreviewed profile-mismatch wrong-thread wrong-hook entry-drift trampoline-drift dependency-drift source-mutated native-throw native-partial)
+  foreach(mode good allocation-failed wrong-context context-drift build-mismatch ownership-unreviewed profile-mismatch wrong-thread wrong-hook entry-drift trampoline-drift dependency-drift source-mutated native-throw native-partial rearm-good rearm-reentrant rearm-wrong-thread rearm-stale rearm-refused rearm-throw rearm-drift)
     add_test(NAME native_encounter_binding_${mode} COMMAND native_encounter_binding_tests "${mode}")
   endforeach()
   add_executable(native_load_binding_tests tests/native_load_binding_tests.cpp)
@@ -184,7 +184,9 @@ if(FFR_BUILD_NATIVE_OBSERVER)
     target_compile_definitions(fixture_observer_abort PRIVATE "FFR_DECISION_PROFILE_HEADER=\"good_decision_profile.hpp\"" "FFR_SKILL_EVENT_PROFILE_HEADER=\"good_skill_event_profile.hpp\"")
     target_compile_definitions(fixture_observer_abort PRIVATE "FFR_TASK_ABORT_PROFILE_HEADER=\"good_task_abort_profile.hpp\"")
     target_compile_definitions(fixture_observer_abort PRIVATE "FFR_ENCOUNTER_ENTRY_PROFILE_HEADER=\"good_encounter_entry_profile.hpp\"")
-    foreach(mode abort-recreate abort-recreate-effects abort-recreate-root-drift abort-recreate-field-drift abort-recreate-cache-drift abort-recreate-allocate-drift abort-recreate-menu-drift abort-recreate-exit-anchor)
+    foreach(mode abort-recreate abort-recreate-effects abort-recreate-root-drift abort-recreate-field-drift abort-recreate-cache-drift abort-recreate-allocate-drift abort-recreate-menu-drift abort-recreate-exit-anchor
+      abort-recreate-repeat abort-recreate-rearm-history abort-recreate-rearm-progress abort-recreate-rearm-archive abort-recreate-rearm-step abort-recreate-rearm-nonce
+      abort-recreate-archive-conflict abort-recreate-archive-directory)
       add_test(NAME native_${mode} COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/run_native_fixture.py"
         --exe "$<TARGET_FILE:native_host_fixture>" --loader "$<TARGET_FILE:native_mock_loader>"
         --module "$<TARGET_FILE:fixture_observer_abort>" --mode "${mode}" --work "${CMAKE_CURRENT_BINARY_DIR}/test-work")

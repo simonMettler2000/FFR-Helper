@@ -9,6 +9,7 @@ import unittest
 from unittest.mock import patch
 
 from ffr_helper.abort_trial import AbortTrialBridge
+from ffr_helper.practice_input import ShortcutEdge
 from test_opening_comparison import full_capture
 from test_map_cache import sample_cache
 from tools import run_abort_trial
@@ -91,3 +92,107 @@ class RecreationControllerTests(unittest.TestCase):
             with patch.object(run_abort_trial.sys,'argv',['trial','FFRHelperBattlePractice','--output','unused',
                 '--recreate-after-abort']+flags),redirect_stdout(io.StringIO()),patch('sys.stderr',io.StringIO()),self.assertRaises(SystemExit):
                 run_abort_trial.main()
+
+    def run_repeated_trial(self,mode='good'):
+        source=full_capture();source.metadata['mapUnitCache']=sample_cache()
+        frames=[copy.deepcopy(source) for _ in range(3)]
+        for sequence,frame in enumerate(frames,1):frame.metadata['sequence']=sequence
+        active=[1];phase=['idle'];recreated=['idle'];events=[];closed=[];completed=[0];polls=[0];waiting=[0]
+        class Shortcut:
+            focused=True
+            def __init__(self,executable):self.edge=ShortcutEdge()
+            def poll(self):
+                polls[0]+=1
+                if polls[0]>35:raise TimeoutError('Fixture stopped without another shortcut')
+                if completed[0]==0:held=polls[0]>=2
+                else:
+                    waiting[0]+=1
+                    # Retain the original hold for three polls, release, then
+                    # deliberately press. A continuous hold never starts cycle 2.
+                    held=mode=='held' or waiting[0]<=3 or waiting[0]>=6
+                self.focused=not (mode=='focus-loss' and waiting[0]>=7)
+                return self.edge.update(self.focused,(),held)
+        class Recorder:
+            def __init__(self,directory):self.request='0'*32
+            def heartbeat(self):pass
+            def report(self):return {'sequence':active[0]}
+            def opening(self,report):return frames[report['sequence']-1]
+            def disconnect(self):closed.append(True)
+        class Bridge:
+            safe_guard=staticmethod(AbortTrialBridge.safe_guard)
+            def __init__(self,recorder):self.recorder=recorder
+            def status(self):
+                guard=dict(gameThread=True,matchingWorld=True,ordinaryEncounter=True,battleActive=True,commandMenu=True,
+                    units=4,waitingJobs=0,workingJobs=0,friendlyActions=1,openingHistoryUntouched=True,commandAbortReady=True,
+                    sequence=active[0],openingHash=source.metadata['sha256'])
+                return dict(available=True,phase=phase[0],guard=guard,message='Fixture',probeTime=int(time.time()),
+                    openingBoundaryPolicy='ordinary-first-menu-force-end-task',after={'sha256':'f'*64},
+                    nativeTaskExit=dict({k:phase[0]=='manager-cleared' for k in ['endIssued','forceEndFlagObserved',
+                        'uiEndIssued','uiClosedObserved','forceEndResultObserved']},uncertain=False),
+                    recreationTrial=dict(available=True,phase=recreated[0],message='Fixture'),rearmTrial={'supported':mode!='old-runtime'})
+            def prepare(self,report):events.append(('exit-prepare',active[0]));phase[0]='armed';return frames[active[0]-1]
+            def progression(self,status,after=False):return source.progression
+            def commit(self,status):events.append(('exit-commit',active[0]));phase[0]='manager-cleared'
+        class Recreation:
+            def __init__(self,bridge):self.abort=bridge
+            def probe(self,state):return state['recreationTrial']
+            def prepare(self,state,opening):events.append(('recreate-prepare',active[0]));recreated[0]='armed'
+            def commit(self,state):events.append(('recreate-commit',active[0]));recreated[0]='verified';active[0]+=1
+            def compare_child(self,state,opening):
+                completed[0]+=1;events.append(('compare-child',active[0]));return {'battleRestartImplemented':False}
+        class Rearm:
+            probe=staticmethod(lambda state:state['rearmTrial'])
+            def __init__(self,previous):self.request=None;self.archive=b'fixture-manifest';self.archive_progression=source.progression
+            def can_prepare(self,status,child):return recreated[0]=='verified'
+            def prepare(self,status,child):
+                self.request={'nonce':'d'*32};events.append(('rearm-prepare',active[0]))
+            def accepted(self,status):
+                events.append(('rearm-accepted',active[0]));phase[0]='idle';recreated[0]='idle';return True
+        error=None
+        with tempfile.TemporaryDirectory() as folder:
+            out=Path(folder)/'out'
+            argv=['trial',str(Path(folder)/'FFRHelperBattlePractice'),'--output',str(out),
+                  '--abort-at-opening','--recreate-after-abort','--cycles','2']
+            with patch.object(run_abort_trial,'NativeEntryRecorder',Recorder),patch.object(run_abort_trial,'AbortTrialBridge',Bridge),\
+                 patch.object(run_abort_trial,'RecreationTrialBridge',Recreation),patch.object(run_abort_trial,'RecreationRearmBridge',Rearm),\
+                 patch.object(run_abort_trial,'WindowsPracticeShortcut',Shortcut),patch.object(run_abort_trial.sys,'argv',argv),\
+                 patch.object(run_abort_trial.time,'sleep'),redirect_stdout(io.StringIO()):
+                try:run_abort_trial.main()
+                except (RuntimeError,TimeoutError) as exc:error=str(exc)
+            if mode=='good':
+                for cycle in ['cycle-0001','cycle-0002']:
+                    self.assertTrue((out/cycle/'recreation-receipt.json').exists())
+                    self.assertTrue((out/cycle/'opening.ffropening').exists())
+                self.assertEqual((out/'cycle-0001/cycle-manifest.json').read_bytes(),b'fixture-manifest')
+                self.assertTrue((out/'cycle-0001/rearm-receipt.json').exists())
+                self.assertFalse((out/'cycle-0002/rearm-request.json').exists())
+        self.assertEqual(closed,[True]);return events,error
+
+    def test_two_cycles_require_new_released_edge_and_preserve_separate_evidence(self):
+        events,error=self.run_repeated_trial();self.assertIsNone(error)
+        self.assertEqual(events,[('exit-prepare',1),('exit-commit',1),('recreate-prepare',1),('recreate-commit',1),
+            ('compare-child',2),('rearm-prepare',2),('rearm-accepted',2),('exit-prepare',2),('exit-commit',2),
+            ('recreate-prepare',2),('recreate-commit',2),('compare-child',3)])
+
+    def test_held_shortcut_cannot_rearm_or_exit_twice(self):
+        events,error=self.run_repeated_trial('held');self.assertIn('Fixture stopped',error)
+        self.assertEqual(sum(name=='exit-commit' for name,_ in events),1)
+        self.assertFalse(any(name.startswith('rearm') for name,_ in events))
+
+    def test_focus_loss_during_rearm_does_not_start_a_second_abort(self):
+        events,error=self.run_repeated_trial('focus-loss');self.assertIn('foreground/child changed',error)
+        self.assertEqual(sum(name=='exit-commit' for name,_ in events),1)
+        self.assertEqual(events[-1],('rearm-prepare',2))
+
+    def test_legacy_runtime_refuses_multiple_cycles_before_first_abort(self):
+        events,error=self.run_repeated_trial('old-runtime');self.assertEqual(events,[])
+        self.assertIn('no abort request',error)
+
+    def test_invalid_cycle_arguments_do_not_create_output(self):
+        for flags in [['--cycles','0'],['--cycles','101'],['--cycles','2'],['--cycles','2','--abort-at-opening']]:
+            with tempfile.TemporaryDirectory() as folder:
+                out=Path(folder)/'out'
+                with patch.object(run_abort_trial.sys,'argv',['trial','FFRHelperBattlePractice','--output',str(out)]+flags),\
+                     redirect_stdout(io.StringIO()),patch('sys.stderr',io.StringIO()),self.assertRaises(SystemExit):
+                    run_abort_trial.main()
+                self.assertFalse(out.exists())

@@ -6,7 +6,9 @@ entry, matching independent child, fresh menu and unchanged progression were
 verified, and the user confirmed the restarted encounter and responsive menu.
 The user also reported incorrectly positioned party timeline portraits; a
 natural normal-encounter comparison confirmed that discrepancy. Repeat shortcut
-use is deliberately inactive after this one-shot test and remains unimplemented.
+use is deliberately inactive in that installed one-shot build. The uninstalled
+5 November development changes add guarded repeated cycles, verified only in
+isolated fixtures so far.
 See the [resume handoff](../docs/NATIVE_STATE.md#resume-handoff--29-october-2026).
 This experiment does not restore progression, resources,
 effects, clock or RNG, and does not implement retry after an action.
@@ -68,5 +70,44 @@ requires diagnosis and a fresh supervised launch, never another automatic attemp
 Evidence remains explicitly `battleRestartImplemented=false`,
 `progressionRestored=false`, `rngRestored=false`, `effectGraphsVerified=false`
 and `fullCacheCoherenceVerified=false`. Original save slots are never written.
-Post-action rollback, live progression rebinding, complete cache/effect/RNG
-restoration and repeatable retry remain outstanding. Saving anywhere stays last.
+Post-action rollback, live progression rebinding and complete cache/effect/RNG
+restoration remain outstanding. Saving anywhere stays last.
+
+## Repeated untouched-opening cycles (offline development, 5 November)
+
+The prepared source adds `--cycles N` (1–100; default 1). Values above 1 require
+explicit manual abort plus recreation, and a runtime that advertises the new
+verified-child rearm protocol. The existing installed DLL does not support it.
+Do not install this build or start a controller without the next supervised test.
+
+The controller stays connected after a verified child and waits for a **new
+released foreground shortcut edge**. Holding the previous combination cannot
+request another cycle. A new short-lived nonce first requests bookkeeping rearm;
+the acknowledgment must match the retained child, session, progression hash and
+native generation. Only then may a fresh abort prepare/commit proceed. Foreground
+loss, expired intent, changed history/context, uncertain I/O or a refused receipt
+stops the controller. It never resends a potentially completed request.
+
+Native rearm requires a returned, consuming, cleaned-up entry and an independently
+verified untouched child. Code/allocator/hook fingerprints, exact current
+progression/root, command task, queues and both command/skill histories are checked
+again. Neither a rejected nor an uncertain/timed-out transaction can reset.
+Generation counters bind each native invocation and stale acknowledgments cannot
+authorize another one. Rearm itself calls no game mutation routine.
+
+Before rearm, the runtime must commit and read back immutable `manifest.json` and
+`progression.gvas` files beneath
+`connection/cycle-history/<session>/generation-N/`. Existing different files are
+never overwritten. The client independently compares them to both retained
+openings and request identities, then exports a copy into the completed cycle's
+private output directory. Session separation prevents a new launch from colliding
+with an earlier generation 1. Multi-cycle output uses `cycle-0001`, `cycle-0002`,
+and so on; prior receipts and openings remain intact.
+
+The actual compiled test DLL completed three sequential cycles with balanced
+engine-owned allocations. Separate fixture cases refused changed command history,
+progression, task step, manifest contents and a reused nonce. Python checks cover
+receipt/archive validation, uncertain writes, two-cycle orchestration, held keys,
+foreground loss and legacy DLL rejection. These mock-host results do **not**
+verify timeline layout, repeated input or battle behavior in FFR. The timeline
+discrepancy and post-action rollback remain blockers for calling this battle restart.

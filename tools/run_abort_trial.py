@@ -1,4 +1,4 @@
-"""Probe or explicitly run one experimental opening-abort trial. No restoration."""
+"""Probe or explicitly run guarded untouched-opening trials. No restoration."""
 import argparse
 import json
 from pathlib import Path
@@ -9,6 +9,7 @@ import uuid
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from ffr_helper.abort_trial import AbortTrialBridge,compare_progression
 from ffr_helper.recreation_trial import RecreationTrialBridge,validate_source
+from ffr_helper.recreation_rearm import RecreationRearmBridge
 from ffr_helper.opening import export_opening
 from ffr_helper.runtime import NativeEntryRecorder
 from ffr_helper.storage import atomic_write
@@ -21,6 +22,7 @@ def main():
     parser.add_argument('directory',type=Path,help='Separately installed FFRHelperBattlePractice folder')
     parser.add_argument('--output',type=Path,required=True)
     parser.add_argument('--duration',type=int,default=300)
+    parser.add_argument('--cycles',type=int,default=1,help='Maximum deliberate untouched-opening cycles; each needs a new released shortcut (default 1)')
     parser.add_argument('--abort-at-opening',action='store_true',help='Explicitly request one abort at the first ordinary command menu')
     parser.add_argument('--recreate-after-abort',action='store_true',help='Separate experiment: recreate the same setup from the verified unchanged current field; requires manual abort')
     parser.add_argument('--trigger',choices=['manual','automatic'],default='manual',
@@ -28,13 +30,18 @@ def main():
     parser.add_argument('--legacy-controller',type=Path,help='Locally calibrated legacy-controller .ffrinput.json binding')
     args=parser.parse_args()
     if not 1<=args.duration<=900:parser.error('--duration must be between 1 and 900 seconds')
+    if not 1<=args.cycles<=100:parser.error('--cycles must be between 1 and 100')
     if args.directory.name.casefold()!='ffrhelperbattlepractice':
         parser.error('Choose the separate experimental practice component.')
     if args.legacy_controller and (not args.abort_at_opening or args.trigger!='manual'):
         parser.error('--legacy-controller requires an explicit manual abort trial')
     if args.recreate_after_abort and (not args.abort_at_opening or args.trigger!='manual'):
         parser.error('--recreate-after-abort requires --abort-at-opening and --trigger manual')
+    if args.cycles>1 and not args.recreate_after_abort:
+        parser.error('--cycles greater than 1 requires explicit manual --recreate-after-abort')
     args.output.mkdir(parents=True,exist_ok=False)
+    cycle_number=1;cycle_output=args.output if args.cycles==1 else args.output/'cycle-0001'
+    if cycle_output!=args.output:cycle_output.mkdir(exist_ok=False)
     recorder=NativeEntryRecorder(args.directory);bridge=AbortTrialBridge(recorder)
     recreation=RecreationTrialBridge(bridge) if args.recreate_after_abort else None
     shortcut=None;intent=ManualIntent();activation=None;next_heartbeat=0
@@ -44,6 +51,7 @@ def main():
                   else WindowsPracticeShortcut(executable))
     deadline=time.monotonic()+args.duration;pending=False;prepared=False;committed=False;last=None;recovery=None
     target_sequence=None;opening=None;exit_recorded=False;recreation_committed=False;child_requested=False
+    rearm=None;child=None
     try:
         print('Opening-abort trial: '+('explicit abort requested' if args.abort_at_opening else 'probe only; no abort will be sent'),flush=True)
         if shortcut:
@@ -59,6 +67,35 @@ def main():
                 if pressed:print('Shortcut discarded: no fresh matching runtime status. Release and press again at a supported menu.',flush=True)
                 time.sleep(0.02 if shortcut else 0.25);continue
             guard=state['guard']
+            if rearm is not None:
+                # Keep the same input sampler: a held shortcut is never a new
+                # edge. Rearming only resets helper bookkeeping, not gameplay.
+                source=(child.metadata['sequence'],child.metadata['sha256'])
+                ready=bridge.safe_guard(state,*source)
+                if rearm.request is None:
+                    ready=ready and rearm.can_prepare(state,child)
+                    if pressed:
+                        intent.press(pressed,source,ready,tick)
+                        if not ready:print('Shortcut discarded: verified child/archive is not ready. Release and press again.',flush=True)
+                    if intent.matches(source,ready,shortcut.focused,tick):
+                        rearm.prepare(state,child)
+                        atomic_write(cycle_output/'cycle-manifest.json',rearm.archive)
+                        atomic_write(cycle_output/'cycle-progression.gvas',rearm.archive_progression)
+                        atomic_write(cycle_output/'rearm-request.json',json.dumps(rearm.request,indent=2).encode('utf8'))
+                        print('New deliberate shortcut received; verifying the next-cycle bookkeeping acknowledgment.',flush=True)
+                else:
+                    if not intent.matches(source,ready,shortcut.focused,tick):
+                        raise RuntimeError('Rearm intent expired or the foreground/child changed; no new abort requested.')
+                    if rearm.accepted(state):
+                        atomic_write(cycle_output/'rearm-receipt.json',json.dumps(state,indent=2).encode('utf8'))
+                        cycle_number+=1;cycle_output=args.output/f'cycle-{cycle_number:04d}'
+                        cycle_output.mkdir(exist_ok=False)
+                        bridge=AbortTrialBridge(recorder);recreation=RecreationTrialBridge(bridge)
+                        pending=prepared=committed=exit_recorded=recreation_committed=child_requested=False
+                        activation=recovery=target_sequence=opening=last=None
+                        rearm=None
+                        print(f'Cycle {cycle_number}/{args.cycles}: new transaction ready; checking the retained deliberate intent.',flush=True)
+                time.sleep(0.02);continue
             if recreation and not prepared:
                 # The DLL publishes an initial frame before its asynchronous
                 # hook/profile initialization completes. No shortcut intent may
@@ -69,6 +106,8 @@ def main():
                 probe=recreation.probe(state)
                 if not probe['available'] or probe['phase']!='idle':
                     raise RuntimeError('Current-field recreation is unavailable or already used; no abort request was sent.')
+                if args.cycles>1 and not RecreationRearmBridge.probe(state)['supported']:
+                    raise RuntimeError('This runtime does not support verified-child rearm; no abort request was sent.')
             summary=(state['available'],state['phase'],guard.get('battleActive'),guard.get('commandMenu'),
                      guard.get('friendlyActions'),guard.get('waitingJobs'),guard.get('workingJobs'),
                      guard.get('openingHistoryUntouched'),guard.get('commandAbortReady'))
@@ -107,8 +146,8 @@ def main():
                         intent.clear()
                         opening=bridge.prepare(report);prepared=True
                         if recreation:validate_source(opening)
-                        export_opening(args.output/'opening.ffropening',opening)
-                        atomic_write(args.output/'activation.json',json.dumps(activation,indent=2).encode('utf8'))
+                        export_opening(cycle_output/'opening.ffropening',opening)
+                        atomic_write(cycle_output/'activation.json',json.dumps(activation,indent=2).encode('utf8'))
                         print('Prepare sent; verifying a durable progression-only recovery file before commit.',flush=True)
             elif shortcut and not prepared:
                 intent.clear();pending=False
@@ -117,19 +156,19 @@ def main():
                 if shortcut and not shortcut.focused:
                     raise RuntimeError('FFR lost foreground before commit; no abort commit was sent. Do not retry this prepared launch.')
                 recovery=bridge.progression(state)
-                atomic_write(args.output/'before-abort.gvas',recovery)
+                atomic_write(cycle_output/'before-abort.gvas',recovery)
                 bridge.commit(state);committed=True
                 print('One abort commit sent. No retries or restoration commands will be sent.',flush=True)
             if prepared and state['phase'] in ['rejected','timed-out']:
                 raise RuntimeError(state['message'])
             if committed and not exit_recorded and state['phase']=='manager-cleared' and state.get('after',{}).get('sha256'):
                 after=bridge.progression(state,after=True)
-                atomic_write(args.output/'after-abort.gvas',after)
+                atomic_write(cycle_output/'after-abort.gvas',after)
                 result=compare_progression(recovery,after)
                 result['nativeTaskExitUsed']=state.get('nativeTaskExit',{}).get('uncertain') is False and all(state.get('nativeTaskExit',{}).get(k) is True for k in ['endIssued','forceEndFlagObserved','uiEndIssued','uiClosedObserved','forceEndResultObserved'])
                 result['openingHistoryUntouchedAfterCleanup']=state.get('guard',{}).get('openingHistoryUntouched') is True
-                atomic_write(args.output/'comparison.json',json.dumps(result,indent=2).encode('utf8'))
-                atomic_write(args.output/'abort-receipt.json',json.dumps(state,indent=2).encode('utf8'))
+                atomic_write(cycle_output/'comparison.json',json.dumps(result,indent=2).encode('utf8'))
+                atomic_write(cycle_output/'abort-receipt.json',json.dumps(state,indent=2).encode('utf8'))
                 print(json.dumps(result,indent=2),flush=True)
                 exit_recorded=True
                 if not recreation:
@@ -159,12 +198,15 @@ def main():
                         child=recorder.opening(report)
                         if child is None:raise RuntimeError('Verified child opening is unavailable; no retry.')
                         comparison=recreation.compare_child(state,child)
-                        export_opening(args.output/'recreated-opening.ffropening',child)
-                        atomic_write(args.output/'recreation-receipt.json',json.dumps(state,indent=2).encode('utf8'))
-                        atomic_write(args.output/'recreation-comparison.json',json.dumps(comparison,indent=2).encode('utf8'))
+                        export_opening(cycle_output/'recreated-opening.ffropening',child)
+                        atomic_write(cycle_output/'recreation-receipt.json',json.dumps(state,indent=2).encode('utf8'))
+                        atomic_write(cycle_output/'recreation-comparison.json',json.dumps(comparison,indent=2).encode('utf8'))
                         print(json.dumps(comparison,indent=2),flush=True)
                         print('Current-field recreation observed. Confirm the actual new command menu; post-action rollback and full battle restart remain incomplete.',flush=True)
-                        return
+                        if cycle_number>=args.cycles:
+                            return
+                        intent.clear();rearm=RecreationRearmBridge(recreation)
+                        print(f'Cycle {cycle_number}/{args.cycles} evidence saved. Waiting for release and a NEW foreground shortcut at this untouched child menu.',flush=True)
             time.sleep(0.02 if shortcut else 0.25)
         if args.abort_at_opening:
             raise TimeoutError('Trial timed out. No automatic retry will be performed.')
@@ -175,7 +217,7 @@ def main():
         try:
             terminal=bridge.status()
             if terminal is not None:
-                atomic_write(args.output/'terminal-status.json',json.dumps(terminal,indent=2).encode('utf8'))
+                atomic_write(cycle_output/'terminal-status.json',json.dumps(terminal,indent=2).encode('utf8'))
         except (OSError,ValueError,TypeError):pass
         raise
     finally:

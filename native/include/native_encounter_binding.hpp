@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <functional>
 #include <span>
+#include <limits>
 
 namespace ffr {
 struct EncounterCodeRegion {std::uintptr_t rva{};std::size_t size{};std::string sha256;};
@@ -19,6 +20,7 @@ struct NativeEncounterProfile {
     bool consuming_input_ownership_reviewed=false;
 };
 struct NativeEncounterResult {
+    std::uint64_t generation{};
     bool attempted{},input_transferred{},native_returned{},cleanup_verified=true;
     unsigned allocations{},released_before_transfer{},retained_on_cleanup_failure{};
     // Returning from map entry is not proof that the encounter reached a menu.
@@ -34,6 +36,10 @@ private:
     using Release=void(__fastcall*)(void*);
     using Entry=void(__fastcall*)(void*,RawEntry*,bool);
     std::atomic<bool> initialized{false},prepared{false},bound{false},attempted{false};
+    std::atomic<bool> invocation_active{false},rearming{false};
+    std::atomic<std::uint64_t> cycle_generation{1};
+    std::atomic<unsigned> completed_flags{0};
+    std::atomic<DWORD> completed_thread{0};
     std::uintptr_t base{},image_size{},handler{},trampoline{};
     NativeEncounterProfile profile;
     Digest digest;
@@ -81,6 +87,7 @@ private:
         return from==expected;
     }
 public:
+    std::uint64_t generation() const {return cycle_generation.load();}
     // Run before the observer changes map_entry. The file/code identity and
     // consuming copy/destructor chain must be reviewed together, never just a
     // fingerprinted downstream consumer that does not destroy its input.
@@ -127,10 +134,42 @@ public:
                 && entry_reaches(base+profile.map_entry.rva,handler) && dependencies_match();
         }catch(...) {return false;}
     }
+    // Bookkeeping only: the caller must independently verify the exact child
+    // capture/menu/progression/root and a fresh deliberate request. Neither a
+    // returned map-entry call nor an arbitrary reset is sufficient. An uncertain
+    // native outcome is permanently ineligible for this operation.
+    bool rearm_verified_child(std::uint64_t completed_generation,DWORD expected_thread,
+                              const std::function<bool()>& child_and_request_verified) {
+        bool expected=false;
+        if(!rearming.compare_exchange_strong(expected,true))return false;
+        struct Finish {std::atomic<bool>& flag;~Finish(){flag.store(false);}} finish{rearming};
+        auto eligible=[&] {
+            return attempted.load() && !invocation_active.load() && completed_flags.load()==15
+                && completed_generation==cycle_generation.load()
+                && completed_generation<std::numeric_limits<std::uint64_t>::max()
+                && expected_thread==GetCurrentThreadId() && expected_thread==completed_thread.load();
+        };
+        try {
+            if(!eligible() || !child_and_request_verified || !ready() || !child_and_request_verified()
+                || !ready() || !child_and_request_verified() || !ready() || !eligible())return false;
+            completed_flags.store(0);completed_thread.store(0);
+            cycle_generation.store(completed_generation+1);attempted.store(false);
+            return true;
+        }catch(...) {return false;}
+    }
     NativeEncounterResult invoke(void* map_context,const Encounter& source,DWORD expected_thread,
                                  const std::function<bool()>& field_and_recovery_ready) {
         NativeEncounterResult result;
-        if(attempted.exchange(true)) {result.message="Encounter entry was already attempted; no retry";return result;}
+        if(rearming.load() || attempted.exchange(true)) {result.message="Encounter entry was already attempted or rearm is in progress; no retry";return result;}
+        result.generation=cycle_generation.load();invocation_active.store(true);
+        struct Outcome {
+            NativeEncounterBinding& owner;NativeEncounterResult& value;DWORD thread;
+            ~Outcome() {
+                owner.completed_flags.store((value.attempted?1u:0u)|(value.input_transferred?2u:0u)
+                    |(value.native_returned?4u:0u)|(value.cleanup_verified?8u:0u));
+                owner.completed_thread.store(thread);owner.invocation_active.store(false);
+            }
+        } outcome{*this,result,GetCurrentThreadId()};
         try {
             // Own the source before any callback/allocation. Native capture may
             // replace the observer's mutable latest-opening pointer on reentry.

@@ -6,6 +6,7 @@
 #include <stdexcept>
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace ffr {
 struct AbortRequest {
@@ -47,6 +48,7 @@ class AbortTrial {
     std::vector<unsigned char> recovery;
     std::string note="No abort trial requested";
     double active_cleanup_seconds{};
+    bool rearm_active=false;
     bool bound(const AbortRequest& next,const AbortGuard& guard,std::int64_t now) const {
         return next.deadline>=now && next.deadline<=now+8 && next.sequence>0
             && next.session==guard.session && next.sequence==guard.sequence && next.opening_hash==guard.opening_hash;
@@ -63,6 +65,29 @@ public:
     const std::string& message() const {return note;}
     const std::vector<unsigned char>& recovery_bytes() const {return recovery;}
     std::uint64_t cleanup_active_millis() const {return static_cast<std::uint64_t>(active_cleanup_seconds*1000);}
+    // Only a verified recreated child can start a new transaction. This never
+    // clears a rejected/timed-out/uncertain native attempt and does not execute
+    // an abort. A separate fresh prepare/commit remains mandatory afterwards.
+    template<class VerifyChild>
+    bool rearm_verified_child(const AbortRequest& next,const AbortGuard& guard,std::int64_t now,
+                              VerifyChild verify_child) {
+        if(rearm_active)return false;
+        rearm_active=true;
+        struct Finish {bool& flag;~Finish(){flag=false;}} finish{rearm_active};
+        auto eligible=[&] {
+            return current==AbortPhase::manager_cleared && next.phase=="rearm"
+                && !next.nonce.empty() && next.nonce!=request.nonce
+                && next.session==request.session && next.opening_hash==request.opening_hash
+                && request.sequence<std::numeric_limits<std::uint64_t>::max()
+                && next.sequence==request.sequence+1 && bound(next,guard,now) && safe(guard);
+        };
+        try {
+            if(!eligible() || !verify_child() || !eligible())return false;
+            request={};recovery.clear();active_cleanup_seconds=0;current=AbortPhase::idle;
+            note="Verified child accepted; waiting for a fresh explicit prepare/commit";
+            return true;
+        }catch(...) {return false;}
+    }
     template<class Capture>
     bool prepare(const AbortRequest& next,const AbortGuard& guard,std::int64_t now,Capture capture) {
         if(current!=AbortPhase::idle) return false;

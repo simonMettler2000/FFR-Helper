@@ -110,7 +110,7 @@ int main(int argc,char** argv) {
         if(mode=="source-mutated")mutable_source=&source;
         auto thread=GetCurrentThreadId();if(mode=="wrong-thread")++thread;
         const auto result=binding.invoke(&map_marker,source,thread,gate);
-        const bool attempted=mode=="good" || mode=="source-mutated" || mode=="native-throw" || mode=="native-partial";
+        const bool attempted=mode=="good" || mode=="source-mutated" || mode=="native-throw" || mode=="native-partial" || mode.starts_with("rearm-");
         CHECK(result.attempted==attempted && result.input_transferred==attempted && entries==(attempted?1u:0u) && captures==entries);
         CHECK(!result.new_encounter_verified && !result.restores_invoked);
         if(mode=="native-partial") {CHECK(!result.native_returned && frees==0 && !blocks.empty());}
@@ -121,6 +121,37 @@ int main(int argc,char** argv) {
         if(mode=="native-throw")CHECK(!result.native_returned);
         if(mode=="allocation-failed" || mode=="context-drift")CHECK(!result.attempted && frees>0 && result.released_before_transfer==frees);
         CHECK(!binding.invoke(&map_marker,source,thread,gate).attempted && entries==(attempted?1u:0u));
+        CHECK(binding.generation()==1);
+        if(mode.starts_with("rearm-")) {
+            unsigned checks=0;bool nested_blocked=false;
+            const auto rearm_thread=mode=="rearm-wrong-thread"?GetCurrentThreadId()+1:GetCurrentThreadId();
+            const auto generation=mode=="rearm-stale"?0u:1u;
+            auto verify=[&] {
+                ++checks;
+                if(mode=="rearm-throw")throw std::runtime_error("Fixture child check failed");
+                if(mode=="rearm-reentrant") {
+                    nested_blocked=!binding.invoke(&map_marker,source,thread,gate).attempted
+                        && !binding.rearm_verified_child(1,thread,[]{return true;});
+                }
+                if(mode=="rearm-drift" && checks==2)change_byte(reinterpret_cast<void*>(&dependency_marker));
+                return mode!="rearm-refused";
+            };
+            const bool good=mode=="rearm-good" || mode=="rearm-reentrant";
+            CHECK(binding.rearm_verified_child(generation,rearm_thread,verify)==good);
+            CHECK(binding.generation()==(good?2u:1u));
+            if(mode=="rearm-reentrant")CHECK(nested_blocked);
+            if(mode=="rearm-drift")change_byte(reinterpret_cast<void*>(&dependency_marker));
+            if(good) {
+                CHECK(checks==2 && binding.invoke(&map_marker,source,thread,gate).native_returned && entries==2 && blocks.empty());
+                CHECK(!binding.rearm_verified_child(1,thread,[]{return true;}) && binding.generation()==2);
+                CHECK(binding.rearm_verified_child(2,thread,[]{return true;}) && binding.generation()==3);
+                CHECK(binding.invoke(&map_marker,source,thread,gate).native_returned && entries==3 && captures==3 && blocks.empty());
+                CHECK(!binding.invoke(&map_marker,source,thread,gate).attempted && entries==3);
+            }else CHECK(!binding.invoke(&map_marker,source,thread,gate).attempted && entries==1);
+        }else if(!result.native_returned || !result.cleanup_verified) {
+            CHECK(!binding.rearm_verified_child(1,GetCurrentThreadId(),[]{return true;}));
+            CHECK(binding.generation()==1);
+        }
         if(changed)change_byte(changed);
         CHECK(MH_DisableHook(&native_entry)==MH_OK);CHECK(!binding.ready());CHECK(MH_RemoveHook(&native_entry)==MH_OK);CHECK(MH_Uninitialize()==MH_OK);
         // Simulated engine owner alone disposes of uncertain consumed input.

@@ -49,9 +49,17 @@ emits address-free disagreements without authorizing a repair. Neither component
 invokes UI functions or certifies visible pixels. The
 extended external Windows collector is syntax-checked only and has not run in FFR.
 
-The full Python suite ran 261 tests (260 passed, one skipped). All 128 native
+The child-diagnostic gate now requires every opening party ID exactly once,
+with independently complete current source/cache links. Missing/duplicated party
+members or extra stale party registry references stop before rearm even if the
+reported missing-unit list is empty. Ten gate cases, controller failure paths
+and the actual compiled three-cycle fixture pass; this is uninstalled and not
+live verified.
+
+The full Python suite ran 272 tests (271 passed, one skipped). All 128 native
 regression cases passed after rebuilding every fixture/profile for the current
-test host; native source is unchanged by the subsequent external widget reader.
+test host; native runtime source is unchanged by the subsequent external readers
+and stricter client gate. The three-cycle compiled case was rerun with that gate.
 A [partial backup reader](NATIVE_BACKUP.md) also preserves duplicate
 unit rows and compares retained resources without applying them; seven synthetic
 checks pass. The two formerly unknown backup floats are depth-of-field settings,

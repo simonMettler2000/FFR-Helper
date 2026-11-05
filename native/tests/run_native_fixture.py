@@ -229,6 +229,10 @@ def main():
                     assert child_diagnostic['sequence']==2 and links['unitsWithoutCurrentViewModel']==[]
                     assert [x['cachedUnit'] for x in links['links']]==[0,1]
                     assert links['parameterRelationBytes']==[1,1]
+                    from ffr_helper.recreation_diagnostics import require_recreated_party_links
+                    manifest_path=root/f"connection/cycle-history/{rearmed['session']}/generation-1/manifest.json"
+                    opening_party=json.loads(manifest_path.read_text(encoding='utf8'))['entry']['friendliesUnitIdList']
+                    require_recreated_party_links(opening_party,child_diagnostic['observation'])
                     for cycle in range(1,4):
                         cycled=json.loads((root/f'connection/cycle-{cycle}-status.json').read_text(encoding='utf8'))
                         result=validate_recreation(cycled['recreationTrial'])

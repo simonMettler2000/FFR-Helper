@@ -16,6 +16,16 @@ import test_combat
 from tools import run_abort_trial
 
 
+def child_observation():
+    # This controller fixture must cover both party IDs in full_capture(); the
+    # generic combat codec fixture deliberately contains duplicate unit IDs.
+    observation=test_combat.sample_observation()
+    observation['units'][1]['raw']['unitId']=1002
+    observation['timelineUnitLinks']=test_combat.sample_timeline()
+    observation['timelineUnitLinks']['links'][1]['cachedUnitId']=1002
+    return observation
+
+
 class RecreationControllerTests(unittest.TestCase):
     def run_trial(self,mode='good'):
         source=full_capture();source.metadata['mapUnitCache']=sample_cache();child=copy.deepcopy(source);child.metadata['sequence']=2
@@ -65,8 +75,8 @@ class RecreationControllerTests(unittest.TestCase):
                 self.polls+=1
                 if self.polls==1:return None
                 frame=test_combat.sample_status('a'*32)
-                observation=test_combat.sample_observation()
-                observation['timelineUnitLinks']=None if mode=='diagnostics-unavailable' else test_combat.sample_timeline()
+                observation=child_observation()
+                if mode=='diagnostics-unavailable':observation['timelineUnitLinks']=None
                 if mode in ['diagnostics-relations','diagnostics-relation-wrong','diagnostics-relation-missing']:
                     observation['timelineUnitLinks']['parameterRelationBytes']=(None if mode=='diagnostics-relation-missing'
                         else [1,2 if mode=='diagnostics-relation-wrong' else 1])
@@ -121,7 +131,7 @@ class RecreationControllerTests(unittest.TestCase):
         self.assertEqual(events.count('exit-commit'),1);self.assertEqual(events.count('read-child'),1)
 
     def test_missing_party_view_model_retains_evidence_and_refuses_another_cycle(self):
-        events,error=self.run_trial('diagnostics-stale');self.assertIn('links are missing or stale',error)
+        events,error=self.run_trial('diagnostics-stale');self.assertIn('view models are missing',error)
         self.assertEqual(events.count('exit-commit'),1);self.assertEqual(events.count('read-child'),1)
 
     def test_raw_party_relation_diagnostic_passes_without_claiming_rendered_layout(self):
@@ -210,9 +220,16 @@ class RecreationControllerTests(unittest.TestCase):
             def receipt(self):
                 self.polls+=1
                 if self.polls==1:return None
-                frame=test_combat.sample_status('a'*32);observation=test_combat.sample_observation()
-                observation['timelineUnitLinks']=test_combat.sample_timeline()
+                frame=test_combat.sample_status('a'*32);observation=child_observation()
                 observation['timelineUnitLinks']['parameterRelationBytes']=([1,2] if mode=='diagnostics-wrong-relation' else [1,1])
+                if mode in ['diagnostics-party-missing','diagnostics-party-duplicate']:
+                    identity=9999 if mode=='diagnostics-party-missing' else 1001
+                    observation['units'][1]['raw']['unitId']=identity
+                    observation['timelineUnitLinks']['links'][1]['cachedUnitId']=identity
+                if mode=='diagnostics-party-stale-source':
+                    observation['timelineUnitLinks']['links'].append(dict(uniqueId=2,sourceUnit=0,cachedUnit=-1,
+                        sourceMatchesCached=False,cachedParameterState='outside-current',cachedUnitId=9999,
+                        fallbackRelation=None,actualRelationVerified=False))
                 frame.update(request='b'*32,sequence=active[0],openingHash=source.metadata['sha256'],captureNumber=1,
                              captureTime=int(time.time()),phase='captured',observation=observation)
                 return frame
@@ -239,7 +256,8 @@ class RecreationControllerTests(unittest.TestCase):
             if mode=='diagnostics':
                 for cycle in ['cycle-0001','cycle-0002']:
                     self.assertTrue((out/cycle/'recreated-menu.ffrcombat.json').exists())
-            if mode=='diagnostics-wrong-relation':
+            if mode in ['diagnostics-wrong-relation','diagnostics-party-missing','diagnostics-party-duplicate',
+                        'diagnostics-party-stale-source']:
                 self.assertTrue((out/'cycle-0001/recreated-menu.ffrcombat.json').exists())
                 self.assertFalse((out/'cycle-0001/rearm-request.json').exists())
                 self.assertFalse((out/'cycle-0002').exists())
@@ -266,6 +284,15 @@ class RecreationControllerTests(unittest.TestCase):
         events,error=self.run_repeated_trial('diagnostics-wrong-relation');self.assertIn('differ from Friendlies',error)
         self.assertEqual(sum(name=='exit-commit' for name,_ in events),1)
         self.assertFalse(any(name.startswith('rearm') for name,_ in events))
+
+    def test_incomplete_ambiguous_or_stale_party_stops_before_rearm_and_retains_report(self):
+        for mode,reason in [('diagnostics-party-missing','exactly once'),
+                            ('diagnostics-party-duplicate','exactly once'),
+                            ('diagnostics-party-stale-source','stale or mismatched')]:
+            with self.subTest(mode=mode):
+                events,error=self.run_repeated_trial(mode);self.assertIn(reason,error)
+                self.assertEqual(sum(name=='exit-commit' for name,_ in events),1)
+                self.assertFalse(any(name.startswith('rearm') for name,_ in events))
 
     def test_focus_loss_during_rearm_does_not_start_a_second_abort(self):
         events,error=self.run_repeated_trial('focus-loss');self.assertIn('foreground/child changed',error)

@@ -116,7 +116,17 @@ For the next separately reviewed supervised run, add
 `--capture-child-diagnostics --cycles 2`. This retains an independent read-only
 combat/timeline snapshot at each verified child before accepting another deliberate
 press. Missing/stale party view-model links, unavailable evidence or read expiry
-stop the controller; no read or gameplay command is resent. New reports include
+stop the controller; no read or gameplay command is resent.
+
+The controller requires every opening party ID to appear exactly once in child
+combat evidence and independently checks that each has a matching current source
+and cached VM parameter. A stale registry entry involving a party source or a
+reused party ID refuses another cycle even if a second, good link exists. An
+empty reported missing-unit list does not substitute for complete party coverage.
+Ten focused gate cases, controller failure-path checks and the compiled
+three-cycle fixture cover this stricter check. It remains untested in FFR.
+
+New reports include
 raw stored parameter relation bytes; unavailable bytes or a party byte differing
 from Friendlies also stop before rearm, after retaining the report. These values
 are copied without executing the relation getter. A successful link

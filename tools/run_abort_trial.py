@@ -10,6 +10,7 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from ffr_helper.abort_trial import AbortTrialBridge,compare_progression
 from ffr_helper.recreation_trial import RecreationTrialBridge,validate_source
 from ffr_helper.recreation_rearm import RecreationRearmBridge
+from ffr_helper.recreation_diagnostics import require_recreated_party_links
 from ffr_helper.combat import CombatObservationBridge,export_combat
 from ffr_helper.opening import export_opening
 from ffr_helper.runtime import NativeEntryRecorder
@@ -85,19 +86,8 @@ def main():
                     if diagnostic['phase']!='captured':
                         raise RuntimeError('Child diagnostic was refused or unavailable: '+diagnostic['message'])
                     export_combat(cycle_output/'recreated-menu.ffrcombat.json',diagnostic)
-                    links=diagnostic['observation'].get('timelineUnitLinks')
-                    if links is None:
-                        raise RuntimeError('Child combat captured but timeline links are unavailable; no further cycle will be requested.')
-                    party_ids=set(child.metadata['entry']['friendliesUnitIdList'])
-                    party_indices={i for i,unit in enumerate(diagnostic['observation']['units']) if unit['raw']['unitId'] in party_ids}
-                    if (not party_indices or party_indices.intersection(links['unitsWithoutCurrentViewModel'])
-                            or any(link['cachedUnit'] in party_indices and not link['sourceMatchesCached'] for link in links['links'])):
-                        raise RuntimeError('Child party view-model links are missing or stale; evidence saved and no further cycle will be requested.')
-                    relation_bytes=links.get('parameterRelationBytes')
-                    if 'parameterRelationBytes' in links and relation_bytes is None:
-                        raise RuntimeError('Child stored relation bytes are unavailable; evidence saved and no further cycle will be requested.')
-                    if relation_bytes is not None and any(relation_bytes[i]!=1 for i in party_indices):
-                        raise RuntimeError('Child stored party relation bytes differ from Friendlies; evidence saved and no further cycle will be requested. Getter/rendering behavior is unverified.')
+                    require_recreated_party_links(child.metadata['entry']['friendliesUnitIdList'],
+                                                   diagnostic['observation'])
                     print('Read-only child combat and timeline links saved. Actual portrait placement still needs visual confirmation.',flush=True)
                     child_diagnostic=None
                     if cycle_number>=args.cycles:return

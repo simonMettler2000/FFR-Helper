@@ -103,6 +103,11 @@ field before setting its named battle-unit source. An optional projection now
 compares that retained entry reference with both the widget's source and the
 current UI registry. Missing or unsupported entry metadata stays unavailable;
 an observed change is latched and cannot be hidden by later matching readback.
+The entry's lookup key is also compared to the current UI registry. When the
+caller supplies the registered timeline's turn segments, the reader checks the
+entry's reflected `TurnVM`, index and identity prefix against them. Retained
+widgets from unrelated/old turns remain distinguishable from current entries.
+The entry's `EntryDA` reference is a data asset, not a parent timeline reference.
 
 The optional Slate projection additionally checks the expected object/controller
 vtables and shared-allocation relationship, observes positive reference counts,
@@ -114,7 +119,7 @@ headers are counted.
 
 This remains private research evidence: enumeration is incomplete and non-atomic,
 and a retained widget need not belong to the visible viewport. Neither stored
-vector certifies actual pixels. Nineteen synthetic cases cover reflected-member
+vector certifies actual pixels. Twenty-three synthetic cases cover reflected-member
 discovery, template exclusion, weak-identity/property/anchor drift, stale links,
 typed bounds and distinct widget/Slate values. The extended Windows collector is
 syntax-checked only and has not been run in FFR.
@@ -130,6 +135,22 @@ Use the evidence to choose the next investigation, not to authorize a refresh:
 | Current friendly VM, but widget anchor has the other side's value | MVVM source binding and `SetRelation` delivery |
 | Widget and owned Slate anchors disagree | Property synchronization and Slate rebuild/lifetime |
 | Both anchors agree, but actual portraits remain wrong | Visible-widget identity, parent geometry and layout |
+
+## Conditional cache finding
+
+The native entry update compares two identity words and two entry-kind bytes
+with its turn data. On the unchanged-identity branch, it updates other unified
+values without directly calling the observed unit-VM lookup/assignment routine.
+The changed-identity branch does call that routine. The routine looks up the
+entry's key in the current UI unit manager, stores `UnitParamVM` and notifies its
+binding when the resulting VM is valid. Separately, the battle-end UI handler
+drops its unit-manager reference and battle begin creates managers as needed.
+
+This gives a testable cache hypothesis: a retained entry with reused identity
+values could still reference an earlier fight's VM. It is **not yet the confirmed
+cause**. The new lookup-key, turn-membership and entry/widget comparisons are
+prepared to check it. The two entry-kind bytes must not be interpreted as faction.
+No entry-update, assignment or UI-reset function has been invoked as a repair.
 
 ## Next supervised comparison
 

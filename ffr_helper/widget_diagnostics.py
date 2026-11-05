@@ -1,6 +1,6 @@
 """Private, bounded read-only stored timeline-widget values.
 
-The caller must verify the exact build, loaded code/layout and current battle.
+The caller must verify the exact build, loaded code/layout and current world/UI.
 No process is opened and no engine function is invoked here. Object enumeration
 is deliberately incomplete/non-atomic; stored anchor values are not pixels or
 proof that a widget is attached to the visible viewport.
@@ -18,7 +18,8 @@ class WidgetSnapshotError(ValueError):
 
 def snapshot_timeline_widgets(read, read_name, *, image_base, image_size,
                               object_table_address, object_count_address,
-                              attachment_class, current_models, slate_vtables=None):
+                              attachment_class, current_models, slate_vtables=None,
+                              current_model_keys=None,current_segments=None):
     """Copy anchors and VM links from retained CVA_Unit attachments.
 
     FField/FProperty offsets follow the target's retained UE4SS layout report.
@@ -40,6 +41,17 @@ def snapshot_timeline_widgets(read, read_name, *, image_base, image_size,
     if slate_vtables is not None and (not isinstance(slate_vtables,tuple) or len(slate_vtables)!=2
             or any(type(x) is not int or not image_base<=x<image_base+image_size for x in slate_vtables)):
         raise WidgetSnapshotError('Invalid caller-verified Slate context')
+    if current_model_keys is not None and (not isinstance(current_model_keys,dict) or len(current_model_keys)>256
+            or any(type(k) is not int or not 0<=k<2**31 or not pointer(v) or v not in current_models
+                   for k,v in current_model_keys.items()) or len(set(current_model_keys.values()))!=len(current_model_keys)):
+        raise WidgetSnapshotError('Invalid caller-verified current VM keys')
+    if current_segments is not None and (not isinstance(current_segments,dict) or len(current_segments)>8
+            or any(not pointer(k) or not isinstance(v,(list,tuple)) or len(v)>256
+                   or any(not isinstance(raw,bytes) or len(raw)!=20 for raw in v) for k,v in current_segments.items())):
+        raise WidgetSnapshotError('Invalid caller-verified current timeline segments')
+    current_models=dict(current_models)
+    if current_model_keys is not None:current_model_keys=dict(current_model_keys)
+    if current_segments is not None:current_segments={k:tuple(v) for k,v in current_segments.items()}
     regions={};names={};budget=96*1024*1024;observed_change=False
 
     def copy(address,size,remember=True):
@@ -110,8 +122,8 @@ def snapshot_timeline_widgets(read, read_name, *, image_base, image_size,
         raise WidgetSnapshotError('Widget outer chain exceeds its bound')
 
     property_cache={}
-    def model_offset(klass,member='CPP_VM_BtlUnitParam'):
-        key=klass,member
+    def model_offset(klass,member='CPP_VM_BtlUnitParam',element_size=8):
+        key=klass,member,element_size
         if key in property_cache:return property_cache[key]
         classes=set();fields=set();found=[]
         for _ in range(32):
@@ -130,8 +142,8 @@ def snapshot_timeline_widgets(read, read_name, *, image_base, image_size,
                 identity=struct.unpack_from('<Q',raw,0x20)[0]
                 if name(identity)==member:
                     dim,element=struct.unpack_from('<ii',raw,0x30);offset=struct.unpack_from('<i',raw,0x44)[0]
-                    if dim!=1 or element!=8 or not 40<=offset<=size-8:
-                        raise WidgetSnapshotError('Timeline VM property is not a bounded scalar object reference')
+                    if dim!=1 or element!=element_size or not 40<=offset<=size-element_size:
+                        raise WidgetSnapshotError('Timeline property does not have its expected bounded element size')
                     found.append(offset)
                 field=struct.unpack_from('<Q',raw,0x18)[0]
             klass=value(klass+0x40,'<Q')
@@ -152,8 +164,12 @@ def snapshot_timeline_widgets(read, read_name, *, image_base, image_size,
         except OSError:return 'unreadable'
 
     def entry_binding(widget,widget_class,widget_vm):
+        nonlocal observed_change
         result=dict(state='unavailable',privateEntryViewModel=None,privateParameterViewModel=None,
-            parameterViewModelState=None,currentUnitIndex=None,parameterViewModelMatchesWidget=None)
+            parameterViewModelState=None,currentUnitIndex=None,parameterViewModelMatchesWidget=None,
+            unitLookupKey=None,privateRegistryViewModel=None,expectedCurrentUnitIndex=None,cacheMatchesCurrentRegistry=None,
+            turnBinding=dict(state='not-requested',privateTurnViewModel=None,index=None,
+                turnMatchesCurrentTimeline=None,identityMatchesCurrentTurn=None))
         try:
             slot=model_offset(widget_class,'CPP_VM_TimeLineEntry')
             entry=value(widget+slot,'<Q');result['privateEntryViewModel']=entry
@@ -163,9 +179,26 @@ def snapshot_timeline_widgets(read, read_name, *, image_base, image_size,
             if class_info(h['klass'])[0]!='CPP_VM_TimeLineEntry':
                 result['state']='unsupported-entry-class';return result
             nested=model_offset(h['klass'],'UnitParamVM');vm=value(entry+nested,'<Q');state=model_state(vm)
+            key=value(entry+0x7c,'<i');expected=(current_model_keys or {}).get(key)
             result.update(state='captured',privateParameterViewModel=vm,parameterViewModelState=state,
                 currentUnitIndex=current_models[vm] if state=='current' else None,
-                parameterViewModelMatchesWidget=vm==widget_vm)
+                parameterViewModelMatchesWidget=vm==widget_vm,unitLookupKey=key,privateRegistryViewModel=expected,
+                expectedCurrentUnitIndex=current_models[expected] if expected is not None else None,
+                cacheMatchesCurrentRegistry=vm==expected if expected is not None else None)
+            if current_segments is not None:
+                projection=result['turnBinding'];projection['state']='unavailable'
+                turn=value(entry+model_offset(h['klass'],'TurnVM'),'<Q')
+                index=value(entry+model_offset(h['klass'],'EntryIndex',4),'<i')
+                raw=copy(entry+model_offset(h['klass'],'EntryData',20),20)
+                if struct.unpack_from('<i',raw)[0]!=key:
+                    observed_change=True
+                    raise WidgetSnapshotError('Entry identity changed between linked reads')
+                if turn:object_header(turn)
+                expected_entries=current_segments.get(turn)
+                projection.update(state='captured',privateTurnViewModel=turn,index=index,
+                    turnMatchesCurrentTimeline=expected_entries is not None,
+                    identityMatchesCurrentTurn=(raw[:10]==expected_entries[index][:10]
+                        if expected_entries is not None and 0<=index<len(expected_entries) else None))
         except (OSError,WidgetSnapshotError):pass
         return result
 

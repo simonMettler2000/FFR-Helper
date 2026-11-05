@@ -31,6 +31,7 @@ class WidgetDiagnosticsTests(unittest.TestCase):
         self.entry_class=self.object('CPP_VM_TimeLineEntry',klass=self.meta)
         self.entry=self.object('EntryVM_0',klass=self.entry_class)
         self.put(self.widget+0x408,'<Q',self.entry);self.put(self.entry+0x90,'<Q',self.vm)
+        self.put(self.entry+0x7c,'<i',7)
         widget_entry_field=self.field+0x100;entry_param_field=self.field+0x200
         self.put(self.field+0x18,'<Q',widget_entry_field)
         for address,name,offset in [(widget_entry_field,'CPP_VM_TimeLineEntry',0x408),
@@ -68,7 +69,8 @@ class WidgetDiagnosticsTests(unittest.TestCase):
 
     def snapshot(self,reader=None,**overrides):
         options=dict(image_base=self.base,image_size=0x100000,object_table_address=self.table_variable,
-            object_count_address=self.count_variable,attachment_class=self.attachment_class,current_models={self.vm:0})
+            object_count_address=self.count_variable,attachment_class=self.attachment_class,current_models={self.vm:0},
+            current_model_keys={7:self.vm})
         options.update(overrides)
         return snapshot_timeline_widgets(reader or self.read,self.names.__getitem__,**options)
 
@@ -79,6 +81,7 @@ class WidgetDiagnosticsTests(unittest.TestCase):
         self.assertEqual(row['privateWidget'],self.widget);self.assertTrue(row['slateObjectPresent'])
         self.assertEqual(row['entryBinding']['currentUnitIndex'],0)
         self.assertTrue(row['entryBinding']['parameterViewModelMatchesWidget'])
+        self.assertTrue(row['entryBinding']['cacheMatchesCurrentRegistry'])
         self.assertEqual(row['storedAnchorBits'],self.read(self.attachment+0x1b8,16).hex())
         for key in ['gameCalls','gameWrites','inputInjected','atomicSnapshot','restorable','completeEnumeration',
                     'visibleViewportVerified','renderedAnchorsVerified']:
@@ -164,7 +167,9 @@ class WidgetDiagnosticsTests(unittest.TestCase):
 
     def test_typed_context_bounds_and_short_reads_are_refused(self):
         for kwargs in [dict(image_size=True),dict(current_models={self.vm:True}),dict(attachment_class=1),
-                       dict(slate_vtables=(1,2)),dict(slate_vtables=(True,self.base))]:
+                       dict(slate_vtables=(1,2)),dict(slate_vtables=(True,self.base)),
+                       dict(current_model_keys={True:self.vm}),dict(current_model_keys={7:0x55555555}),
+                       dict(current_model_keys={7:self.vm,8:self.vm})]:
             with self.subTest(kwargs=kwargs),self.assertRaises(WidgetSnapshotError):self.snapshot(**kwargs)
         self.put(self.count_variable,'<i',1_000_001)
         with self.assertRaises(WidgetSnapshotError):self.snapshot()
@@ -273,3 +278,50 @@ class WidgetDiagnosticsTests(unittest.TestCase):
                     raw=bytearray(raw);struct.pack_into('<i',raw,0x44,0x408);return bytes(raw)
             return raw
         with self.assertRaisesRegex(WidgetSnapshotError,'changed or became unavailable'):self.snapshot(transient)
+
+    def test_reused_lookup_key_reveals_a_retired_cache_without_authorizing_rebind(self):
+        retired=self.object('RetiredVM',klass=self.vm_class);self.sync_objects()
+        self.put(self.entry+0x90,'<Q',retired);self.put(self.widget+0x400,'<Q',retired)
+        result=self.snapshot();binding=result['attachments'][0]['entryBinding']
+        self.assertEqual(binding['unitLookupKey'],7);self.assertEqual(binding['expectedCurrentUnitIndex'],0)
+        self.assertEqual(binding['privateRegistryViewModel'],self.vm)
+        self.assertFalse(binding['cacheMatchesCurrentRegistry']);self.assertTrue(binding['parameterViewModelMatchesWidget'])
+        self.assertFalse(result['gameCalls']);self.assertFalse(result['gameWrites']);self.assertFalse(result['restorable'])
+
+    def test_missing_or_unrequested_registry_keys_do_not_invent_a_matching_target(self):
+        for keys in [None,{}, {8:self.vm}]:
+            with self.subTest(keys=keys):
+                binding=self.snapshot(current_model_keys=keys)['attachments'][0]['entryBinding']
+                self.assertIsNone(binding['privateRegistryViewModel']);self.assertIsNone(binding['cacheMatchesCurrentRegistry'])
+                self.assertIsNone(binding['expectedCurrentUnitIndex'])
+
+    def add_turn_members(self):
+        turn=self.object('TurnVM_0',klass=self.meta);self.sync_objects()
+        fields=[(self.field+0x400,'TurnVM',0x70,8),(self.field+0x500,'EntryIndex',0x78,4),
+                (self.field+0x600,'EntryData',0x7c,20)]
+        self.put(self.field+0x218,'<Q',fields[0][0])
+        for i,(address,name,offset,size) in enumerate(fields):
+            self.put(address,'<QQ',self.vtable,self.base+0x3000);self.put(address+0x20,'<Q',self.identity(name))
+            self.put(address+0x30,'<ii',1,size);self.put(address+0x44,'<i',offset)
+            self.put(address+0x18,'<Q',fields[i+1][0] if i+1<len(fields) else 0)
+        self.put(self.entry+0x70,'<Q',turn);self.put(self.entry+0x78,'<i',0)
+        return turn,self.read(self.entry+0x7c,20)
+
+    def test_entry_turn_membership_and_identity_are_separate_from_timing_values(self):
+        turn,raw=self.add_turn_members();expected=bytearray(raw);expected[12:]=b'\x55'*8
+        row=self.snapshot(current_segments={turn:[bytes(expected)]})['attachments'][0]['entryBinding']['turnBinding']
+        self.assertEqual(row['state'],'captured');self.assertTrue(row['turnMatchesCurrentTimeline'])
+        self.assertTrue(row['identityMatchesCurrentTurn'])
+        expected[8]=1
+        row=self.snapshot(current_segments={turn:[bytes(expected)]})['attachments'][0]['entryBinding']['turnBinding']
+        self.assertFalse(row['identityMatchesCurrentTurn'])
+
+    def test_retired_turn_or_invalid_index_does_not_invent_current_entry_identity(self):
+        turn,raw=self.add_turn_members()
+        row=self.snapshot(current_segments={})['attachments'][0]['entryBinding']['turnBinding']
+        self.assertFalse(row['turnMatchesCurrentTimeline']);self.assertIsNone(row['identityMatchesCurrentTurn'])
+        self.put(self.entry+0x78,'<i',1)
+        row=self.snapshot(current_segments={turn:[raw]})['attachments'][0]['entryBinding']['turnBinding']
+        self.assertTrue(row['turnMatchesCurrentTimeline']);self.assertIsNone(row['identityMatchesCurrentTurn'])
+        for context in [{True:[]},{turn:[b'bad']},{turn:'bad'}]:
+            with self.subTest(context=context),self.assertRaises(WidgetSnapshotError):self.snapshot(current_segments=context)

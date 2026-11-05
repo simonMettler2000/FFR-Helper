@@ -28,6 +28,16 @@ class WidgetDiagnosticsTests(unittest.TestCase):
         self.put(self.field+0x30,'<ii',1,8);self.put(self.field+0x44,'<i',0x400)
         self.put(self.widget+0x400,'<Q',self.vm)
         self.put(self.attachment+0x1b8,'<dd',0.5,1.0);self.put(self.attachment+0x1c8,'<Q',0x40000000)
+        self.entry_class=self.object('CPP_VM_TimeLineEntry',klass=self.meta)
+        self.entry=self.object('EntryVM_0',klass=self.entry_class)
+        self.put(self.widget+0x408,'<Q',self.entry);self.put(self.entry+0x90,'<Q',self.vm)
+        widget_entry_field=self.field+0x100;entry_param_field=self.field+0x200
+        self.put(self.field+0x18,'<Q',widget_entry_field)
+        for address,name,offset in [(widget_entry_field,'CPP_VM_TimeLineEntry',0x408),
+                                    (entry_param_field,'UnitParamVM',0x90)]:
+            self.put(address,'<QQ',self.vtable,self.base+0x3000);self.put(address+0x20,'<Q',self.identity(name))
+            self.put(address+0x30,'<ii',1,8);self.put(address+0x44,'<i',offset)
+        self.put(self.entry_class+0x50,'<Q',entry_param_field)
         self.put(self.table_variable,'<Q',self.table);self.put(self.table,'<Q',self.chunk)
         self.sync_objects()
 
@@ -63,10 +73,12 @@ class WidgetDiagnosticsTests(unittest.TestCase):
         return snapshot_timeline_widgets(reader or self.read,self.names.__getitem__,**options)
 
     def test_widget_tree_owner_and_reflected_vm_offset_join_to_raw_anchor_only(self):
-        result=self.snapshot();self.assertEqual(result['objectSlotsScanned'],10)
+        result=self.snapshot();self.assertEqual(result['objectSlotsScanned'],len(self.objects))
         row=result['attachments'][0];self.assertEqual(row['storedContentAnchor'],[0.5,1.0])
         self.assertEqual(row['currentUnitIndex'],0);self.assertEqual(row['viewModelState'],'current')
         self.assertEqual(row['privateWidget'],self.widget);self.assertTrue(row['slateObjectPresent'])
+        self.assertEqual(row['entryBinding']['currentUnitIndex'],0)
+        self.assertTrue(row['entryBinding']['parameterViewModelMatchesWidget'])
         self.assertEqual(row['storedAnchorBits'],self.read(self.attachment+0x1b8,16).hex())
         for key in ['gameCalls','gameWrites','inputInjected','atomicSnapshot','restorable','completeEnumeration',
                     'visibleViewportVerified','renderedAnchorsVerified']:
@@ -131,7 +143,8 @@ class WidgetDiagnosticsTests(unittest.TestCase):
         original=self.read(self.field+0x20,8);self.put(self.field+0x20,'<Q',999999)
         with self.assertRaisesRegex(WidgetSnapshotError,'name'):self.snapshot()
         self.put(self.field+0x20,'<8s',original)
-        extra=self.field+0x100;self.put(extra,'<72s',self.read(self.field,72))
+        extra=self.field+0x300;self.put(extra,'<72s',self.read(self.field,72))
+        self.put(extra+0x18,'<Q',0)
         self.put(self.field+0x18,'<Q',extra)
         with self.assertRaisesRegex(WidgetSnapshotError,'ambiguous'):self.snapshot()
 
@@ -215,3 +228,48 @@ class WidgetDiagnosticsTests(unittest.TestCase):
         result=self.snapshot(changing_counts,slate_vtables=profile)
         self.assertEqual(result['attachments'][0]['slateAnchor']['state'],'captured')
         self.assertFalse(result['atomicSnapshot']);self.assertFalse(result['visibleViewportVerified'])
+
+    def test_retired_entry_cache_and_stale_widget_source_are_distinguished(self):
+        retired=self.object('RetiredVM',klass=self.vm_class);self.sync_objects()
+        self.put(self.entry+0x90,'<Q',retired)
+        row=self.snapshot()['attachments'][0]
+        self.assertEqual(row['viewModelState'],'current')
+        self.assertEqual(row['entryBinding']['parameterViewModelState'],'outside-current')
+        self.assertFalse(row['entryBinding']['parameterViewModelMatchesWidget'])
+        self.put(self.entry+0x90,'<Q',self.vm);self.put(self.widget+0x400,'<Q',retired)
+        row=self.snapshot()['attachments'][0]
+        self.assertEqual(row['viewModelState'],'outside-current')
+        self.assertEqual(row['entryBinding']['parameterViewModelState'],'current')
+        self.assertFalse(row['entryBinding']['parameterViewModelMatchesWidget'])
+
+    def test_optional_null_or_missing_entry_binding_does_not_invent_a_source(self):
+        self.put(self.widget+0x408,'<Q',0)
+        row=self.snapshot()['attachments'][0];self.assertEqual(row['entryBinding']['state'],'null')
+        self.assertIsNone(row['entryBinding']['privateParameterViewModel'])
+        self.put(self.widget+0x408,'<Q',self.entry);self.put(self.field+0x220,'<Q',self.identity('UnrelatedMember'))
+        row=self.snapshot()['attachments'][0];self.assertEqual(row['entryBinding']['state'],'unavailable')
+        self.assertEqual(row['storedContentAnchor'],[0.5,1]);self.assertIsNone(row['entryBinding']['currentUnitIndex'])
+
+    def test_entry_cache_binding_drift_is_not_hidden_by_the_optional_projection(self):
+        for target in [self.widget+0x408,self.entry+0x90]:
+            visits=0
+            def drift(address,size):
+                nonlocal visits
+                raw=self.read(address,size)
+                if address==target and size==8:
+                    visits+=1
+                    if visits>1:return bytes(size)
+                return raw
+            with self.subTest(target=target),self.assertRaises(WidgetSnapshotError):self.snapshot(drift)
+
+    def test_transient_change_inside_optional_entry_read_cannot_be_hidden_by_later_matching_bytes(self):
+        visits=0
+        def transient(address,size):
+            nonlocal visits
+            raw=self.read(address,size)
+            if address==self.field and size==0x48:
+                visits+=1
+                if visits==2:
+                    raw=bytearray(raw);struct.pack_into('<i',raw,0x44,0x408);return bytes(raw)
+            return raw
+        with self.assertRaisesRegex(WidgetSnapshotError,'changed or became unavailable'):self.snapshot(transient)

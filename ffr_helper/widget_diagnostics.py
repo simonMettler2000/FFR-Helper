@@ -40,20 +40,25 @@ def snapshot_timeline_widgets(read, read_name, *, image_base, image_size,
     if slate_vtables is not None and (not isinstance(slate_vtables,tuple) or len(slate_vtables)!=2
             or any(type(x) is not int or not image_base<=x<image_base+image_size for x in slate_vtables)):
         raise WidgetSnapshotError('Invalid caller-verified Slate context')
-    regions={};names={};budget=96*1024*1024
+    regions={};names={};budget=96*1024*1024;observed_change=False
 
     def copy(address,size,remember=True):
-        nonlocal budget
+        nonlocal budget,observed_change
         if (not pointer(address) or type(size) is not int or not 0<size<=min(budget,2*1024*1024)
                 or address+size>=0x7fffffffffff):
             raise WidgetSnapshotError('Invalid or over-budget widget range')
         budget-=size
-        raw=read(address,size)
+        key=address,size
+        try:raw=read(address,size)
+        except OSError:
+            if remember and key in regions:observed_change=True
+            raise
         if not isinstance(raw,bytes) or len(raw)!=size:
+            if remember and key in regions:observed_change=True
             raise WidgetSnapshotError('Incomplete widget memory read')
         if remember:
-            key=address,size
             if key in regions and regions[key]!=raw:
+                observed_change=True
                 raise WidgetSnapshotError('Widget values changed during capture')
             regions[key]=raw
         return raw
@@ -62,12 +67,15 @@ def snapshot_timeline_widgets(read, read_name, *, image_base, image_size,
         return struct.unpack(fmt,copy(address,struct.calcsize(fmt),remember))[0]
 
     def name(identity):
+        nonlocal observed_change
         try:text=read_name(identity)
         except (OSError,ValueError,LookupError) as error:
+            if identity in names:observed_change=True
             raise WidgetSnapshotError('Unreadable widget/property name') from error
         if not isinstance(text,str) or not 0<len(text)<=1024 or '\0' in text:
             raise WidgetSnapshotError('Invalid widget/property name')
         if identity in names and names[identity]!=text:
+            observed_change=True
             raise WidgetSnapshotError('Widget/property name changed')
         names[identity]=text
         return text
@@ -102,9 +110,10 @@ def snapshot_timeline_widgets(read, read_name, *, image_base, image_size,
         raise WidgetSnapshotError('Widget outer chain exceeds its bound')
 
     property_cache={}
-    def model_offset(klass):
-        if klass in property_cache:return property_cache[klass]
-        origin=klass;classes=set();fields=set();found=[]
+    def model_offset(klass,member='CPP_VM_BtlUnitParam'):
+        key=klass,member
+        if key in property_cache:return property_cache[key]
+        classes=set();fields=set();found=[]
         for _ in range(32):
             if not klass:break
             if klass in classes:raise WidgetSnapshotError('Cyclic widget class hierarchy')
@@ -119,7 +128,7 @@ def snapshot_timeline_widgets(read, read_name, *, image_base, image_size,
                 if not (image_base<=vtable<image_base+image_size and image_base<=field_class<image_base+image_size):
                     raise WidgetSnapshotError('Unsupported widget property header')
                 identity=struct.unpack_from('<Q',raw,0x20)[0]
-                if name(identity)=='CPP_VM_BtlUnitParam':
+                if name(identity)==member:
                     dim,element=struct.unpack_from('<ii',raw,0x30);offset=struct.unpack_from('<i',raw,0x44)[0]
                     if dim!=1 or element!=8 or not 40<=offset<=size-8:
                         raise WidgetSnapshotError('Timeline VM property is not a bounded scalar object reference')
@@ -128,8 +137,37 @@ def snapshot_timeline_widgets(read, read_name, *, image_base, image_size,
             klass=value(klass+0x40,'<Q')
         else:raise WidgetSnapshotError('Widget class hierarchy exceeds its bound')
         if len(found)!=1:raise WidgetSnapshotError('Timeline widget VM property is missing or ambiguous')
-        property_cache[origin]=found[0]
+        property_cache[key]=found[0]
         return found[0]
+
+    def model_state(vm):
+        if not vm:return 'null'
+        try:
+            raw=copy(vm,40)
+            vtable,flags,index,klass,_,_=struct.unpack('<QIIQQQ',raw)
+            if flags&0x40000000:return 'invalid-object'
+            if not image_base<=vtable<image_base+image_size or not pointer(klass) or index>=2**31:
+                return 'unsupported-object-header'
+            return 'current' if vm in current_models else 'outside-current'
+        except OSError:return 'unreadable'
+
+    def entry_binding(widget,widget_class,widget_vm):
+        result=dict(state='unavailable',privateEntryViewModel=None,privateParameterViewModel=None,
+            parameterViewModelState=None,currentUnitIndex=None,parameterViewModelMatchesWidget=None)
+        try:
+            slot=model_offset(widget_class,'CPP_VM_TimeLineEntry')
+            entry=value(widget+slot,'<Q');result['privateEntryViewModel']=entry
+            if not entry:
+                result['state']='null';return result
+            h=object_header(entry)
+            if class_info(h['klass'])[0]!='CPP_VM_TimeLineEntry':
+                result['state']='unsupported-entry-class';return result
+            nested=model_offset(h['klass'],'UnitParamVM');vm=value(entry+nested,'<Q');state=model_state(vm)
+            result.update(state='captured',privateParameterViewModel=vm,parameterViewModelState=state,
+                currentUnitIndex=current_models[vm] if state=='current' else None,
+                parameterViewModelMatchesWidget=vm==widget_vm)
+        except (OSError,WidgetSnapshotError):pass
+        return result
 
     def slate_anchor(shared,widget_anchor):
         result=dict(state='not-requested',storedAnchor=None,matchesWidget=None,renderedAnchorVerified=False)
@@ -190,16 +228,7 @@ def snapshot_timeline_widgets(read, read_name, *, image_base, image_size,
                 if copy(chunk+slot,24)!=rows[slot:slot+24]:
                     raise WidgetSnapshotError('Attachment weak identity changed during enumeration')
                 widget,wh=owner;offset=model_offset(wh['klass']);vm=value(widget+offset,'<Q')
-                state='null' if not vm else 'outside-current'
-                if vm:
-                    try:
-                        vm_head=copy(vm,40)
-                        vm_vtable,vm_flags,vm_index,vm_class,_,_=struct.unpack('<QIIQQQ',vm_head)
-                        if vm_flags&0x40000000:state='invalid-object'
-                        elif not image_base<=vm_vtable<image_base+image_size or not pointer(vm_class) or vm_index>=2**31:
-                            state='unsupported-object-header'
-                        else:state='current' if vm in current_models else 'outside-current'
-                    except OSError:state='unreadable'
+                state=model_state(vm)
                 raw=copy(obj+0x1b8,16);anchor=list(struct.unpack('<dd',raw))
                 if any(not math.isfinite(x) or abs(x)>1_000_000 for x in anchor):
                     raise WidgetSnapshotError('Invalid stored attachment anchor')
@@ -207,8 +236,10 @@ def snapshot_timeline_widgets(read, read_name, *, image_base, image_size,
                 results.append(dict(privateAttachment=obj,privateWidget=widget,privateViewModel=vm,
                     currentUnitIndex=current_models[vm] if state=='current' else None,
                     viewModelState=state,storedContentAnchor=anchor,storedAnchorBits=raw.hex(),
+                    entryBinding=entry_binding(widget,wh['klass'],vm),
                     slateObjectPresent=bool(struct.unpack_from('<Q',shared)[0]),
                     slateAnchor=slate_anchor(shared,anchor),renderedAnchorVerified=False))
+        if observed_change:raise WidgetSnapshotError('Retained widget evidence changed or became unavailable')
         for (address,size),raw in regions.items():
             if copy(address,size,False)!=raw:raise WidgetSnapshotError('Widget values changed during verification')
         for identity,text in names.items():

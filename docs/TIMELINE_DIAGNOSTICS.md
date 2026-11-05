@@ -98,6 +98,11 @@ walks their widget-tree outers and verifies the timeline widget's class/package.
 It discovers the widget's unit-VM member from the live reflected property list
 instead of guessing a Blueprint offset. It excludes CDO/archetype owners and
 records current, null, retired, invalid and unreadable VM links separately.
+The portrait's compiled MVVM source listens to the timeline entry's `UnitParamVM`
+field before setting its named battle-unit source. An optional projection now
+compares that retained entry reference with both the widget's source and the
+current UI registry. Missing or unsupported entry metadata stays unavailable;
+an observed change is latched and cannot be hidden by later matching readback.
 
 The optional Slate projection additionally checks the expected object/controller
 vtables and shared-allocation relationship, observes positive reference counts,
@@ -109,7 +114,7 @@ headers are counted.
 
 This remains private research evidence: enumeration is incomplete and non-atomic,
 and a retained widget need not belong to the visible viewport. Neither stored
-vector certifies actual pixels. Fifteen synthetic cases cover reflected-member
+vector certifies actual pixels. Nineteen synthetic cases cover reflected-member
 discovery, template exclusion, weak-identity/property/anchor drift, stale links,
 typed bounds and distinct widget/Slate values. The extended Windows collector is
 syntax-checked only and has not been run in FFR.
@@ -120,6 +125,8 @@ Use the evidence to choose the next investigation, not to authorize a refresh:
 | --- | --- |
 | Party's stored relation byte differs from Friendlies | Battle-unit initialization and team assignment |
 | Current UI VM or widget points outside the current unit graph | Deploy/destroy events, retained widgets and rebind lifetime |
+| Entry cache is current, but its portrait holds a different VM | MVVM source replacement and binding delivery |
+| Entry cache itself points outside the current VM graph | Timeline-entry cache invalidation and initialization |
 | Current friendly VM, but widget anchor has the other side's value | MVVM source binding and `SetRelation` delivery |
 | Widget and owned Slate anchors disagree | Property synchronization and Slate rebuild/lifetime |
 | Both anchors agree, but actual portraits remain wrong | Visible-widget identity, parent geometry and layout |

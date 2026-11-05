@@ -12,6 +12,10 @@ dist/
 *.ffrroute
 *.ffrruntime.json
 *.ffrcombat.json
+*.ffrguard.json
+*.ffrmenu.json
+*.ffrdecision.json
+*.ffrskill.json
 *.ffrplaytime.json
 *.ffrcomparison.json
 *.ffrrecovery
@@ -21,3 +25,9 @@ dist/
 local/
 screenshots/
 *.log
+*.dll
+*.exe
+*.pdb
+*.dmp
+*.so
+*.dylib

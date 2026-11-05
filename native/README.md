@@ -1,5 +1,13 @@
 # Experimental native encounter-entry observer
 
+> Public WIP checkpoint, 5 November 2026: use the
+> [development handoff](../docs/DEVELOPMENT_HANDOFF.md) and main README for current
+> status and exact-build UE4SS download/setup links. Some sections below retain
+> earlier test checkpoints and failed approaches. A guarded exit and one
+> untouched encounter recreation were later observed; repeated live recreation,
+> correct timeline placement, post-action rollback and full save states remain
+> unfinished. No runtime package should be treated as a stable release.
+
 **Development component, not installed by the desktop app.** This module has
 been verified across ordinary FFR encounters on the exact target build, including
 two updated captures on 29 October after correcting the loader constructor lookup.

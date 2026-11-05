@@ -1,5 +1,10 @@
 # UE4SS redistribution: revisit before installer or release work
 
+**5 November WIP publication:** UE4SS remains a separate upstream download. The
+README links the exact compatible official archive and its checksum; this
+repository adds no UE4SS binary bundle or automatic downloader/installer. The
+notes below remain relevant before changing that policy.
+
 Recorded 29 October 2026 at the user's request. **Bring this issue back to the
 user when revisiting automatic installation, bundling UE4SS or publishing a
 release.** This is a record of licensing findings, not legal clearance.

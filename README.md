@@ -1,104 +1,82 @@
-# FFR Helper
+# FFR Helper — work in progress
 
-An offline desktop practice tool for **Final Fantasy Resonance**, built for
-speedrunners and route planners. The stable alpha release is **0.1.0**; this
-development branch is **0.2.0.dev0** and adds native-runtime research tools.
+An unfinished practice save editor and runtime research project for
+**Final Fantasy Resonance**, intended for speedrunners and route planners.
+The current development source is **0.2.0.dev0**. Community contributors are
+welcome to continue the work; full battle restart and save states are unfinished.
 
-## What works in this version
+> **Experimental — not fully tested.** This software can crash or hang the game,
+> corrupt saves, or disrupt progression. Keep independent backups and use
+> disposable practice copies. Use it at your own risk. It is provided **AS IS**,
+> without warranty. To the extent permitted by applicable law, the authors and
+> contributors accept no liability for loss or damage arising from its use.
+> See the [MIT license](LICENSE) for the full warranty and liability terms.
 
-- Open and losslessly edit the game's encrypted save slots.
-- Set a character's **total EXP**, with a preview of the level and fixed base
-  stats reached after the next battle's credited EXP.
-- Set **total vision MRP for a specific vision/character pair**, with a mastery
-  tier forecast. Awakening is separate and remains unchanged.
-- Add, remove and change item quantities; select owned, compatible weapons,
-  armour and accessories.
-- Edit gil, successful escapes, battles won and successful steals.
-- Capture named, verified checkpoints; restore them to ordinary save slots.
-- Build and save route plans from credited EXP/MRP rewards and repeated
-  encounters, then apply the calculated totals to a working save.
-- Make automatic backups before replacing an existing save file. Replacing
-  live slots is blocked while a detected game process is running or an
-  AppContainer host prevents reliable process visibility.
-- Keep later character/item choices behind a chapter reveal limit (Chapter 3
-  by default). Owned items and visions are visible because they are already
-  present in the opened save.
+## Downloads
 
-The Windows executable is built locally. GitHub Actions also builds Windows,
-Linux and macOS packages; select a successful run in **Actions** and download
-the matching artifact. The application's UI/save editor is cross-platform.
-Actual game runtime/compatibility-layer support is a separate concern.
+- [Download the latest WIP source ZIP](https://github.com/simonMettler2000/FFR-Helper/archive/refs/heads/main.zip)
+  or clone this repository. This includes the latest research code.
+- [Legacy 0.1.0 alpha desktop downloads](https://github.com/simonMettler2000/FFR-Helper/releases/tag/v0.1.0-alpha.1)
+  are older Windows/Linux/macOS builds of the offline editor. They do **not**
+  include the latest native research. They are experimental, not a tested stable release.
+- [Official UE4SS releases](https://github.com/UE4SS-RE/RE-UE4SS/releases)
+  are provided by the upstream project. UE4SS is **not included** in this repository
+  or the helper's packages. The offline save editor does not require it.
 
-## Still experimental / unavailable
+For this exact native prototype, use the independently downloaded
+[UE4SS v3.0.1-1183-gcdbc0b66 ZIP](https://github.com/UE4SS-RE/RE-UE4SS/releases/download/experimental/UE4SS_v3.0.1-1183-gcdbc0b66.zip)
+from the [official experimental archive](https://github.com/UE4SS-RE/RE-UE4SS/releases/tag/experimental).
+That ZIP contains the upstream loader/DLL files. Its SHA-256 is:
 
-The development branch adds a **Runtime research** tab and a separate, read-only
-[native recorder](bridge/FFRHelperRuntime/README.md) for the existing Steam
-installation. It records observations, not restorable save states. See the
-[verified findings and remaining acceptance requirements](docs/NATIVE_STATE.md).
-The loader and recorder are opt-in; the app does not install a loader
-automatically. Read-only observations have been verified through one live
-overworld–battle–overworld cycle. Native restoration remains unimplemented.
+```text
+e4a47e23e2eeb8379c4fc388d1b1686f01c6c5930d84a2ee4a6a9574b274e681
+```
 
-An experimental [native entry capture](native/README.md) also deep-copies encounter
-setup and serializes progression before the native encounter call. It has passed
-an isolated Windows harness and a three-encounter live capture test, including
-escape and victory EXP/MRP changes. This verifies capture, not restoration. The desktop can
-connect its separate recorder folder and export verified `.ffropening` diagnostics;
-these archives remain non-restorable. Native capture requires a separate opt-in
-installation and never enables Saving anywhere.
+The native component accepts that exact loader build and English Steam game
+build **24250053 / Unreal 5.6.1**. A newer UE4SS or game version is not automatically
+compatible. Read [the exact-build setup and removal notes](bridge/ue4ss/README.md)
+before installing anything. Do not download replacement game DLLs from this project.
 
-Restart development now includes tested encounter reconstruction and a separate
-[opening-abort experiment](native/ABORT_TRIAL.md). The experiment can request the
-game's ForceEnd path once after a verified recovery write. It has passed dummy
-process tests; its ForceEnd operation has not been executed in FFR and it does
-not restore or restart battles. It is packaged separately and disabled by default.
+## What is implemented
 
-Further development/testing of **Saving anywhere** is deferred until battle
-restart, native save states and the other requested features are implemented,
-unless the user requests otherwise. The existing field-save adapter is unchanged.
+| Area | Current state |
+| --- | --- |
+| Offline save editor | Open/losslessly edit supported encrypted slots; export copies with backups before replacement. Tested on limited saves, not every game state. |
+| EXP / MRP routing | Set total character EXP and per-vision/per-character MRP; forecast progression and apply route totals. |
+| Inventory / equipment | Add/remove items, change quantities and compatible owned equipment; edit gil and selected player counters. |
+| Named checkpoints | Restore ordinary game-save progression/field position through normal loading. These are not emulator save states. |
+| Read-only runtime capture | Limited supervised Windows testing on the exact build; exports partial non-restorable observations. |
+| Untouched opening recreation | One supervised same-setup recreation reached a responsive menu. Party timeline portraits were misplaced; combat impact is unknown. |
+| Repeated untouched cycles | Guarded rearm, fresh shortcut edges and complete-party diagnostic gates pass isolated fixtures. Not verified repeatedly in FFR. |
+| Restart after taking actions | **Unfinished.** Resource/progression/effect rollback is not implemented or verified. |
+| Mid-battle / full-world save states | **Unavailable.** Scheduler, AI, object lifetimes, effects and complete RNG restoration remain unresolved. |
+| Saving anywhere | Deferred; a separate optional field-save experiment is not live verified. Do not treat it as an available supported feature. |
 
-The **Saving anywhere** checkbox uses an optional UE4SS field-save adapter.
-Its Lua logic and short-lived desktop lease are tested with a mocked engine;
-it has **not yet been verified in a live FFR session**. A compatible loader is
-required and is not installed automatically. See [the adapter instructions](bridge/README.md).
+The desktop save editor/UI is cross-platform. Native game hooks are a separate
+Windows x64 prototype; Linux/macOS game-hook compatibility is unverified.
+Later item/character choices have a chapter reveal limit (Chapter 3 by default);
+owned items and visions remain visible because the opened save already contains them.
 
-**Restarting a battle from its opening state is not implemented yet.** Its
-control is disabled and labelled accordingly. Complete mid-battle/process
-save states are also unavailable. Named checkpoints currently restore the
-game's ordinary saved field position and progression through normal loading.
-The separate development practice module now includes guarded opening-abort and
-detached engine-import experiments, plus read-only command-state diagnostics.
-Detached import has passed its supervised FFR test; the other experiments remain
-fixture-tested prerequisites. They do not provide restoration. See
-[native development status](docs/NATIVE_STATE.md).
+The latest offline checkpoint ran **272 Python tests: 271 passed, one skipped**.
+The current native runtime passed **128 isolated tests**, and its compiled
+three-cycle fixture was rerun with the stricter client party gate. Automated
+fixtures do not establish safe live restoration. No new live test accompanied
+the public WIP publication.
 
-The separate practice component also includes a detached playtime normalization
-comparison and read-only partial recovery/combat diagnostics, including optional
-capture-local vision and damage links. These are prerequisites with explicit
-coverage gaps. Offline `tools/compare_openings.py` compares retained components
-without operating the game; equal files cannot verify a restart or a full state.
-The ordinary native-load path has unreviewed delegate/platform effects and
-remains deliberately unavailable to runtime commands.
+## For developers
 
-The 29 October supervised test fixed the loader's missing constructor lookup and
-verified two updated read-only opening captures, including rewards and detached
-field/clock/cache/RNG metadata. A separate import-only test refused before any
-import: the first-menu counter counts turn beginnings, not completed commands.
-The subsequent read-only test verified fresh menu sampling, unchanged opening
-bytes, menu cancellation, one command and encounter-history reset. Surprise
-attacks demonstrated that automatic actions can bypass the decision-handler
-counter. At that checkpoint, opening abort and normalization remained disabled. Detached import now
-has a separate ordinary idle-menu policy: it can compare a temporary object
-after earlier turns, while rechecking the current context and unchanged live
-progression. Its supervised engine test passed with all 466,065 bytes matching,
-unchanged live/input bytes, released temporary pins and a responsive game.
-The next source enables a separate first-menu event-history guard for a controlled
-ForceEnd test. That first live request remained pending until a user command,
-then returned to the field without a result screen; immediate cleanup and
-progression equality remain unverified. The scoped-wait follow-up queued no
-request. The current source prepares the game's native command-abort API, with
-owned-object and empty-queue guards. No restoration has run. Normalization remains disabled.
-Battle restart and save-state restoration remain unfinished.
+Start with [DEVELOPMENT_HANDOFF.md](docs/DEVELOPMENT_HANDOFF.md) for the remaining
+work and [NATIVE_STATE.md](docs/NATIVE_STATE.md) for detailed historical evidence.
+The [native recorder](native/README.md) and separate
+[practice experiment](native/ENCOUNTER_RECREATION.md) have different capabilities.
+The practice DLL can mutate game state; it is opt-in and excluded from the
+ordinary observer. No native component is installed automatically by the app.
+
+Personal saves, raw live captures, process addresses, downloaded dependencies and
+local research/build outputs are intentionally excluded from Git. The public
+source contains synthetic fixtures and the reusable implementation. Some old
+research notes reference pre-anonymization commit hashes or private evidence
+paths; those are historical context, not files required to run the offline editor.
 
 ## Use
 
@@ -149,9 +127,14 @@ for every character or vision. Mastery forecasts display native tier indices.
 
 ## Development
 
-Before installer, UE4SS bundling or release work, revisit the
-[redistribution review and requested reminder](docs/REDISTRIBUTION.md).
-The complete UE4SS binary package has not been cleared for redistribution here.
+Contributions are welcome; see [the development handoff](docs/DEVELOPMENT_HANDOFF.md).
+Development is intermittent and no support or release timetable is promised.
+Automatic CI triggers are disabled; the included workflow is manual-only.
+The repository's Actions are disabled at publication to avoid starting hosted
+builds. Maintainers can deliberately enable and run them later.
+
+UE4SS is a separate upstream download, not bundled here. Before changing that
+policy, revisit the [redistribution notes](docs/REDISTRIBUTION.md).
 
 Python 3.11+ is required. The packaged app does not require a Python installation.
 

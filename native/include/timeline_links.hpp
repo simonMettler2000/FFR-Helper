@@ -14,6 +14,8 @@ struct TimelineUnitLink {
 struct TimelineLinks {
     std::vector<TimelineUnitLink> links;
     std::vector<std::int32_t> missing_units;
+    // Raw stored bytes, not getter execution or rendered faction evidence.
+    std::optional<std::vector<std::int32_t>> parameter_relation_bytes;
 };
 
 inline std::optional<TimelineLinks> capture_timeline_links(const Reader& read,std::uint64_t ui,
@@ -50,7 +52,15 @@ inline std::optional<TimelineLinks> capture_timeline_links(const Reader& read,st
         std::vector<std::int32_t> heads(static_cast<std::size_t>(bucket_count));
         if((!payload.empty() && !copy(rows.data,payload.data(),payload.size()))
             || (!heads.empty() && !copy(bucket_data?bucket_data:owner+0x60,heads.data(),heads.size()*4)))return {};
-        TimelineLinks result;std::set<std::int32_t> slots,keys,represented;std::set<std::uint64_t> models;
+        TimelineLinks result;
+        std::vector<std::int32_t> relation_bytes;
+        for(auto parameter:parameters) {
+            std::uint8_t raw{};
+            if(!value(parameter+0x3d8,raw))break;
+            relation_bytes.push_back(raw);
+        }
+        if(relation_bytes.size()==parameters.size())result.parameter_relation_bytes=std::move(relation_bytes);
+        std::set<std::int32_t> slots,keys,represented;std::set<std::uint64_t> models;
         auto index=[&](std::uint64_t pointer){const auto found=indices.find(pointer);return found==indices.end()?-1:found->second;};
         for(std::size_t bucket=0;bucket<heads.size();++bucket) {auto slot=heads[bucket];while(slot!=-1) {
             if(slot<0 || slot>=rows.count || !slots.insert(slot).second)return {};
@@ -92,7 +102,8 @@ inline std::string timeline_links_json(const std::optional<TimelineLinks>& obser
     if(!observation)return "null";
     std::string out="{\"coverage\":\"capture-local-ui-unit-parameter-links\",\"readOnly\":true,\"restorable\":false,"
         "\"atomicSnapshot\":false,\"relationVerified\":false,\"renderedAnchorsVerified\":false,\"unitsWithoutCurrentViewModel\":"
-        +integers(observation->missing_units)+",\"links\":[";
+        +integers(observation->missing_units)+",\"parameterRelationBytes\":"
+        +(observation->parameter_relation_bytes?integers(*observation->parameter_relation_bytes):"null")+",\"links\":[";
     for(const auto& link:observation->links) {
         if(out.back()!='[')out+=',';
         out+="{\"uniqueId\":"+std::to_string(link.unique_id)+",\"sourceUnit\":"+std::to_string(link.source_unit)

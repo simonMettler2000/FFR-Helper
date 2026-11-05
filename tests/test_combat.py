@@ -258,6 +258,16 @@ class CombatTransportTests(unittest.TestCase):
 
 
 class TimelineCombatTests(unittest.TestCase):
+    def test_optional_raw_relation_bytes_preserve_unknown_values_without_getter_claims(self):
+        data=sample_observation();data['timelineUnitLinks']=sample_timeline();links=data['timelineUnitLinks']
+        links['parameterRelationBytes']=[1,255];validate_observation(data)
+        self.assertFalse(links['relationVerified']);self.assertFalse(links['renderedAnchorsVerified'])
+        links['parameterRelationBytes']=None;validate_observation(data)
+        for value in [[True,2],[-1,2],[1,256],[1],[1,2,3],'1,2',{'0':1}]:
+            with self.subTest(value=value):
+                links['parameterRelationBytes']=value
+                with self.assertRaisesRegex(ValueError,'raw timeline parameter relation bytes'):validate_observation(data)
+
     def test_optional_links_roundtrip_without_native_pointers_or_relation_claims(self):
         data=sample_observation();validate_observation(data)
         data['timelineUnitLinks']=None;validate_observation(data)

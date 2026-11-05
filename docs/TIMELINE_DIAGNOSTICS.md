@@ -21,6 +21,21 @@ there is no retained recreated unit-VM/widget snapshot from the earlier trial.
 Do not force the widget's anchor or infer faction from timeline entry bytes 8/9;
 those bytes also carry timeline kind/current-next information.
 
+Further static inspection identifies the battle parameter's relation virtual as
+a leaf that returns its stored relation byte. The constructor defaults that byte
+to Friendlies and the battle-unit initialization routine assigns the supplied
+relation before parameter initialization. The optional diagnostic now copies the
+current parameters' raw relation bytes as well as their links. These are stored
+values, not executed getter results or rendered-widget evidence. Unknown byte
+values remain raw; failed reads remain unavailable.
+
+The normal `SetUnitParam` path also reaches the derived battle-parameter refresh
+through an inherited virtual callback. That refresh assigns the cached battle
+parameter and sends field notifications. It would therefore be premature to
+claim that the helper merely needs to call this refresh: equal-pointer early
+returns, object lifetime and actual notification/widget delivery still need the
+natural-versus-recreated sample.
+
 ## Prepared read-only diagnostic
 
 `ffr_helper.timeline_diagnostics.snapshot_timeline_links` accepts a bounded reader
@@ -39,9 +54,13 @@ The snapshot:
   review, without executing them or claiming the actual returned relation.
 - Rereads copied headers, arrays, rows and values to reject observed drift. The
   result explicitly remains non-atomic and non-restorable.
+- Copies current parameters' stored relation bytes without invoking their
+  virtuals. The native export uses `parameterRelationBytes`; absent is legacy
+  coverage, `null` is an unavailable read, and a list is one raw byte per current
+  captured unit. No faction or rendering claim is promoted by that list.
 
 Raw pointers and code samples are private research evidence and stay outside Git.
-Eleven synthetic memory tests cover normal sparse links, null/invalid/unreadable or
+Thirteen synthetic memory tests cover normal sparse links, null/invalid/unreadable or
 retired references, malformed hash chains, identity/ownership drift, unsupported
 virtual targets and failed/short reads. This diagnostic is not live verified.
 
@@ -57,6 +76,9 @@ The manual controller's `--capture-child-diagnostics` option requests one such
 read after child verification and saves its `.ffrcombat.json` plus receipt before
 another cycle. Missing/unavailable or inconsistent party links stop the run after
 retaining its evidence. A stale response or uncertain write is never resent.
+New reports also stop another cycle if their stored relation-byte list is
+unavailable or a current party member's byte differs from Friendlies. This is a
+diagnostic refusal, with evidence retained; it does not fix or certify the UI.
 The compiled mock-host fixture captures a verified child through this channel;
 actual FFR links and portrait layout still need the supervised comparison.
 

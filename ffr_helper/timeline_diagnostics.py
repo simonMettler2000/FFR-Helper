@@ -83,7 +83,8 @@ def snapshot_timeline_links(read, battle, ui, image_base, image_size, friend_ids
                 if unit_id in found_friends:raise TimelineSnapshotError('Repeated expected party unit')
                 found_friends.add(unit_id)
             item=dict(index=index,unitId=unit_id,expectedParty=expected_friend,
-                      privateActor=actor,privateParameter=parameter)
+                      privateActor=actor,privateParameter=parameter,
+                      storedRelationByte=number(parameter+0x3d8,'<B'))
             active.append(item);by_parameter[parameter]=item
         if found_friends!=set(friend_ids):
             raise TimelineSnapshotError('Current battle does not contain the expected party')

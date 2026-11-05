@@ -70,6 +70,7 @@ void run_abort_fixture(const std::filesystem::path& connection,const std::wstrin
         object(fake_actors[i]);object(fake_parameters[i]);
         put(fake_actors[i],0x838,reinterpret_cast<std::uint64_t>(fake_parameters[i].data()));
         put(fake_parameters[i],0xd0,std::int32_t{1001+static_cast<std::int32_t>(i)});
+        put(fake_parameters[i],0x3d8,std::uint8_t{1});
         put(fake_parameters[i],0x4dc,std::int32_t{i==0?1:0});
         actors.push_back(reinterpret_cast<std::uint64_t>(fake_actors[i].data()));
     }

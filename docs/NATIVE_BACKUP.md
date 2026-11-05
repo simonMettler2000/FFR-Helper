@@ -43,3 +43,15 @@ rows against independent progression/combat captures, then finish auditing the
 retry task's unit teardown, event subscribers and snapshot lifecycle. Keep normal
 load's external-effects gate closed and Saving anywhere deferred. No native
 retry, item-cost routine or restore is authorized merely by this documentation.
+
+The retry-task body inspected so far copies the retained backup, passes its
+inventory/flags/money to their respective native helpers, removes battle units
+and queues the original encounter. The copied unit array is not visibly applied
+in that body before its temporary copy is destroyed. Other lifecycle callbacks
+and retained map parameters still require investigation; the presence of the
+array must not be reported as proof of HP/MP or effect rollback.
+
+Battle-end callbacks also need separate review. A cooked visual-effect Blueprint
+subscribes to battle end and map-encounter begin, with audio fading and actor
+lifetime behavior. This is one identified consumer, not complete subscription
+coverage. Do not treat emitting those events as a bookkeeping-only operation.

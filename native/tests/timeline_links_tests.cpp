@@ -18,6 +18,7 @@ struct Fixture {
         m.put(owner+0x5c,std::int32_t{1});m.put(owner+0x60,std::int32_t{0});m.put(owner+0x70,std::int32_t{1});
         m.put(rows,Row{0,0,models[0],2,0});m.put(rows+24,Row{-999,0,1,-1,0});m.put(rows+48,Row{1,0,models[1],-1,0});
         for(unsigned i=0;i<2;++i) {m.put(parameters[i]+0xd0,std::int32_t{1001+static_cast<std::int32_t>(i)});
+            m.put(parameters[i]+0x3d8,static_cast<std::uint8_t>(i+1));
             m.put(models[i]+0x198,static_cast<std::int32_t>(i));m.put(models[i]+0x70,parameters[i]);m.put(models[i]+0x1a0,parameters[i]);}
     }
     std::optional<ffr::TimelineLinks> capture() {return ffr::capture_timeline_links([&](auto p,auto b,auto s){return m.read(p,b,s);},ui,parameters);}
@@ -27,8 +28,10 @@ int main() {
         {Fixture f;auto r=f.capture();CHECK(r && r->links.size()==2 && r->missing_units.empty());
             CHECK(r->links[0].cached_unit==0 && r->links[1].source_unit==1 && r->links[0].source_matches_cached);
             CHECK(!r->links[0].fallback_relation && r->links[0].cached_id==1001);
+            CHECK(r->parameter_relation_bytes==std::optional<std::vector<std::int32_t>>({{1,2}}));
             auto json=ffr::timeline_links_json(r);CHECK(json.find("\"renderedAnchorsVerified\":false")!=std::string::npos);
-            CHECK(json.find("\"current\"")!=std::string::npos && json.find("\"cachedUnit\":1")!=std::string::npos);}
+            CHECK(json.find("\"current\"")!=std::string::npos && json.find("\"cachedUnit\":1")!=std::string::npos);
+            CHECK(json.find("\"parameterRelationBytes\":[1,2]")!=std::string::npos);}
         for(unsigned mode=0;mode<5;++mode) {
             Fixture f;auto outside=f.m.object(0x560);f.m.put(outside+0xd0,std::int32_t{1001});
             if(mode==0)outside=0;
@@ -69,6 +72,16 @@ int main() {
                 if(!f.m.read(p,b,s))return false;
                 if(p==f.models[0]+0x70 && ++visits>1)std::memset(b,0,s);return true;
             },f.ui,f.parameters);CHECK(!r);}
+        {Fixture f;auto r=ffr::capture_timeline_links([&](auto p,void* b,std::size_t s) {
+                if(p==f.parameters[0]+0x3d8)return false;return f.m.read(p,b,s);
+            },f.ui,f.parameters);CHECK(r && !r->parameter_relation_bytes && r->links.size()==2);
+            CHECK(ffr::timeline_links_json(r).find("\"parameterRelationBytes\":null")!=std::string::npos);}
+        {Fixture f;unsigned visits{};auto r=ffr::capture_timeline_links([&](auto p,void* b,std::size_t s) {
+                if(!f.m.read(p,b,s))return false;
+                if(p==f.parameters[0]+0x3d8 && ++visits>1)std::memset(b,2,s);return true;
+            },f.ui,f.parameters);CHECK(!r);}
+        {Fixture f;f.m.put(f.parameters[0]+0x3d8,std::uint8_t{255});auto r=f.capture();
+            CHECK(r && r->parameter_relation_bytes->at(0)==255);}
         {Fixture f;CHECK(!ffr::capture_timeline_links([](auto,auto,auto)->bool {throw std::runtime_error("read");},f.ui,f.parameters));}
         std::cout<<"Read-only timeline links, sparse maps, stale/null references and drift guards passed\n";
     }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}

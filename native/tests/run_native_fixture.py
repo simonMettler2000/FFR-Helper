@@ -228,6 +228,7 @@ def main():
                     links=child_diagnostic['observation']['timelineUnitLinks']
                     assert child_diagnostic['sequence']==2 and links['unitsWithoutCurrentViewModel']==[]
                     assert [x['cachedUnit'] for x in links['links']]==[0,1]
+                    assert links['parameterRelationBytes']==[1,1]
                     for cycle in range(1,4):
                         cycled=json.loads((root/f'connection/cycle-{cycle}-status.json').read_text(encoding='utf8'))
                         result=validate_recreation(cycled['recreationTrial'])

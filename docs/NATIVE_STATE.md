@@ -30,18 +30,21 @@ See [the protocol notes](../native/ENCOUNTER_RECREATION.md#repeated-untouched-op
 Static UI inspection now ties portrait placement to `GetRelation` and the unit-VM
 parameter link. A bounded read-only diagnostic distinguishes current/null/stale
 links without invoking a getter; see [the investigation notes](TIMELINE_DIAGNOSTICS.md).
-The memory-reader diagnostic has eleven synthetic checks. The native combat
+The memory-reader diagnostic has thirteen synthetic checks. The native combat
 channel now includes optional capture-local timeline links, including a settled
 verified child menu. Its copy invokes no new engine API; the UI pointer comes
 from the existing guard probe. The controller can retain each child's combat
 report with `--capture-child-diagnostics` and refuses another cycle on missing or
-stale party links, read failure or expiry. A real compiled-DLL fixture captures
+stale party links, read failure or expiry. New reports also retain current
+parameters' raw relation bytes without invoking a getter; an unavailable read or
+unexpected party byte stops before rearm. Neither links nor raw bytes certify
+rendered portrait placement. A real compiled-DLL fixture captures
 the child and then completes the remaining cycles without another import call.
 There is still no recreated **FFR** link/widget sample.
 
-The full Python suite ran 224 tests (223 passed, one skipped). All 128 native
-regression cases passed, followed by seven focused checks after final hash-bucket
-validation. A [partial backup reader](NATIVE_BACKUP.md) also preserves duplicate
+The full Python suite ran 230 tests (229 passed, one skipped). All 128 native
+regression cases passed after rebuilding every fixture/profile for the current
+test host. A [partial backup reader](NATIVE_BACKUP.md) also preserves duplicate
 unit rows and compares retained resources without applying them; seven synthetic
 checks pass. The two formerly unknown backup floats are depth-of-field settings,
 not RNG or clock. Timeline correctness, post-action rollback and full save states

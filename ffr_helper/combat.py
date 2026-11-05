@@ -31,11 +31,15 @@ def _hex(value, size):
 def validate_timeline_links(data,units):
     fields={'coverage','readOnly','restorable','atomicSnapshot','relationVerified','renderedAnchorsVerified',
             'unitsWithoutCurrentViewModel','links'}
-    if (not isinstance(data,dict) or set(data)!=fields
+    if (not isinstance(data,dict) or set(data)-{'parameterRelationBytes'}!=fields
             or data.get('coverage')!='capture-local-ui-unit-parameter-links' or data.get('readOnly') is not True
             or any(data.get(k) is not False for k in ['restorable','atomicSnapshot','relationVerified','renderedAnchorsVerified'])
             or not isinstance(data.get('links'),list) or len(data['links'])>256):
         raise ValueError('Invalid optional timeline unit-view-model links.')
+    relation_bytes=data.get('parameterRelationBytes')
+    if relation_bytes is not None and (not isinstance(relation_bytes,list) or len(relation_bytes)!=len(units)
+            or any(not _integer(value,0,255) for value in relation_bytes)):
+        raise ValueError('Invalid raw timeline parameter relation bytes.')
     seen=set();represented=set();count=len(units)
     states={'current','null','invalid-object','outside-current','unsupported-object-header','unreadable'}
     for link in data['links']:

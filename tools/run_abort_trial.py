@@ -93,6 +93,11 @@ def main():
                     if (not party_indices or party_indices.intersection(links['unitsWithoutCurrentViewModel'])
                             or any(link['cachedUnit'] in party_indices and not link['sourceMatchesCached'] for link in links['links'])):
                         raise RuntimeError('Child party view-model links are missing or stale; evidence saved and no further cycle will be requested.')
+                    relation_bytes=links.get('parameterRelationBytes')
+                    if 'parameterRelationBytes' in links and relation_bytes is None:
+                        raise RuntimeError('Child stored relation bytes are unavailable; evidence saved and no further cycle will be requested.')
+                    if relation_bytes is not None and any(relation_bytes[i]!=1 for i in party_indices):
+                        raise RuntimeError('Child stored party relation bytes differ from Friendlies; evidence saved and no further cycle will be requested. Getter/rendering behavior is unverified.')
                     print('Read-only child combat and timeline links saved. Actual portrait placement still needs visual confirmation.',flush=True)
                     child_diagnostic=None
                     if cycle_number>=args.cycles:return

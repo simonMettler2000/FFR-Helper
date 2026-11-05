@@ -27,6 +27,7 @@ class TimelineDiagnosticsTests(unittest.TestCase):
         for i,(actor,parameter,vm) in enumerate(zip(self.actors,self.parameters,self.models)):
             self.put(actor+0x838,'<Q',parameter);self.put(parameter+0x360,'<Q',actor)
             self.put(parameter+0xd0,'<i',[1001,1002,11][i])
+            self.put(parameter+0x3d8,'<B',[1,1,2][i])
             self.put(vm+0x198,'<i',i);self.put(vm+0x1a0,'<Q',parameter)
             self.put(vm+0x70,'<Q',parameter)
         # One unoccupied sparse slot contains garbage and is not interpreted.
@@ -56,11 +57,28 @@ class TimelineDiagnosticsTests(unittest.TestCase):
         result=self.snapshot();self.assertTrue(result['readOnly']);self.assertFalse(result['gameCalls'])
         self.assertEqual(result['unitsWithoutCurrentViewModel'],[])
         self.assertEqual([x['expectedParty'] for x in result['units']],[True,True,False])
+        self.assertEqual([x['storedRelationByte'] for x in result['units']],[1,1,2])
         self.assertEqual([x['currentUnitIndex'] for x in result['unitViewModels']],[0,1,2])
         self.assertTrue(all(x['cachedParameterState']=='current' for x in result['unitViewModels']))
         self.assertTrue(all(x['actualRelationVerified'] is False for x in result['unitViewModels']))
         self.assertFalse(result['renderedAnchorsVerified']);self.assertFalse(result['atomicSnapshot'])
         self.assertEqual(result['unitViewModels'][0]['privateRelationGetterCode'],self.read(self.target,16).hex())
+
+    def test_relation_bytes_are_raw_and_do_not_invent_getter_or_widget_verification(self):
+        self.put(self.parameters[0]+0x3d8,'<B',255)
+        result=self.snapshot();self.assertEqual(result['units'][0]['storedRelationByte'],255)
+        self.assertFalse(result['relationVerified']);self.assertFalse(result['renderedAnchorsVerified'])
+
+    def test_relation_byte_drift_is_not_published_as_a_stable_sample(self):
+        visits=0
+        def drift(address,size):
+            nonlocal visits
+            raw=self.read(address,size)
+            if address==self.parameters[0]+0x3d8:
+                visits+=1
+                if visits>1:return b'\x02'
+            return raw
+        with self.assertRaisesRegex(TimelineSnapshotError,'changed during verification'):self.snapshot(drift)
 
     def test_null_and_invalid_cached_links_report_only_the_verified_fallback(self):
         for pointer,state in [(0,'null'),(0x20012000,'invalid-object')]:

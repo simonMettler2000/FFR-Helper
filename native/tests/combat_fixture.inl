@@ -14,6 +14,7 @@ void run_combat_fixture(const std::filesystem::path& connection,const std::wstri
         put(fake_actors[i],0x838,reinterpret_cast<std::uint64_t>(fake_parameters[i].data()));
         put(fake_parameters[i],0x360,reinterpret_cast<std::uint64_t>(fake_actors[i].data()));
         put(fake_parameters[i],0xd0,std::int32_t{1001+static_cast<std::int32_t>(i)});
+        put(fake_parameters[i],0x3d8,std::uint8_t{1});
         put(fake_parameters[i],0x550,static_cast<std::int32_t>(i));
         put(fake_parameters[i],0x10c,std::int32_t{150});put(fake_parameters[i],0x268,std::int32_t{25});
         put(fake_parameters[i],0x4dc,std::int32_t{after_action?2:0});

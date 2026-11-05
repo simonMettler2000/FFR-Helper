@@ -116,7 +116,10 @@ For the next separately reviewed supervised run, add
 `--capture-child-diagnostics --cycles 2`. This retains an independent read-only
 combat/timeline snapshot at each verified child before accepting another deliberate
 press. Missing/stale party view-model links, unavailable evidence or read expiry
-stop the controller; no read or gameplay command is resent. A successful link
+stop the controller; no read or gameplay command is resent. New reports include
+raw stored parameter relation bytes; unavailable bytes or a party byte differing
+from Friendlies also stop before rearm, after retaining the report. These values
+are copied without executing the relation getter. A successful link
 snapshot does not verify the actual rendered portraits, so visual confirmation
 is still required before the second press. This option and channel extension are
 also uninstalled and have not been tested in FFR.

@@ -67,6 +67,9 @@ class RecreationControllerTests(unittest.TestCase):
                 frame=test_combat.sample_status('a'*32)
                 observation=test_combat.sample_observation()
                 observation['timelineUnitLinks']=None if mode=='diagnostics-unavailable' else test_combat.sample_timeline()
+                if mode in ['diagnostics-relations','diagnostics-relation-wrong','diagnostics-relation-missing']:
+                    observation['timelineUnitLinks']['parameterRelationBytes']=(None if mode=='diagnostics-relation-missing'
+                        else [1,2 if mode=='diagnostics-relation-wrong' else 1])
                 if mode=='diagnostics-stale':
                     observation['timelineUnitLinks']['unitsWithoutCurrentViewModel']=[0]
                     observation['timelineUnitLinks']['links'][0].update(cachedUnit=-1,sourceMatchesCached=False,
@@ -90,7 +93,7 @@ class RecreationControllerTests(unittest.TestCase):
                 self.assertTrue((out/'abort-receipt.json').exists())
                 self.assertTrue((out/'recreated-opening.ffropening').exists())
                 self.assertFalse(json.loads((out/'recreation-comparison.json').read_text())['battleRestartImplemented'])
-            if mode in ['diagnostics','diagnostics-unavailable','diagnostics-stale']:
+            if mode.startswith('diagnostics') and mode!='diagnostics-expired':
                 self.assertTrue((out/'recreated-menu.ffrcombat.json').exists())
                 self.assertTrue((out/'child-diagnostic-receipt.json').exists())
             if mode=='diagnostics-expired':self.assertFalse((out/'recreated-menu.ffrcombat.json').exists())
@@ -120,6 +123,17 @@ class RecreationControllerTests(unittest.TestCase):
     def test_missing_party_view_model_retains_evidence_and_refuses_another_cycle(self):
         events,error=self.run_trial('diagnostics-stale');self.assertIn('links are missing or stale',error)
         self.assertEqual(events.count('exit-commit'),1);self.assertEqual(events.count('read-child'),1)
+
+    def test_raw_party_relation_diagnostic_passes_without_claiming_rendered_layout(self):
+        events,error=self.run_trial('diagnostics-relations');self.assertIsNone(error)
+        self.assertEqual(events.count('exit-commit'),1);self.assertEqual(events.count('read-child'),1)
+
+    def test_wrong_or_missing_raw_party_relations_stop_after_preserving_evidence(self):
+        for mode,reason in [('diagnostics-relation-wrong','differ from Friendlies'),
+                            ('diagnostics-relation-missing','relation bytes are unavailable')]:
+            with self.subTest(mode=mode):
+                events,error=self.run_trial(mode);self.assertIn(reason,error)
+                self.assertEqual(events.count('exit-commit'),1);self.assertEqual(events.count('read-child'),1)
 
     def test_startup_frame_discards_intent_then_accepts_a_new_press_after_readiness(self):
         events,error=self.run_trial('startup');self.assertIsNone(error)
@@ -198,6 +212,7 @@ class RecreationControllerTests(unittest.TestCase):
                 if self.polls==1:return None
                 frame=test_combat.sample_status('a'*32);observation=test_combat.sample_observation()
                 observation['timelineUnitLinks']=test_combat.sample_timeline()
+                observation['timelineUnitLinks']['parameterRelationBytes']=([1,2] if mode=='diagnostics-wrong-relation' else [1,1])
                 frame.update(request='b'*32,sequence=active[0],openingHash=source.metadata['sha256'],captureNumber=1,
                              captureTime=int(time.time()),phase='captured',observation=observation)
                 return frame
@@ -206,7 +221,7 @@ class RecreationControllerTests(unittest.TestCase):
             out=Path(folder)/'out'
             argv=['trial',str(Path(folder)/'FFRHelperBattlePractice'),'--output',str(out),
                   '--abort-at-opening','--recreate-after-abort','--cycles','2']
-            if mode=='diagnostics':argv.append('--capture-child-diagnostics')
+            if mode.startswith('diagnostics'):argv.append('--capture-child-diagnostics')
             with patch.object(run_abort_trial,'NativeEntryRecorder',Recorder),patch.object(run_abort_trial,'AbortTrialBridge',Bridge),\
                  patch.object(run_abort_trial,'RecreationTrialBridge',Recreation),patch.object(run_abort_trial,'RecreationRearmBridge',Rearm),\
                  patch.object(run_abort_trial,'WindowsPracticeShortcut',Shortcut),patch.object(run_abort_trial.sys,'argv',argv),\
@@ -224,6 +239,10 @@ class RecreationControllerTests(unittest.TestCase):
             if mode=='diagnostics':
                 for cycle in ['cycle-0001','cycle-0002']:
                     self.assertTrue((out/cycle/'recreated-menu.ffrcombat.json').exists())
+            if mode=='diagnostics-wrong-relation':
+                self.assertTrue((out/'cycle-0001/recreated-menu.ffrcombat.json').exists())
+                self.assertFalse((out/'cycle-0001/rearm-request.json').exists())
+                self.assertFalse((out/'cycle-0002').exists())
         self.assertEqual(closed,[True]);return events,error
 
     def test_two_cycles_require_new_released_edge_and_preserve_separate_evidence(self):
@@ -242,6 +261,11 @@ class RecreationControllerTests(unittest.TestCase):
         self.assertLess(events.index(('read-child',2)),events.index(('rearm-prepare',2)))
         self.assertEqual(events[-1],('read-child',3))
         self.assertEqual(sum(name=='exit-commit' for name,_ in events),2)
+
+    def test_wrong_party_relation_refuses_rearm_even_with_a_fresh_second_shortcut(self):
+        events,error=self.run_repeated_trial('diagnostics-wrong-relation');self.assertIn('differ from Friendlies',error)
+        self.assertEqual(sum(name=='exit-commit' for name,_ in events),1)
+        self.assertFalse(any(name.startswith('rearm') for name,_ in events))
 
     def test_focus_loss_during_rearm_does_not_start_a_second_abort(self):
         events,error=self.run_repeated_trial('focus-loss');self.assertIn('foreground/child changed',error)

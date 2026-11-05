@@ -152,6 +152,13 @@ cause**. The new lookup-key, turn-membership and entry/widget comparisons are
 prepared to check it. The two entry-kind bytes must not be interpreted as faction.
 No entry-update, assignment or UI-reset function has been invoked as a repair.
 
+The portrait widget's public `SetViewModel` path also stores its argument in a
+persistent frame and uses `DelayUntilNextTick` before its named entry setter.
+A menu sampled before that delivery may have an unavailable/older source without
+proving a permanent cache fault. The reader does not inspect pending latent work.
+Let the user keep the settled menu focused before comparing; never force a tick,
+select an action or invoke a setter to make the evidence look complete.
+
 `ffr_helper.timeline_findings.analyze_timeline_widgets` reduces a retained pair
 of link/widget reports to address-free findings. It keeps registry/cache,
 entry/portrait, raw-relation/widget and widget/Slate disagreements separate.
@@ -165,8 +172,8 @@ the raw evidence; the extended collector remains untested in FFR.
 
 ## Next supervised comparison
 
-Capture the same data at a natural untouched ordinary first menu and immediately
-after one recreation. Retain the independently exported opening for each sample,
+Capture the same data at a natural untouched ordinary first menu and at the first
+settled menu after one recreation. Retain the independently exported opening for each sample,
 not an earlier chapter's party list. Compare each VM's cached parameter against
 the actual current actors, then inspect the rendered portraits/anchors and MVVM
 binding state. If all parameter links remain current, inspect the relation virtual

@@ -74,6 +74,22 @@ void run_abort_fixture(const std::filesystem::path& connection,const std::wstrin
         actors.push_back(reinterpret_cast<std::uint64_t>(fake_actors[i].data()));
     }
     put(fake_units,0x28,array(actors));put(fake_units,0x38,actors[0]);
+    // Read-only child diagnostics share the same current actor/parameter graph.
+    object(fake_scheduler);put(fake_units,0x40,reinterpret_cast<std::uint64_t>(fake_scheduler.data()));
+    put(fake_scheduler,0x28,reinterpret_cast<std::uint64_t>(fake_units.data()));
+    std::array<unsigned char,0x90> timeline_owner{};
+    std::array<std::array<unsigned char,0x1c0>,2> timeline_models{};
+    std::array<std::array<std::uint64_t,3>,2> timeline_rows{};
+    object(timeline_owner);put(fake_ui,0x78,reinterpret_cast<std::uint64_t>(timeline_owner.data()));
+    for(unsigned i=0;i<2;++i) {
+        put(fake_parameters[i],0x360,actors[i]);object(timeline_models[i]);
+        put(timeline_models[i],0x198,static_cast<std::int32_t>(i));
+        const auto parameter=reinterpret_cast<std::uint64_t>(fake_parameters[i].data());
+        put(timeline_models[i],0x70,parameter);put(timeline_models[i],0x1a0,parameter);
+        timeline_rows[i]={i,reinterpret_cast<std::uint64_t>(timeline_models[i].data()),i==0?1ull:0xffffffffull};
+    }
+    put(timeline_owner,0x28,ffr::RawArray{reinterpret_cast<std::uint64_t>(timeline_rows.data()),2,2});
+    put(timeline_owner,0x60,std::int32_t{0});put(timeline_owner,0x70,std::int32_t{1});
     const bool archive_blocked=mode==L"abort-recreate-archive-conflict" || mode==L"abort-recreate-archive-directory";
     const bool rearm_fixture=mode==L"abort-recreate-repeat" || mode.starts_with(L"abort-recreate-rearm-") || archive_blocked;
     const auto session=std::string(32,'a'),nonce=std::string(32,'b');
@@ -215,6 +231,18 @@ void run_abort_fixture(const std::filesystem::path& connection,const std::wstrin
                 const auto original_manifest=read(history/L"generation-1"/L"manifest.json");
                 CHECK(!original_manifest.empty());
                 write(connection/L"cycle-1-status.json",read(connection/L"abort-status.json"));
+                if(mode==L"abort-recreate-repeat") {
+                    // This read used to be rejected solely because the earlier
+                    // exit remained manager-cleared after a verified child.
+                    write(connection/L"combat-request.txt","FFR_HELPER_COMBAT_OBSERVATION_V1\n"+session+"\n"+std::string(32,'9')+"\n"
+                        +std::to_string(now()+8)+"\n2\n"+hash+"\n");
+                    wait([&] {const auto s=read(connection/L"combat-report.json");return s.find("\"request\":\""+std::string(32,'9')+"\"")!=std::string::npos
+                        && s.find("\"phase\":\"captured\"")!=std::string::npos;});
+                    const auto diagnostic=read(connection/L"combat-report.json");
+                    CHECK(diagnostic.find("\"cachedUnit\":0")!=std::string::npos && diagnostic.find("\"renderedAnchorsVerified\":false")!=std::string::npos);
+                    CHECK(calls==2 && abort_calls==1 && vm_end_calls==1 && finish_check_calls==1 && clone_loads==0);
+                    write(connection/L"recreated-child-combat.json",diagnostic);
+                }
                 for(unsigned cycle=2;cycle<=3;++cycle) {
                     const auto rearm_nonce=std::string(32,cycle==2?'d':'1');
                     const auto deadline=now()+8;

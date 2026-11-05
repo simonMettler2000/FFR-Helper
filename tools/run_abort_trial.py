@@ -10,6 +10,7 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from ffr_helper.abort_trial import AbortTrialBridge,compare_progression
 from ffr_helper.recreation_trial import RecreationTrialBridge,validate_source
 from ffr_helper.recreation_rearm import RecreationRearmBridge
+from ffr_helper.combat import CombatObservationBridge,export_combat
 from ffr_helper.opening import export_opening
 from ffr_helper.runtime import NativeEntryRecorder
 from ffr_helper.storage import atomic_write
@@ -25,6 +26,7 @@ def main():
     parser.add_argument('--cycles',type=int,default=1,help='Maximum deliberate untouched-opening cycles; each needs a new released shortcut (default 1)')
     parser.add_argument('--abort-at-opening',action='store_true',help='Explicitly request one abort at the first ordinary command menu')
     parser.add_argument('--recreate-after-abort',action='store_true',help='Separate experiment: recreate the same setup from the verified unchanged current field; requires manual abort')
+    parser.add_argument('--capture-child-diagnostics',action='store_true',help='Read and retain the recreated menu combat/timeline links before another cycle; requires recreation')
     parser.add_argument('--trigger',choices=['manual','automatic'],default='manual',
                         help='Default: deliberate foreground controller/keyboard shortcut; automatic is for explicitly selected diagnostics')
     parser.add_argument('--legacy-controller',type=Path,help='Locally calibrated legacy-controller .ffrinput.json binding')
@@ -39,6 +41,8 @@ def main():
         parser.error('--recreate-after-abort requires --abort-at-opening and --trigger manual')
     if args.cycles>1 and not args.recreate_after_abort:
         parser.error('--cycles greater than 1 requires explicit manual --recreate-after-abort')
+    if args.capture_child_diagnostics and not args.recreate_after_abort:
+        parser.error('--capture-child-diagnostics requires --recreate-after-abort')
     args.output.mkdir(parents=True,exist_ok=False)
     cycle_number=1;cycle_output=args.output if args.cycles==1 else args.output/'cycle-0001'
     if cycle_output!=args.output:cycle_output.mkdir(exist_ok=False)
@@ -51,7 +55,7 @@ def main():
                   else WindowsPracticeShortcut(executable))
     deadline=time.monotonic()+args.duration;pending=False;prepared=False;committed=False;last=None;recovery=None
     target_sequence=None;opening=None;exit_recorded=False;recreation_committed=False;child_requested=False
-    rearm=None;child=None
+    rearm=None;child=None;child_diagnostic=None
     try:
         print('Opening-abort trial: '+('explicit abort requested' if args.abort_at_opening else 'probe only; no abort will be sent'),flush=True)
         if shortcut:
@@ -61,12 +65,40 @@ def main():
             if tick>=next_heartbeat:
                 recorder.heartbeat();next_heartbeat=tick+0.25
             pressed=shortcut.poll() if shortcut else None
+            if child_diagnostic is not None and time.time()>child_diagnostic.request['deadline']+1:
+                raise RuntimeError('Child diagnostic expired; no read or gameplay request will be resent.')
             state=bridge.status()
             if state is None:
                 intent.clear()
                 if pressed:print('Shortcut discarded: no fresh matching runtime status. Release and press again at a supported menu.',flush=True)
                 time.sleep(0.02 if shortcut else 0.25);continue
             guard=state['guard']
+            if child_diagnostic is not None:
+                intent.clear()
+                if pressed:print('Shortcut discarded while retaining the child diagnostic. Release and press again when ready.',flush=True)
+                diagnostic=child_diagnostic.receipt()
+                if diagnostic is None:
+                    if time.time()>child_diagnostic.request['deadline']+1:
+                        raise RuntimeError('Child diagnostic expired; no read or gameplay request will be resent.')
+                else:
+                    atomic_write(cycle_output/'child-diagnostic-receipt.json',json.dumps(diagnostic,indent=2).encode('utf8'))
+                    if diagnostic['phase']!='captured':
+                        raise RuntimeError('Child diagnostic was refused or unavailable: '+diagnostic['message'])
+                    export_combat(cycle_output/'recreated-menu.ffrcombat.json',diagnostic)
+                    links=diagnostic['observation'].get('timelineUnitLinks')
+                    if links is None:
+                        raise RuntimeError('Child combat captured but timeline links are unavailable; no further cycle will be requested.')
+                    party_ids=set(child.metadata['entry']['friendliesUnitIdList'])
+                    party_indices={i for i,unit in enumerate(diagnostic['observation']['units']) if unit['raw']['unitId'] in party_ids}
+                    if (not party_indices or party_indices.intersection(links['unitsWithoutCurrentViewModel'])
+                            or any(link['cachedUnit'] in party_indices and not link['sourceMatchesCached'] for link in links['links'])):
+                        raise RuntimeError('Child party view-model links are missing or stale; evidence saved and no further cycle will be requested.')
+                    print('Read-only child combat and timeline links saved. Actual portrait placement still needs visual confirmation.',flush=True)
+                    child_diagnostic=None
+                    if cycle_number>=args.cycles:return
+                    rearm=RecreationRearmBridge(recreation)
+                    print(f'Cycle {cycle_number}/{args.cycles} evidence saved. Waiting for release and a NEW foreground shortcut at this untouched child menu.',flush=True)
+                time.sleep(0.02);continue
             if rearm is not None:
                 # Keep the same input sampler: a held shortcut is never a new
                 # edge. Rearming only resets helper bookkeeping, not gameplay.
@@ -203,6 +235,10 @@ def main():
                         atomic_write(cycle_output/'recreation-comparison.json',json.dumps(comparison,indent=2).encode('utf8'))
                         print(json.dumps(comparison,indent=2),flush=True)
                         print('Current-field recreation observed. Confirm the actual new command menu; post-action rollback and full battle restart remain incomplete.',flush=True)
+                        if args.capture_child_diagnostics:
+                            child_diagnostic=CombatObservationBridge(recorder);child_diagnostic.send(report)
+                            print('One read-only child diagnostic requested; no further gameplay cycle until its evidence is retained.',flush=True)
+                            time.sleep(0.02);continue
                         if cycle_number>=args.cycles:
                             return
                         intent.clear();rearm=RecreationRearmBridge(recreation)

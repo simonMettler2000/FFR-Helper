@@ -12,6 +12,7 @@ from ffr_helper.abort_trial import AbortTrialBridge
 from ffr_helper.practice_input import ShortcutEdge
 from test_opening_comparison import full_capture
 from test_map_cache import sample_cache
+import test_combat
 from tools import run_abort_trial
 
 
@@ -55,13 +56,33 @@ class RecreationControllerTests(unittest.TestCase):
             def compare_child(self,state,opening):
                 if opening.metadata['sequence']!=2:raise AssertionError('Old report reused')
                 events.append('compare-child');return dict(currentFieldRecreationVerified=True,battleRestartImplemented=False)
+        class Diagnostic:
+            def __init__(self,recorder):self.request=None;self.polls=0
+            def send(self,report):
+                if report.get('child') is not True:raise AssertionError('Diagnostic did not use the new child')
+                self.request={'deadline':now-2 if mode=='diagnostics-expired' else now+8};events.append('read-child')
+            def receipt(self):
+                self.polls+=1
+                if self.polls==1:return None
+                frame=test_combat.sample_status('a'*32)
+                observation=test_combat.sample_observation()
+                observation['timelineUnitLinks']=None if mode=='diagnostics-unavailable' else test_combat.sample_timeline()
+                if mode=='diagnostics-stale':
+                    observation['timelineUnitLinks']['unitsWithoutCurrentViewModel']=[0]
+                    observation['timelineUnitLinks']['links'][0].update(cachedUnit=-1,sourceMatchesCached=False,
+                        cachedParameterState='null',cachedUnitId=None,fallbackRelation=0)
+                frame.update(request='b'*32,sequence=2,openingHash=source.metadata['sha256'],captureNumber=1,
+                             captureTime=int(time.time()),phase='captured',observation=observation)
+                return frame
         error=None
         with tempfile.TemporaryDirectory() as folder:
             out=Path(folder)/'out'
             argv=['run_abort_trial.py',str(Path(folder)/'FFRHelperBattlePractice'),'--output',str(out),
                   '--abort-at-opening','--recreate-after-abort']
+            if mode.startswith('diagnostics'):argv.append('--capture-child-diagnostics')
             with patch.object(run_abort_trial,'NativeEntryRecorder',Recorder),patch.object(run_abort_trial,'AbortTrialBridge',Bridge),\
                  patch.object(run_abort_trial,'RecreationTrialBridge',Recreation),patch.object(run_abort_trial,'WindowsPracticeShortcut',Shortcut),\
+                 patch.object(run_abort_trial,'CombatObservationBridge',Diagnostic),\
                  patch.object(run_abort_trial.sys,'argv',argv),patch.object(run_abort_trial.time,'sleep'),redirect_stdout(io.StringIO()):
                 try:run_abort_trial.main()
                 except RuntimeError as exc:error=str(exc)
@@ -69,6 +90,10 @@ class RecreationControllerTests(unittest.TestCase):
                 self.assertTrue((out/'abort-receipt.json').exists())
                 self.assertTrue((out/'recreated-opening.ffropening').exists())
                 self.assertFalse(json.loads((out/'recreation-comparison.json').read_text())['battleRestartImplemented'])
+            if mode in ['diagnostics','diagnostics-unavailable','diagnostics-stale']:
+                self.assertTrue((out/'recreated-menu.ffrcombat.json').exists())
+                self.assertTrue((out/'child-diagnostic-receipt.json').exists())
+            if mode=='diagnostics-expired':self.assertFalse((out/'recreated-menu.ffrcombat.json').exists())
         self.assertEqual(closed,[True]);return events,error
 
     def test_exit_comparison_precedes_single_recreation_then_fresh_child_export(self):
@@ -78,6 +103,23 @@ class RecreationControllerTests(unittest.TestCase):
 
     def test_unavailable_recreation_refuses_before_any_exit(self):
         events,error=self.run_trial('unavailable');self.assertEqual(events,[]);self.assertIn('no abort request',error)
+
+    def test_child_diagnostic_is_read_once_and_saved_before_disconnect(self):
+        events,error=self.run_trial('diagnostics');self.assertIsNone(error)
+        self.assertEqual(events[-2:],['compare-child','read-child'])
+        self.assertEqual(events.count('exit-commit'),1);self.assertEqual(events.count('read-child'),1)
+
+    def test_missing_child_timeline_stops_after_retaining_the_partial_evidence(self):
+        events,error=self.run_trial('diagnostics-unavailable');self.assertIn('timeline links are unavailable',error)
+        self.assertEqual(events.count('exit-commit'),1);self.assertEqual(events.count('read-child'),1)
+
+    def test_expired_child_read_is_not_resent_and_never_starts_another_exit(self):
+        events,error=self.run_trial('diagnostics-expired');self.assertIn('diagnostic expired',error)
+        self.assertEqual(events.count('exit-commit'),1);self.assertEqual(events.count('read-child'),1)
+
+    def test_missing_party_view_model_retains_evidence_and_refuses_another_cycle(self):
+        events,error=self.run_trial('diagnostics-stale');self.assertIn('links are missing or stale',error)
+        self.assertEqual(events.count('exit-commit'),1);self.assertEqual(events.count('read-child'),1)
 
     def test_startup_frame_discards_intent_then_accepts_a_new_press_after_readiness(self):
         events,error=self.run_trial('startup');self.assertIsNone(error)
@@ -148,24 +190,40 @@ class RecreationControllerTests(unittest.TestCase):
                 self.request={'nonce':'d'*32};events.append(('rearm-prepare',active[0]))
             def accepted(self,status):
                 events.append(('rearm-accepted',active[0]));phase[0]='idle';recreated[0]='idle';return True
+        class Diagnostic:
+            def __init__(self,recorder):self.request=None;self.polls=0
+            def send(self,report):self.request={'deadline':int(time.time())+8};events.append(('read-child',active[0]))
+            def receipt(self):
+                self.polls+=1
+                if self.polls==1:return None
+                frame=test_combat.sample_status('a'*32);observation=test_combat.sample_observation()
+                observation['timelineUnitLinks']=test_combat.sample_timeline()
+                frame.update(request='b'*32,sequence=active[0],openingHash=source.metadata['sha256'],captureNumber=1,
+                             captureTime=int(time.time()),phase='captured',observation=observation)
+                return frame
         error=None
         with tempfile.TemporaryDirectory() as folder:
             out=Path(folder)/'out'
             argv=['trial',str(Path(folder)/'FFRHelperBattlePractice'),'--output',str(out),
                   '--abort-at-opening','--recreate-after-abort','--cycles','2']
+            if mode=='diagnostics':argv.append('--capture-child-diagnostics')
             with patch.object(run_abort_trial,'NativeEntryRecorder',Recorder),patch.object(run_abort_trial,'AbortTrialBridge',Bridge),\
                  patch.object(run_abort_trial,'RecreationTrialBridge',Recreation),patch.object(run_abort_trial,'RecreationRearmBridge',Rearm),\
                  patch.object(run_abort_trial,'WindowsPracticeShortcut',Shortcut),patch.object(run_abort_trial.sys,'argv',argv),\
+                 patch.object(run_abort_trial,'CombatObservationBridge',Diagnostic),\
                  patch.object(run_abort_trial.time,'sleep'),redirect_stdout(io.StringIO()):
                 try:run_abort_trial.main()
                 except (RuntimeError,TimeoutError) as exc:error=str(exc)
-            if mode=='good':
+            if mode in ['good','diagnostics']:
                 for cycle in ['cycle-0001','cycle-0002']:
                     self.assertTrue((out/cycle/'recreation-receipt.json').exists())
                     self.assertTrue((out/cycle/'opening.ffropening').exists())
                 self.assertEqual((out/'cycle-0001/cycle-manifest.json').read_bytes(),b'fixture-manifest')
                 self.assertTrue((out/'cycle-0001/rearm-receipt.json').exists())
                 self.assertFalse((out/'cycle-0002/rearm-request.json').exists())
+            if mode=='diagnostics':
+                for cycle in ['cycle-0001','cycle-0002']:
+                    self.assertTrue((out/cycle/'recreated-menu.ffrcombat.json').exists())
         self.assertEqual(closed,[True]);return events,error
 
     def test_two_cycles_require_new_released_edge_and_preserve_separate_evidence(self):
@@ -179,6 +237,12 @@ class RecreationControllerTests(unittest.TestCase):
         self.assertEqual(sum(name=='exit-commit' for name,_ in events),1)
         self.assertFalse(any(name.startswith('rearm') for name,_ in events))
 
+    def test_each_diagnostic_is_saved_before_the_next_deliberate_cycle(self):
+        events,error=self.run_repeated_trial('diagnostics');self.assertIsNone(error)
+        self.assertLess(events.index(('read-child',2)),events.index(('rearm-prepare',2)))
+        self.assertEqual(events[-1],('read-child',3))
+        self.assertEqual(sum(name=='exit-commit' for name,_ in events),2)
+
     def test_focus_loss_during_rearm_does_not_start_a_second_abort(self):
         events,error=self.run_repeated_trial('focus-loss');self.assertIn('foreground/child changed',error)
         self.assertEqual(sum(name=='exit-commit' for name,_ in events),1)
@@ -189,7 +253,7 @@ class RecreationControllerTests(unittest.TestCase):
         self.assertIn('no abort request',error)
 
     def test_invalid_cycle_arguments_do_not_create_output(self):
-        for flags in [['--cycles','0'],['--cycles','101'],['--cycles','2'],['--cycles','2','--abort-at-opening']]:
+        for flags in [['--cycles','0'],['--cycles','101'],['--cycles','2'],['--cycles','2','--abort-at-opening'],['--capture-child-diagnostics']]:
             with tempfile.TemporaryDirectory() as folder:
                 out=Path(folder)/'out'
                 with patch.object(run_abort_trial.sys,'argv',['trial','FFRHelperBattlePractice','--output',str(out)]+flags),\

@@ -1,16 +1,22 @@
 // A read-only request channel in the separate practice DLL. It never invokes
 // abort/import/rebind commands. The verified native tick supplies the guard.
-void run_combat_probe(Observer* current,void* tick_context,const ffr::AbortGuard& guard,std::int64_t now) {
+void run_combat_probe(Observer* current,void* tick_context,const ffr::AbortGuard& guard,std::int64_t now,std::uint64_t ui) {
     std::lock_guard lock(current->mutex);
     if(!current->combat_request)return;
-    const auto pending=current->trial.phase()!=ffr::AbortPhase::idle||current->import_attempted
-        ||(current->abort_request && current->abort_request->deadline>=now);
+    const bool settled_child=current->trial.phase()==ffr::AbortPhase::manager_cleared
+        && current->recreation_phase=="verified" && current->recreation_child_sequence==guard.sequence
+        && current->recreation_result.new_encounter_verified && current->recreation_result.cleanup_verified
+        && current->recreation_menu_progression_unchanged;
+    const bool completed_request=settled_child && current->abort_request
+        && current->abort_request->phase=="commit-recreate" && current->abort_request->nonce==current->recreation_nonce;
+    const auto pending=(!settled_child && current->trial.phase()!=ffr::AbortPhase::idle)||current->import_attempted
+        ||(current->abort_request && current->abort_request->deadline>=now && !completed_request);
     current->combat_controller.capture(*current->combat_request,guard,pending,now,[&] {
         const auto address=reinterpret_cast<std::uint64_t>(tick_context);
         if(address<0x10000)return std::optional<ffr::CombatObservation>{};
         // ReadProcessMemory and owned C++ allocations only; no game calls,
         // object setters, serialization, hooks or callbacks occur in this copy.
-        return ffr::capture_combat_observation(read_memory,address-0x30);
+        return ffr::capture_combat_observation(read_memory,address-0x30,ui);
     });
 }
 

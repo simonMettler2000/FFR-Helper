@@ -40,7 +40,8 @@ std::optional<ffr::AbortRequest> read_abort_request(const std::filesystem::path&
 #include "task_abort_runtime.inl"
 
 ffr::AbortGuard probe_abort(void* tick_context,const std::shared_ptr<const Observer::Opening>& opening,
-                           const std::string& session,const std::string& opening_hash) {
+                           const std::string& session,const std::string& opening_hash,std::uint64_t* observed_ui=nullptr) {
+    if(observed_ui)*observed_ui=0;
     ffr::AbortGuard out;out.session=session;out.opening_hash=opening_hash;
     if(opening)out.sequence=opening->sequence;
     const auto address=reinterpret_cast<std::uint64_t>(tick_context);
@@ -61,6 +62,7 @@ ffr::AbortGuard probe_abort(void* tick_context,const std::shared_ptr<const Obser
     const bool ui_known=valid_object(reinterpret_cast<std::uint64_t>(ui))
         && read_value(reinterpret_cast<std::uint64_t>(ui)+0x50,phase)
         && read_value(reinterpret_cast<std::uint64_t>(ui)+0x80,during) && during<=1;
+    if(ui_known && observed_ui)*observed_ui=reinterpret_cast<std::uint64_t>(ui);
     if(opening) {
         const auto& entry=opening->encounter;
         out.ordinary_encounter=entry.event==-1 && entry.can_escape && !entry.skip_win_result && !entry.skip_lose_result
@@ -125,13 +127,14 @@ void abort_tick(void* context,float delta) {
         std::lock_guard lock(current->mutex);ffr::AbortGuard expired;expired.session=session;
         current->trial.observe(expired,now);return;
     }
-    auto guard=probe_abort(context,opening,session,hash);
+    std::uint64_t observed_ui{};
+    auto guard=probe_abort(context,opening,session,hash,&observed_ui);
     {std::lock_guard lock(current->mutex);
         guard.opening_history_untouched=opening && current->opening==opening && current->session==session
             && untouched_history_locked(*current,*opening);
         current->last_guard=guard;current->task_target_message=task_abort_reason;current->probe_time=now;current->trial.observe(guard,now,delta);
     }
-    run_combat_probe(current,context,guard,now);
+    run_combat_probe(current,context,guard,now,observed_ui);
     run_recovery_probe(current,context,opening,guard,now);
     run_import_probe(current,context,opening,guard,request,now);
     run_normalization_probe(current,context,opening,guard,request,now);

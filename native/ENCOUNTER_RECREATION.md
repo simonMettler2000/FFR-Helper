@@ -111,3 +111,12 @@ receipt/archive validation, uncertain writes, two-cycle orchestration, held keys
 foreground loss and legacy DLL rejection. These mock-host results do **not**
 verify timeline layout, repeated input or battle behavior in FFR. The timeline
 discrepancy and post-action rollback remain blockers for calling this battle restart.
+
+For the next separately reviewed supervised run, add
+`--capture-child-diagnostics --cycles 2`. This retains an independent read-only
+combat/timeline snapshot at each verified child before accepting another deliberate
+press. Missing/stale party view-model links, unavailable evidence or read expiry
+stop the controller; no read or gameplay command is resent. A successful link
+snapshot does not verify the actual rendered portraits, so visual confirmation
+is still required before the second press. This option and channel extension are
+also uninstalled and have not been tested in FFR.

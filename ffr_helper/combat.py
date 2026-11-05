@@ -28,10 +28,50 @@ def _hex(value, size):
     return isinstance(value, str) and re.fullmatch('[0-9a-f]{'+str(size)+'}', value) is not None
 
 
+def validate_timeline_links(data,units):
+    fields={'coverage','readOnly','restorable','atomicSnapshot','relationVerified','renderedAnchorsVerified',
+            'unitsWithoutCurrentViewModel','links'}
+    if (not isinstance(data,dict) or set(data)!=fields
+            or data.get('coverage')!='capture-local-ui-unit-parameter-links' or data.get('readOnly') is not True
+            or any(data.get(k) is not False for k in ['restorable','atomicSnapshot','relationVerified','renderedAnchorsVerified'])
+            or not isinstance(data.get('links'),list) or len(data['links'])>256):
+        raise ValueError('Invalid optional timeline unit-view-model links.')
+    seen=set();represented=set();count=len(units)
+    states={'current','null','invalid-object','outside-current','unsupported-object-header','unreadable'}
+    for link in data['links']:
+        if (not isinstance(link,dict) or set(link)!={'uniqueId','sourceUnit','cachedUnit','sourceMatchesCached',
+                'cachedParameterState','cachedUnitId','fallbackRelation','actualRelationVerified'}
+                or not _integer(link.get('uniqueId'),0) or link['uniqueId'] in seen
+                or any(not _integer(link.get(k),-1,count-1) for k in ['sourceUnit','cachedUnit'])
+                or type(link.get('sourceMatchesCached')) is not bool or link.get('cachedParameterState') not in states
+                or link.get('actualRelationVerified') is not False):
+            raise ValueError('Invalid timeline unit-view-model identity or reference.')
+        seen.add(link['uniqueId']);state=link['cachedParameterState'];cached=link['cachedUnit'];source=link['sourceUnit']
+        if state=='current':
+            if cached<0 or not _integer(link['cachedUnitId']) or link['cachedUnitId']!=units[cached]['raw']['unitId']:
+                raise ValueError('Current timeline parameter does not match its captured unit.')
+            represented.add(cached)
+        elif cached!=-1 or (state=='outside-current' and not _integer(link['cachedUnitId'])):
+            raise ValueError('Non-current timeline parameter claims a current unit.')
+        if state not in {'current','outside-current'} and link['cachedUnitId'] is not None:
+            raise ValueError('Unavailable timeline parameter invents a unit ID.')
+        fallback=link['fallbackRelation']
+        if (state in {'null','invalid-object'} and not _integer(fallback,0,0)
+                or state not in {'null','invalid-object'} and fallback is not None):
+            raise ValueError('Unsupported timeline relation fallback claim.')
+        if cached>=0 and (link['sourceMatchesCached'] and source!=cached or not link['sourceMatchesCached'] and source==cached):
+            raise ValueError('Timeline source/cached pointer comparison contradicts its unit references.')
+    missing=data['unitsWithoutCurrentViewModel']
+    if (not isinstance(missing,list) or any(not _integer(x,0,count-1) for x in missing)
+            or missing!=[i for i in range(count) if i not in represented]):
+        raise ValueError('Timeline missing-unit list differs from its captured links.')
+    return data
+
+
 def validate_observation(data):
     keys = {'kind', 'restorable', 'readOnly', 'referenceEncoding', 'battleTurn', 'selectedUnit',
             'targetUnits', 'additionalTimeline', 'units', 'missingState'}
-    if (not isinstance(data, dict) or set(data)-{'unitRelations','continuousEffects'} != keys or data.get('kind') != 'partial-combat-observation'
+    if (not isinstance(data, dict) or set(data)-{'unitRelations','continuousEffects','timelineUnitLinks'} != keys or data.get('kind') != 'partial-combat-observation'
             or data.get('restorable') is not False or data.get('readOnly') is not True
             or data.get('referenceEncoding') != 'capture-local-unit-index; -1 is null'
             or data.get('missingState') != MISSING or not isinstance(data.get('units'), list)
@@ -78,6 +118,8 @@ def validate_observation(data):
             if not isinstance(item, dict) or set(item) != {'skillId', 'targets'} or not _integer(item.get('skillId')):
                 raise ValueError('Invalid detached AI stack entry.')
             targets(item['targets'], 64)
+    timeline=data.get('timelineUnitLinks')
+    if timeline is not None:validate_timeline_links(timeline,data['units'])
     relations=data.get('unitRelations')
     if relations is not None:
         if (not isinstance(relations,dict) or set(relations)!={'coverage','units'}
@@ -189,11 +231,22 @@ class CombatObservationBridge:
 
     @staticmethod
     def safe_boundary(status, sequence, digest):
-        if (status is None or not status.get('available') or status.get('phase') != 'idle'
+        if (status is None or not status.get('available')
                 or status.get('importProbe', {}).get('phase', 'idle') != 'idle'
                 or status.get('normalizationProbe', {}).get('attempted', False)
                 or not _integer(sequence, 1, 10**18-1) or not _hex(digest, 64)):
             return False
+        if status.get('phase')!='idle':
+            if status.get('phase')!='manager-cleared':return False
+            from .recreation_trial import validate_recreation
+            try:child=validate_recreation(status.get('recreationTrial'))
+            except (ValueError,TypeError,KeyError):return False
+            if (child['phase']!='verified' or child['childSequence']!=sequence or child['sourceHash']!=digest
+                    or child['sourceSequence']!=status.get('sequence') or child['session']!=status.get('session')
+                    or child['session']!=status.get('trialSession')
+                    or any(child[k] is not True for k in ['newEncounterVerified','cleanupVerified','nativeReturned',
+                                                        'inputTransferred','entryAttempted','firstMenuProgressionUnchanged'])):
+                return False
         guard = status.get('guard', {})
         return (type(status.get('probeTime')) is int and -2 <= time.time()-status['probeTime'] <= 2
                 and all(guard.get(k) is True for k in ['gameThread', 'matchingWorld', 'ordinaryEncounter', 'battleActive', 'commandMenu'])

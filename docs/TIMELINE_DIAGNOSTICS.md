@@ -41,9 +41,24 @@ The snapshot:
   result explicitly remains non-atomic and non-restorable.
 
 Raw pointers and code samples are private research evidence and stay outside Git.
-Nine synthetic memory tests cover normal sparse links, null/invalid/unreadable or
+Eleven synthetic memory tests cover normal sparse links, null/invalid/unreadable or
 retired references, malformed hash chains, identity/ownership drift, unsupported
 virtual targets and failed/short reads. This diagnostic is not live verified.
+
+The native combat observer now optionally emits the same kind of capture-local
+link evidence without native addresses or code bytes. It compares the inherited
+source parameter and cached battle parameter separately. The strict Python codec
+refuses invented relation/rendering claims and contradictory unit references.
+The channel permits a settled, independently verified recreated child menu while
+continuing to reject pending exit/entry/import work. This does not relax any
+mutation guard or enable reads as authorization for restoration.
+
+The manual controller's `--capture-child-diagnostics` option requests one such
+read after child verification and saves its `.ffrcombat.json` plus receipt before
+another cycle. Missing/unavailable or inconsistent party links stop the run after
+retaining its evidence. A stale response or uncertain write is never resent.
+The compiled mock-host fixture captures a verified child through this channel;
+actual FFR links and portrait layout still need the supervised comparison.
 
 ## Next supervised comparison
 

@@ -10,6 +10,7 @@ from ffr_helper.combat import (CombatObservationBridge, MISSING, RAW_FIELDS, EFF
                                validate_combat_report, validate_observation)
 from ffr_helper.opening import GAME_SHA256
 import test_abort_trial
+import test_recreation_trial
 
 
 def sample_observation():
@@ -40,6 +41,13 @@ def sample_effects():
             addProbability=100,activationProbability=75,conditionParam1=-3)
         effects.append(dict(index=index,sourceUnit=1,targetUnit=0,raw=raw,parameters=[11,-22,33]))
     return dict(coverage='base-continuous-effect-components-only',unitEffects=[[0,0],[0,1]],effects=effects)
+
+
+def sample_timeline():
+    return dict(coverage='capture-local-ui-unit-parameter-links',readOnly=True,restorable=False,atomicSnapshot=False,
+        relationVerified=False,renderedAnchorsVerified=False,unitsWithoutCurrentViewModel=[],
+        links=[dict(uniqueId=i,sourceUnit=i,cachedUnit=i,sourceMatchesCached=True,cachedParameterState='current',
+                    cachedUnitId=1001,fallbackRelation=None,actualRelationVerified=False) for i in range(2)])
 
 
 class CombatTransportTests(unittest.TestCase):
@@ -247,3 +255,52 @@ class CombatTransportTests(unittest.TestCase):
         for unit in data['units']:unit['continuousEffectCount']=64
         data['units'][1]['ai']['stack']=[dict(skillId=1,targets=[0]*64) for _ in range(63)]
         with self.assertRaisesRegex(ValueError,'reference budget'):validate_observation(data)
+
+
+class TimelineCombatTests(unittest.TestCase):
+    def test_optional_links_roundtrip_without_native_pointers_or_relation_claims(self):
+        data=sample_observation();validate_observation(data)
+        data['timelineUnitLinks']=None;validate_observation(data)
+        data['timelineUnitLinks']=sample_timeline();validate_observation(data)
+        self.assertFalse(data['timelineUnitLinks']['relationVerified'])
+
+    def test_stale_null_and_unreadable_links_remain_distinct_partial_evidence(self):
+        for state in ['null','invalid-object','outside-current','unsupported-object-header','unreadable']:
+            with self.subTest(state=state):
+                data=sample_observation();data['timelineUnitLinks']=sample_timeline();links=data['timelineUnitLinks']
+                links['unitsWithoutCurrentViewModel']=[0]
+                links['links'][0].update(cachedUnit=-1,cachedParameterState=state,sourceMatchesCached=False,
+                    cachedUnitId=1001 if state=='outside-current' else None,
+                    fallbackRelation=0 if state in ['null','invalid-object'] else None)
+                validate_observation(data)
+
+    def test_timeline_identity_types_links_and_coverage_claims_are_strict(self):
+        original=sample_observation();original['timelineUnitLinks']=sample_timeline()
+        changes=[('uniqueId',True),('uniqueId',1),('sourceUnit',2),('cachedUnit',-1),('cachedUnitId',True),
+            ('cachedUnitId',999),('sourceMatchesCached',False),('fallbackRelation',False),('actualRelationVerified',True),
+            ('nativeAddress',0x12345678),('cachedParameterState','complete-faction-state')]
+        for key,value in changes:
+            with self.subTest(key=key,value=value):
+                data=copy.deepcopy(original);data['timelineUnitLinks']['links'][0][key]=value
+                with self.assertRaises(ValueError):validate_observation(data)
+        for key,value in [('restorable',True),('atomicSnapshot',True),('relationVerified',True),
+                          ('renderedAnchorsVerified',True),('unitsWithoutCurrentViewModel',[0]),('links',[original['timelineUnitLinks']['links'][0]]*257)]:
+            data=copy.deepcopy(original);data['timelineUnitLinks'][key]=value
+            with self.subTest(key=key),self.assertRaises(ValueError):validate_observation(data)
+
+    def test_verified_recreated_child_menu_allows_only_read_only_capture_boundary(self):
+        fixture=test_recreation_trial.RecreationTrialTests();fixture.setUp();self.addCleanup(fixture.tearDown)
+        state=fixture.verified();f=fixture.fixture
+        state['guard'].update(sequence=2,battleActive=True,commandMenu=True,units=2,waitingJobs=0,workingJobs=0,
+                              fieldReady=False,managersReleased=False,friendlyActions=2)
+        digest=f.capture.metadata['sha256'];self.assertTrue(CombatObservationBridge.safe_boundary(state,2,digest))
+        # Prior actions still allow a diagnostic, never a restart/restore.
+        state['guard']['openingHistoryUntouched']=False
+        self.assertTrue(CombatObservationBridge.safe_boundary(state,2,digest))
+        for key,value in [('phase','armed'),('childSequence',3),('sourceHash','0'*64),('session','f'*32),
+                          ('cleanupVerified',False),('restorable',True)]:
+            candidate=copy.deepcopy(state);candidate['recreationTrial'][key]=value
+            with self.subTest(key=key):self.assertFalse(CombatObservationBridge.safe_boundary(candidate,2,digest))
+        for key,value in [('phase','abort-sent'),('probeTime',0),('trialSession','f'*32),('sequence',2)]:
+            candidate=copy.deepcopy(state);candidate[key]=value
+            with self.subTest(key=key):self.assertFalse(CombatObservationBridge.safe_boundary(candidate,2,digest))

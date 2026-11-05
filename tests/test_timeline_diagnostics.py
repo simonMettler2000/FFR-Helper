@@ -28,6 +28,7 @@ class TimelineDiagnosticsTests(unittest.TestCase):
             self.put(actor+0x838,'<Q',parameter);self.put(parameter+0x360,'<Q',actor)
             self.put(parameter+0xd0,'<i',[1001,1002,11][i])
             self.put(vm+0x198,'<i',i);self.put(vm+0x1a0,'<Q',parameter)
+            self.put(vm+0x70,'<Q',parameter)
         # One unoccupied sparse slot contains garbage and is not interpreted.
         self.put(self.owner+0x28,'<Qii',self.storage,4,4)
         self.put(self.owner+0x5c,'<i',1);self.put(self.owner+0x60,'<i',0)
@@ -91,6 +92,13 @@ class TimelineDiagnosticsTests(unittest.TestCase):
         self.assertEqual(vm['cachedParameterState'],'outside-current');self.assertIsNone(vm['currentUnitIndex'])
         self.assertEqual(vm['cachedUnitId'],1001);self.assertIsNone(vm['getterFallbackRelation'])
 
+    def test_source_parameter_and_cached_battle_parameter_are_compared_separately(self):
+        self.put(self.models[0]+0x1a0,'<Q',0)
+        vm=self.snapshot()['unitViewModels'][0]
+        self.assertFalse(vm['sourceParameterMatchesCached'])
+        self.assertEqual(vm['sourceParameterCurrentUnitIndex'],0)
+        self.assertIsNone(vm['currentUnitIndex']);self.assertEqual(vm['getterFallbackRelation'],0)
+
     def test_cycles_holes_duplicate_keys_and_uncovered_rows_are_refused(self):
         cases=[(self.storage+16,'<i',0),(self.storage+2*24,'<i',0),
                (self.owner+0x5c,'<i',0),(self.owner+0x70,'<i',3),
@@ -121,6 +129,17 @@ class TimelineDiagnosticsTests(unittest.TestCase):
                 seen[0]=True
             return value
         with self.assertRaisesRegex(TimelineSnapshotError,'changed during verification'):self.snapshot(drift)
+
+    def test_rows_in_the_wrong_hash_bucket_are_not_claimed_as_ui_lookup_matches(self):
+        heads=0x20012000;self.memory[heads]=bytearray(0x1000)
+        self.put(self.owner+0x68,'<Qi',heads,2);self.put(heads,'<ii',0,3)
+        # Keys 0 and 2 belong to bucket 0; key 1 belongs to bucket 1.
+        self.put(self.storage+2*24,'<i',2);self.put(self.models[1]+0x198,'<i',2)
+        self.put(self.storage+3*24,'<i',1);self.put(self.models[2]+0x198,'<i',1)
+        self.put(self.storage+2*24+16,'<i',-1)
+        self.snapshot()
+        self.put(heads,'<ii',-1,0);self.put(self.storage+2*24+16,'<i',3)
+        with self.assertRaises(TimelineSnapshotError):self.snapshot()
 
     def test_short_nonbytes_and_failed_reads_cannot_be_valid_evidence(self):
         for reader in [lambda a,s:b'',lambda a,s:bytearray(s),lambda a,s:(_ for _ in ()).throw(OSError('Read failed'))]:

@@ -102,7 +102,7 @@ def snapshot_timeline_links(read, battle, ui, image_base, image_size, friend_ids
         rows=copy(storage,count*24) if count else b''
         heads=copy(buckets or owner+0x60,bucket_count*4)
         seen=set();keys=set();vm_pointers=set();models=[];represented=set()
-        for (head,) in struct.iter_unpack('<i',heads):
+        for bucket,(head,) in enumerate(struct.iter_unpack('<i',heads)):
             slot=head
             while slot!=-1:
                 if not 0 <= slot < count or slot in seen:
@@ -110,11 +110,13 @@ def snapshot_timeline_links(read, battle, ui, image_base, image_size, friend_ids
                 seen.add(slot);offset=slot*24
                 unique_id=struct.unpack_from('<i',rows,offset)[0]
                 vm=struct.unpack_from('<Q',rows,offset+8)[0]
-                if unique_id < 0 or unique_id in keys or vm in vm_pointers:
+                if unique_id < 0 or unique_id & (bucket_count-1)!=bucket or unique_id in keys or vm in vm_pointers:
                     raise TimelineSnapshotError('Repeated or invalid unit-VM identity')
                 keys.add(unique_id);vm_pointers.add(vm);header(vm)
                 if number(vm+0x198,'<i')!=unique_id:
                     raise TimelineSnapshotError('Unit-VM key and stored unique ID differ')
+                source_parameter=number(vm+0x70,'<Q')
+                source_link=by_parameter.get(source_parameter)
                 parameter=number(vm+0x1a0,'<Q')
                 link=by_parameter.get(parameter)
                 state='current' if link else 'outside-current'
@@ -141,6 +143,8 @@ def snapshot_timeline_links(read, battle, ui, image_base, image_size, friend_ids
                         state='unreadable';fallback=None
                 if link and state=='current':represented.add(link['index'])
                 models.append(dict(uniqueId=unique_id,privateViewModel=vm,privateParameter=parameter,
+                    privateSourceParameter=source_parameter,sourceParameterMatchesCached=source_parameter==parameter,
+                    sourceParameterCurrentUnitIndex=source_link['index'] if source_link else None,
                     cachedParameterState=state,currentUnitIndex=link['index'] if link and state=='current' else None,
                     cachedUnitId=unit_id,getterFallbackRelation=fallback,
                     privateRelationGetterRva=getter,privateRelationGetterCode=code,

@@ -4,6 +4,7 @@
 #include "combat_relations.hpp"
 #include "continuous_effects.hpp"
 #include "unit_components.hpp"
+#include "timeline_links.hpp"
 #include <map>
 #include <set>
 
@@ -31,11 +32,12 @@ struct CombatObservation {
     std::vector<ObservedCombatUnit> units;
     std::optional<std::vector<ObservedUnitRelations>> unit_relations;
     std::optional<ContinuousEffectObservation> continuous_effects;
+    std::optional<TimelineLinks> timeline_links;
     std::vector<std::int32_t> target_units,additional_timeline;
     std::int32_t selected_unit=-1,battle_turn{};
 };
 
-inline std::optional<CombatObservation> capture_combat_observation(const Reader& read,std::uint64_t manager) {
+inline std::optional<CombatObservation> capture_combat_observation(const Reader& read,std::uint64_t manager,std::uint64_t ui=0) {
     auto object=[&](std::uint64_t pointer) {
         std::array<std::uint64_t,4> header{};
         return pointer && read(pointer,header.data(),sizeof(header)) && header[0] && header[2] && !(header[1]&0x40000000u);
@@ -123,6 +125,7 @@ inline std::optional<CombatObservation> capture_combat_observation(const Reader&
             }
         }
     }
+    if(ui)out.timeline_links=capture_timeline_links(read,ui,parameter_list);
     return out;
 }
 
@@ -148,6 +151,7 @@ inline std::string to_json(const CombatObservation& observation) {
         }out+='}';
     }
     return out+"],\"unitRelations\":"+relations_json(observation.unit_relations)+",\"continuousEffects\":"+continuous_effects_json(observation.continuous_effects)
+        +",\"timelineUnitLinks\":"+timeline_links_json(observation.timeline_links)
         +",\"missingState\":[\"Complete scheduler state and native callbacks\",\"Continuous effects and status durations\","
         "\"Resistance maps and calculated modifiers\",\"Shared AI state, phases and other native counters\","
         "\"Native RNG state and draw order\",\"Actor lifecycle and world restoration\",\"Verified restoration path\"]}";

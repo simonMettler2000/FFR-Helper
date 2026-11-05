@@ -222,6 +222,12 @@ def main():
                 assert probe['archiveGeneration']==(0 if archive_blocked else 1)
                 if archive_blocked:assert probe['archiveError'] and probe['archiveSha256']==''
                 if args.mode=='abort-recreate-repeat':
+                    from ffr_helper import combat
+                    child_diagnostic=json.loads((root/'connection/recreated-child-combat.json').read_text(encoding='utf8'))
+                    with patch.object(combat,'GAME_SHA256',child_diagnostic['gameSha256']):combat.validate_combat_report(child_diagnostic)
+                    links=child_diagnostic['observation']['timelineUnitLinks']
+                    assert child_diagnostic['sequence']==2 and links['unitsWithoutCurrentViewModel']==[]
+                    assert [x['cachedUnit'] for x in links['links']]==[0,1]
                     for cycle in range(1,4):
                         cycled=json.loads((root/f'connection/cycle-{cycle}-status.json').read_text(encoding='utf8'))
                         result=validate_recreation(cycled['recreationTrial'])

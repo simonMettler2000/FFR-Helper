@@ -30,19 +30,30 @@ See [the protocol notes](../native/ENCOUNTER_RECREATION.md#repeated-untouched-op
 Static UI inspection now ties portrait placement to `GetRelation` and the unit-VM
 parameter link. A bounded read-only diagnostic distinguishes current/null/stale
 links without invoking a getter; see [the investigation notes](TIMELINE_DIAGNOSTICS.md).
-It has nine synthetic-memory checks, but no recreated live sample yet. The full
-Python suite ran 206 tests (205 passed, one skipped). All 127 native regression
-cases passed, followed by 16 recreation checks after bounded archive readback was
-tightened. Timeline classification, post-action rollback and full save states
-remain open.
+The memory-reader diagnostic has eleven synthetic checks. The native combat
+channel now includes optional capture-local timeline links, including a settled
+verified child menu. Its copy invokes no new engine API; the UI pointer comes
+from the existing guard probe. The controller can retain each child's combat
+report with `--capture-child-diagnostics` and refuses another cycle on missing or
+stale party links, read failure or expiry. A real compiled-DLL fixture captures
+the child and then completes the remaining cycles without another import call.
+There is still no recreated **FFR** link/widget sample.
 
-Work is paused at the user's request before shutting down the computer. Resume
+The full Python suite ran 224 tests (223 passed, one skipped). All 128 native
+regression cases passed, followed by seven focused checks after final hash-bucket
+validation. A [partial backup reader](NATIVE_BACKUP.md) also preserves duplicate
+unit rows and compares retained resources without applying them; seven synthetic
+checks pass. The two formerly unknown backup floats are depth-of-field settings,
+not RNG or clock. Timeline correctness, post-action rollback and full save states
+remain open. All prepared changes remain uninstalled.
+
+At that handoff, work was paused for the user's shutdown. Resume
 battle-restart development when the user returns; do not start gameplay or a
 mutation controller merely because the helper is installed. Read the private
 `local/practice-next-test-plan.json` first for exact installed hashes, evidence
 paths and remaining test boundaries. The source installed for the last test is
-`2c116d7f8030eba892830851bd35504b7be9925b`; subsequent handoff edits are documentation
-only. The private draft remains PR #1 on `codex/native-runtime-state`.
+`2c116d7f8030eba892830851bd35504b7be9925b`; the installed files remain unchanged.
+The private draft remains PR #1 on `codex/native-runtime-state`.
 
 **A same-setup encounter was recreated successfully once.** The supervised
 keyboard-triggered trial exited an untouched normal opening, verified identical

@@ -23,6 +23,18 @@ void run_combat_fixture(const std::filesystem::path& connection,const std::wstri
     put(fake_units,0x40,reinterpret_cast<std::uint64_t>(fake_scheduler.data()));
     put(fake_units,0x48,ffr::RawArray{});put(fake_scheduler,0x28,reinterpret_cast<std::uint64_t>(fake_units.data()));
     put(fake_scheduler,0x30,ffr::RawArray{});
+    std::array<unsigned char,0x90> timeline_owner{};
+    std::array<std::array<unsigned char,0x1c0>,2> timeline_models{};
+    std::array<std::array<std::uint64_t,3>,2> timeline_rows{};
+    object(timeline_owner);put(fake_ui,0x78,reinterpret_cast<std::uint64_t>(timeline_owner.data()));
+    for(unsigned i=0;i<2;++i) {
+        object(timeline_models[i]);put(timeline_models[i],0x198,static_cast<std::int32_t>(i));
+        const auto parameter=reinterpret_cast<std::uint64_t>(fake_parameters[i].data());
+        put(timeline_models[i],0x70,parameter);put(timeline_models[i],0x1a0,parameter);
+        timeline_rows[i]={i,reinterpret_cast<std::uint64_t>(timeline_models[i].data()),i==0?1ull:0xffffffffull};
+    }
+    put(timeline_owner,0x28,ffr::RawArray{reinterpret_cast<std::uint64_t>(timeline_rows.data()),2,2});
+    put(timeline_owner,0x60,std::int32_t{0});put(timeline_owner,0x70,std::int32_t{1});
     std::vector<std::uint64_t> damage_sources{actors[1],actors[1],0},skill_targets{reinterpret_cast<std::uint64_t>(fake_parameters[1].data()),0};
     put(fake_parameters[0],0x368,actors[1]);put(fake_parameters[1],0x370,actors[0]);put(fake_parameters[0],0x380,actors[1]);
     put(fake_parameters[0],0x388,array(damage_sources));put(fake_parameters[0],0x270,array(skill_targets));

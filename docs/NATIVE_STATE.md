@@ -40,11 +40,16 @@ parameters' raw relation bytes without invoking a getter; an unavailable read or
 unexpected party byte stops before rearm. Neither links nor raw bytes certify
 rendered portrait placement. A real compiled-DLL fixture captures
 the child and then completes the remaining cycles without another import call.
-There is still no recreated **FFR** link/widget sample.
+There is still no recreated **FFR** link/widget sample. A separate bounded
+read-only widget reader now discovers the live reflected VM-member offset and
+can compare retained widget and profiled Slate anchor storage. Fifteen synthetic
+cases pass; it neither invokes UI functions nor certifies visible pixels. The
+extended external Windows collector is syntax-checked only and has not run in FFR.
 
-The full Python suite ran 230 tests (229 passed, one skipped). All 128 native
+The full Python suite ran 245 tests (244 passed, one skipped). All 128 native
 regression cases passed after rebuilding every fixture/profile for the current
-test host. A [partial backup reader](NATIVE_BACKUP.md) also preserves duplicate
+test host; native source is unchanged by the subsequent external widget reader.
+A [partial backup reader](NATIVE_BACKUP.md) also preserves duplicate
 unit rows and compares retained resources without applying them; seven synthetic
 checks pass. The two formerly unknown backup floats are depth-of-field settings,
 not RNG or clock. Timeline correctness, post-action rollback and full save states

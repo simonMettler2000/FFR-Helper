@@ -82,6 +82,48 @@ diagnostic refusal, with evidence retained; it does not fix or certify the UI.
 The compiled mock-host fixture captures a verified child through this channel;
 actual FFR links and portrait layout still need the supervised comparison.
 
+## Stored widget and Slate anchors
+
+Static inspection also identifies `ContentAnchor` on the portrait's native
+`CommonVisualAttachment`, rather than on the unit parameter. Its generated
+property descriptor and getter agree on a two-double stored vector. The native
+property setter and `SynchronizeProperties` forward that value to the owned
+Slate widget. The profiled Slate setter stores a separate vector. None of these
+functions was called by the helper during this audit.
+
+`ffr_helper.widget_diagnostics.snapshot_timeline_widgets` prepares a read-only
+comparison of those values. After caller verification of the exact loaded
+code/layout, it scans a bounded object array for retained `CVA_Unit` attachments,
+walks their widget-tree outers and verifies the timeline widget's class/package.
+It discovers the widget's unit-VM member from the live reflected property list
+instead of guessing a Blueprint offset. It excludes CDO/archetype owners and
+records current, null, retired, invalid and unreadable VM links separately.
+
+The optional Slate projection additionally checks the expected object/controller
+vtables and shared-allocation relationship, observes positive reference counts,
+copies the native stored anchor and rereads retained identities/values. It takes
+no ownership pin and calls no getter, reference-count routine or setter. An
+unavailable Slate projection remains separate from widget data; a changed
+retained identity refuses the whole snapshot. Unrelated unreadable object
+headers are counted.
+
+This remains private research evidence: enumeration is incomplete and non-atomic,
+and a retained widget need not belong to the visible viewport. Neither stored
+vector certifies actual pixels. Fifteen synthetic cases cover reflected-member
+discovery, template exclusion, weak-identity/property/anchor drift, stale links,
+typed bounds and distinct widget/Slate values. The extended Windows collector is
+syntax-checked only and has not been run in FFR.
+
+Use the evidence to choose the next investigation, not to authorize a refresh:
+
+| Observed evidence | Next check |
+| --- | --- |
+| Party's stored relation byte differs from Friendlies | Battle-unit initialization and team assignment |
+| Current UI VM or widget points outside the current unit graph | Deploy/destroy events, retained widgets and rebind lifetime |
+| Current friendly VM, but widget anchor has the other side's value | MVVM source binding and `SetRelation` delivery |
+| Widget and owned Slate anchors disagree | Property synchronization and Slate rebuild/lifetime |
+| Both anchors agree, but actual portraits remain wrong | Visible-widget identity, parent geometry and layout |
+
 ## Next supervised comparison
 
 Capture the same data at a natural untouched ordinary first menu and immediately
